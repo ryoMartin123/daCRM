@@ -7,6 +7,7 @@ import { ALL_JOBS, WORK_ORDERS, JOB_STATUS_CONFIG, type WorkOrderStatus } from "
 import { getFiles } from "@/lib/files/data";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
 import ModuleSummaryCards, { type SummaryCard } from "@/components/shared/ModuleSummaryCards";
+import ModuleViewToggle, { type ModuleView } from "@/components/shared/ModuleViewToggle";
 
 const TODAY = "May 30, 2026";
 
@@ -27,6 +28,7 @@ export default function WorkOrdersPage() {
   const { effectiveCompanyId, effectiveLocationId } = useHierarchy();
   const [tab, setTab]       = useState<"all" | WorkOrderStatus>("all");
   const [search, setSearch] = useState("");
+  const [moduleView, setModuleView] = useState<ModuleView>("list");
 
   // Flatten WORK_ORDERS into a list with job context
   const woList = Object.entries(WORK_ORDERS).map(([jobId, wo]) => {
@@ -66,9 +68,9 @@ export default function WorkOrdersPage() {
 
   return (
     <div className="p-6">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
+      {/* Header — title · centered view toggle · action */}
+      <div className="flex items-center gap-4 mb-6">
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2.5">
             <ClipboardList className="w-5 h-5" style={{ color: "#4f46e5" }} />
             <h1 className="text-2xl font-semibold" style={{ color: "var(--text-primary)" }}>Work Orders</h1>
@@ -81,16 +83,21 @@ export default function WorkOrdersPage() {
             Field execution instructions — one work order per job
           </p>
         </div>
-        <button className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors">
-          <Plus className="w-4 h-4" /> New Work Order
-        </button>
+        <ModuleViewToggle view={moduleView} onChange={setModuleView} />
+        <div className="flex-1 flex justify-end">
+          <button className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors">
+            <Plus className="w-4 h-4" /> New Work Order
+          </button>
+        </div>
       </div>
 
-      {/* Summary cards */}
-      <div className="mb-5">
-        <ModuleSummaryCards cards={summaryCards} moduleKey="work-orders" />
-      </div>
+      {moduleView === "overview" && (
+        <div className="mb-5">
+          <ModuleSummaryCards cards={summaryCards} />
+        </div>
+      )}
 
+      {moduleView === "list" && (
       <div className="rounded-xl overflow-hidden"
         style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
 
@@ -228,6 +235,7 @@ export default function WorkOrdersPage() {
           Showing {displayed.length} of {contextFiltered.length} work orders · Click a row to open the job
         </div>
       </div>
+      )}
     </div>
   );
 }

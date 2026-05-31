@@ -165,7 +165,9 @@ export default function DashboardGrid({
               className="flex-1 min-h-0 overflow-y-auto dashboard-widget-content"
               style={{ borderRadius: customizing ? "0 0 12px 12px" : "12px" }}
             >
-              {renderWidget(item.widgetId)}
+              <div className="dashboard-widget-fit-frame">
+                {renderWidget(item.widgetId)}
+              </div>
             </div>
           </div>
         ))}

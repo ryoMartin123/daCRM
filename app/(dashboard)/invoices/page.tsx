@@ -10,6 +10,7 @@ import { INVOICE_STATUS_STYLE, type InvoiceStatus } from "@/lib/quotes/types";
 import CreateDocumentModal from "@/components/quotes/CreateDocumentModal";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
 import ModuleSummaryCards, { type SummaryCard } from "@/components/shared/ModuleSummaryCards";
+import ModuleViewToggle, { type ModuleView } from "@/components/shared/ModuleViewToggle";
 
 const NOW = new Date();
 function daysUntil(dateStr?: string): number {
@@ -55,6 +56,7 @@ export default function InvoicesPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [invoices, setInvoices] = useState<InvoiceRecord[]>([]);
   const [showCreate, setShowCreate] = useState(false);
+  const [moduleView, setModuleView] = useState<ModuleView>("list");
 
   useEffect(() => { setInvoices(getAllInvoices()); }, []);
 
@@ -115,8 +117,8 @@ export default function InvoicesPage() {
 
   return (
     <div className="p-6">
-      <div className="flex items-start justify-between mb-6">
-        <div>
+      <div className="flex items-center gap-4 mb-6">
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2.5">
             <Receipt className="w-5 h-5" style={{ color: "#4f46e5" }} />
             <h1 className="text-2xl font-semibold" style={{ color: "var(--text-primary)" }}>Invoices</h1>
@@ -130,16 +132,21 @@ export default function InvoicesPage() {
               : "All invoices up to date"}
           </p>
         </div>
-        <button className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors">
-          <Plus className="w-4 h-4" /> New Invoice
-        </button>
+        <ModuleViewToggle view={moduleView} onChange={setModuleView} />
+        <div className="flex-1 flex justify-end">
+          <button className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors">
+            <Plus className="w-4 h-4" /> New Invoice
+          </button>
+        </div>
       </div>
 
-      {/* Summary cards */}
-      <div className="mb-5">
-        <ModuleSummaryCards cards={summaryCards} moduleKey="invoices" />
-      </div>
+      {moduleView === "overview" && (
+        <div className="mb-5">
+          <ModuleSummaryCards cards={summaryCards} />
+        </div>
+      )}
 
+      {moduleView === "list" && (
       <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
         {/* Tabs + search */}
         <div className="flex items-center justify-between px-4" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
@@ -250,6 +257,7 @@ export default function InvoicesPage() {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

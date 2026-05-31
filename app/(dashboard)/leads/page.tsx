@@ -222,7 +222,7 @@ function LeadFilterField({ label, children }: { label: string; children: React.R
 export default function LeadsPage() {
   const { effectiveCompanyId, effectiveLocationId, effectiveServiceAreaId } = useHierarchy();
 
-  const [view, setView]       = useState<"overview" | "pipeline" | "table" | "calendar">("pipeline");
+  const [view, setView]       = useState<"overview" | "pipeline" | "table" | "calendar">("table");
   const [stageEdits, setStageEdits] = useState<Record<string, string>>({});
   const [tab, setTab]         = useState<string>("active");
   const [search, setSearch]   = useState("");
@@ -363,9 +363,9 @@ export default function LeadsPage() {
 
   return (
     <div className="p-6">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
+      {/* Header — title · centered view tabs · stages + action */}
+      <div className="flex items-center gap-4 mb-6">
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2.5">
             <h1 className="text-2xl font-semibold" style={{ color: "var(--text-primary)" }}>Leads</h1>
             <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: "var(--bg-input)", color: "var(--text-muted)" }}>
@@ -376,13 +376,6 @@ export default function LeadsPage() {
             Sales pipeline — track, follow up, and convert
           </p>
         </div>
-        <button className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors">
-          <Plus className="w-4 h-4" /> New Lead
-        </button>
-      </div>
-
-      {/* View tabs — Overview · Pipeline · List · Calendar */}
-      <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
         <div className="flex items-center rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
           {([
             { key: "overview", icon: BarChart3,   label: "Overview" },
@@ -400,7 +393,7 @@ export default function LeadsPage() {
             );
           })}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex-1 flex items-center justify-end gap-2">
           {/* Visible Stages control (pipeline view only) */}
           {view === "pipeline" && (() => {
             const visibleCount = openStages.filter(s => !hiddenStages.has(s.key)).length;
@@ -440,6 +433,9 @@ export default function LeadsPage() {
               </div>
             );
           })()}
+          <button className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors">
+            <Plus className="w-4 h-4" /> New Lead
+          </button>
         </div>
       </div>
 

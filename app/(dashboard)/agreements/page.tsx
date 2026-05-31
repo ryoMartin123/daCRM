@@ -12,6 +12,7 @@ import {
   type AgreementStatus, type CustomerAgreement, type AgreementTemplate,
 } from "@/lib/agreements/data";
 import ModuleSummaryCards from "@/components/shared/ModuleSummaryCards";
+import ModuleViewToggle, { type ModuleView } from "@/components/shared/ModuleViewToggle";
 
 // ─── Status config ────────────────────────────────────────
 const STATUS: Record<AgreementStatus, { label: string; bg: string; color: string }> = {
@@ -115,6 +116,7 @@ export default function AgreementsPage() {
   const [search, setSearch]   = useState("");
   const [sortField, setSort]  = useState<SortField>("customer");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [moduleView, setModuleView] = useState<ModuleView>("list");
 
   const isTemplates = tab === "templates";
   const tabFn = TABS.find((t) => t.key === tab)?.fn ?? (() => true);
@@ -164,9 +166,9 @@ export default function AgreementsPage() {
 
   return (
     <div className="p-6 space-y-5">
-      {/* Page header */}
-      <div className="flex items-start justify-between">
-        <div>
+      {/* Page header — title · centered view toggle · actions */}
+      <div className="flex items-center gap-4">
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2.5">
             <h1 className="text-2xl font-semibold" style={{ color: "var(--text-primary)" }}>
               Agreements
@@ -182,7 +184,8 @@ export default function AgreementsPage() {
             Maintenance plans, service agreements, renewals, and recurring visits
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <ModuleViewToggle view={moduleView} onChange={setModuleView} />
+        <div className="flex-1 flex items-center justify-end gap-2">
           <button
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm transition-colors"
             style={{ border: "1px solid var(--border)", color: "var(--text-secondary)", backgroundColor: "var(--bg-surface)" }}
@@ -197,18 +200,19 @@ export default function AgreementsPage() {
         </div>
       </div>
 
-      {/* Summary cards */}
-      <ModuleSummaryCards
-        moduleKey="agreements"
-        cards={[
-          { icon: FileText,      label: "Active Agreements",     value: String(AGREEMENT_STATS.active),          sub: "Running or visits due", iconColor: "#4f46e5" },
-          { icon: CalendarCheck, label: "Visits Due This Month", value: String(AGREEMENT_STATS.visitsDueMonth),  sub: "June 2026",             iconColor: "#10b981" },
-          { icon: RefreshCw,     label: "Renewals Due Soon",     value: String(AGREEMENT_STATS.renewalsDueSoon), sub: "Within 60 days",        iconColor: "#f59e0b" },
-          { icon: DollarSign,    label: "Agreement Revenue",     value: revenueDisplay,                          sub: `${AGREEMENTS.length} agreements`, iconColor: "#10b981" },
-        ]}
-      />
+      {moduleView === "overview" && (
+        <ModuleSummaryCards
+          cards={[
+            { icon: FileText,      label: "Active Agreements",     value: String(AGREEMENT_STATS.active),          sub: "Running or visits due", iconColor: "#4f46e5" },
+            { icon: CalendarCheck, label: "Visits Due This Month", value: String(AGREEMENT_STATS.visitsDueMonth),  sub: "June 2026",             iconColor: "#10b981" },
+            { icon: RefreshCw,     label: "Renewals Due Soon",     value: String(AGREEMENT_STATS.renewalsDueSoon), sub: "Within 60 days",        iconColor: "#f59e0b" },
+            { icon: DollarSign,    label: "Agreement Revenue",     value: revenueDisplay,                          sub: `${AGREEMENTS.length} agreements`, iconColor: "#10b981" },
+          ]}
+        />
+      )}
 
       {/* Table card */}
+      {moduleView === "list" && (
       <div
         className="rounded-xl overflow-hidden"
         style={{
@@ -454,6 +458,7 @@ export default function AgreementsPage() {
           </>
         )}
       </div>
+      )}
     </div>
   );
 }

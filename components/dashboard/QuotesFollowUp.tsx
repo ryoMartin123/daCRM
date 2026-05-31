@@ -15,7 +15,7 @@ export default function QuotesFollowUp() {
     .slice(0, 4);
 
   return (
-    <div className="rounded-xl overflow-hidden"
+    <div className="rounded-xl overflow-hidden h-full min-h-full flex flex-col"
       style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
       <div className="flex items-center justify-between px-4 py-3"
         style={{ borderBottom: "1px solid var(--border-subtle)" }}>
@@ -33,14 +33,14 @@ export default function QuotesFollowUp() {
       </div>
 
       {quotes.length === 0 ? (
-        <div className="px-4 py-6 text-center">
+        <div className="flex-1 min-h-0 flex items-center justify-center px-4 py-6 text-center">
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>All quotes actioned — great work.</p>
         </div>
       ) : (
-        <div>
+        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
           {quotes.map((q, i) => (
             <Link key={q.id} href={`/quotes/${q.id}`}
-              className="flex items-center gap-3 px-4 py-3 hover:bg-[var(--bg-surface-2)] transition-colors"
+              className="flex flex-1 min-h-[58px] items-center gap-3 px-4 py-3 hover:bg-[var(--bg-surface-2)] transition-colors"
               style={{ borderBottom: i < quotes.length - 1 ? "1px solid var(--border-subtle)" : "none", textDecoration: "none" }}>
               <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-[9px] font-bold text-indigo-600 shrink-0">
                 {q.customerInitials}

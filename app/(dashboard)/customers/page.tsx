@@ -9,6 +9,7 @@ import { useHierarchy } from "@/components/providers/HierarchyProvider";
 import { useCustomers } from "@/components/providers/CustomerProvider";
 import NewCustomerModal from "@/components/customers/NewCustomerModal";
 import ModuleSummaryCards, { type SummaryCard } from "@/components/shared/ModuleSummaryCards";
+import ModuleViewToggle, { type ModuleView } from "@/components/shared/ModuleViewToggle";
 
 const THIS_MONTH = new Date().toLocaleDateString("en-US", { month: "short", year: "numeric" });
 
@@ -52,6 +53,7 @@ export default function CustomersPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [tab, setTab]             = useState("all");
+  const [moduleView, setModuleView] = useState<ModuleView>("list");
   const [search, setSearch]   = useState("");
   const [sortField, setSort]  = useState<SortField>("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -112,9 +114,9 @@ export default function CustomersPage() {
 
   return (
     <div className="p-6">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
+      {/* Header — title · centered view toggle · action */}
+      <div className="flex items-center gap-4 mb-6">
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2.5">
             <h1 className="text-2xl font-semibold" style={{ color: "var(--text-primary)" }}>
               Customers
@@ -130,21 +132,26 @@ export default function CustomersPage() {
             All customers, leads, and accounts
           </p>
         </div>
-        <button
-          onClick={() => setModalOpen(true)}
-          className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New Customer
-        </button>
+        <ModuleViewToggle view={moduleView} onChange={setModuleView} />
+        <div className="flex-1 flex justify-end">
+          <button
+            onClick={() => setModalOpen(true)}
+            className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            New Customer
+          </button>
+        </div>
       </div>
 
-      {/* Summary cards */}
-      <div className="mb-5">
-        <ModuleSummaryCards cards={summaryCards} moduleKey="customers" />
-      </div>
+      {moduleView === "overview" && (
+        <div className="mb-5">
+          <ModuleSummaryCards cards={summaryCards} />
+        </div>
+      )}
 
       {/* Table card */}
+      {moduleView === "list" && (
       <div
         className="rounded-xl overflow-hidden"
         style={{
@@ -307,6 +314,7 @@ export default function CustomersPage() {
           </div>
         </div>
       </div>
+      )}
       <NewCustomerModal open={modalOpen} onClose={() => setModalOpen(false)} />
     </div>
   );

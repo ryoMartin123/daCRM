@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Images, FileText, UploadCloud, ImageOff, Upload } from "lucide-react";
 import PhotoGallery from "@/components/files/PhotoGallery";
 import ModuleSummaryCards, { type SummaryCard } from "@/components/shared/ModuleSummaryCards";
+import ModuleViewToggle, { type ModuleView } from "@/components/shared/ModuleViewToggle";
 import { getFiles } from "@/lib/files/data";
 import { WORK_ORDERS, ALL_JOBS } from "@/lib/jobs/data";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
@@ -17,6 +18,7 @@ function isThisMonth(dateStr: string): boolean {
 export default function FilesPage() {
   const { effectiveCompanyId, effectiveLocationId } = useHierarchy();
   const [uploadSignal, setUploadSignal] = useState(0);
+  const [moduleView, setModuleView] = useState<ModuleView>("list");
 
   // Context-filtered file set (respects the selector, like the gallery)
   const files = getFiles({})
@@ -42,8 +44,8 @@ export default function FilesPage() {
 
   return (
     <div className="p-6 space-y-5">
-      <div className="flex items-start justify-between">
-        <div>
+      <div className="flex items-center gap-4">
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2.5">
             <Images className="w-5 h-5" style={{ color: "#4f46e5" }} />
             <h1 className="text-2xl font-semibold" style={{ color: "var(--text-primary)" }}>Photos &amp; Files</h1>
@@ -52,16 +54,20 @@ export default function FilesPage() {
             Global media library — search across accounts, properties, jobs, projects, and more
           </p>
         </div>
-        <button onClick={() => setUploadSignal(n => n + 1)}
-          className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors">
-          <Upload className="w-4 h-4" /> Upload
-        </button>
+        <ModuleViewToggle view={moduleView} onChange={setModuleView} listLabel="Library" />
+        <div className="flex-1 flex justify-end">
+          <button onClick={() => setUploadSignal(n => n + 1)}
+            className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors">
+            <Upload className="w-4 h-4" /> Upload
+          </button>
+        </div>
       </div>
 
-      {/* Summary cards */}
-      <ModuleSummaryCards cards={summaryCards} moduleKey="files" />
+      {moduleView === "overview" && <ModuleSummaryCards cards={summaryCards} />}
 
-      <PhotoGallery recordLevel="global" externalUpload uploadSignal={uploadSignal} />
+      {moduleView === "list" && (
+        <PhotoGallery recordLevel="global" externalUpload uploadSignal={uploadSignal} />
+      )}
     </div>
   );
 }

@@ -2,10 +2,22 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Search, Plus, SlidersHorizontal, ChevronUp, ChevronDown } from "lucide-react";
+import { Search, Plus, SlidersHorizontal, ChevronUp, ChevronDown, PlayCircle, PauseCircle, CheckCircle2, DollarSign } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ALL_PROJECTS, PROJECT_STATUS_CONFIG, PROJECT_TYPE_LABELS, getProjectProgress, type Project, type ProjectStatus } from "@/lib/projects/data";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
+import ModuleSummaryCards, { type SummaryCard } from "@/components/shared/ModuleSummaryCards";
+import ModuleViewToggle, { type ModuleView } from "@/components/shared/ModuleViewToggle";
+
+function parseMoney(s?: string): number {
+  if (!s) return 0;
+  const n = parseFloat(s.replace(/[^0-9.]/g, ""));
+  return isNaN(n) ? 0 : n;
+}
+function fmtMoney(n: number): string {
+  if (n >= 1000) return `$${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k`;
+  return `$${n.toLocaleString()}`;
+}
 
 const TABS = [
   { key: "all",       label: "All",       fn: (_: Project) => true },
@@ -24,10 +36,19 @@ export default function ProjectsPage() {
   const [search, setSearch]   = useState("");
   const [sortField, setSort]  = useState<SortField>("status");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [moduleView, setModuleView] = useState<ModuleView>("list");
 
   const contextFiltered = ALL_PROJECTS
     .filter(p => !effectiveCompanyId  || p.companyId  === effectiveCompanyId)
     .filter(p => !effectiveLocationId || p.locationId === effectiveLocationId);
+
+  // Summary metrics — respect the active context
+  const summaryCards: SummaryCard[] = [
+    { icon: PlayCircle,   label: "Active Projects", value: String(contextFiltered.filter(p => p.status === "active").length),    sub: "In progress", iconColor: "#4f46e5" },
+    { icon: PauseCircle,  label: "On Hold",         value: String(contextFiltered.filter(p => p.status === "on_hold").length),   sub: "Paused",      iconColor: "#f59e0b" },
+    { icon: CheckCircle2, label: "Completed",       value: String(contextFiltered.filter(p => p.status === "completed").length), sub: "Finished",    iconColor: "#10b981" },
+    { icon: DollarSign,   label: "Total Value",     value: fmtMoney(contextFiltered.reduce((s, p) => s + parseMoney(p.estimatedValue), 0)), sub: `${contextFiltered.length} projects`, iconColor: "#0891b2" },
+  ];
 
   const tabFn = TABS.find(t => t.key === tab)?.fn ?? (() => true);
 
@@ -54,19 +75,29 @@ export default function ProjectsPage() {
 
   return (
     <div className="p-6">
-      <div className="flex items-start justify-between mb-6">
-        <div>
+      <div className="flex items-center gap-4 mb-6">
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2.5">
             <h1 className="text-2xl font-semibold" style={{ color: "var(--text-primary)" }}>Projects</h1>
             <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: "var(--bg-input)", color: "var(--text-muted)" }}>{contextFiltered.length}</span>
           </div>
           <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>Multi-phase and larger scope work</p>
         </div>
-        <button className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors">
-          <Plus className="w-4 h-4" /> New Project
-        </button>
+        <ModuleViewToggle view={moduleView} onChange={setModuleView} />
+        <div className="flex-1 flex justify-end">
+          <button className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors">
+            <Plus className="w-4 h-4" /> New Project
+          </button>
+        </div>
       </div>
 
+      {moduleView === "overview" && (
+        <div className="mb-5">
+          <ModuleSummaryCards cards={summaryCards} />
+        </div>
+      )}
+
+      {moduleView === "list" && (
       <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
         {/* Tabs + search */}
         <div className="flex items-center justify-between px-4" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
@@ -158,6 +189,7 @@ export default function ProjectsPage() {
           <span>Showing {displayed.length} of {contextFiltered.filter(tabFn).length} projects</span>
         </div>
       </div>
+      )}
     </div>
   );
 }

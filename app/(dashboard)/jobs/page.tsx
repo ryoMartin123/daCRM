@@ -9,6 +9,7 @@ import { ALL_PROJECTS, PROJECT_STATUS_CONFIG, getProjectProgress, type ProjectSt
 import { getJobStatuses } from "@/lib/job-config/data";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
 import ModuleSummaryCards, { type SummaryCard } from "@/components/shared/ModuleSummaryCards";
+import ModuleViewToggle, { type ModuleView } from "@/components/shared/ModuleViewToggle";
 
 const TODAY = "May 30, 2026";
 
@@ -91,6 +92,7 @@ export default function JobsPage() {
   const { effectiveCompanyId, effectiveLocationId } = useHierarchy();
 
   const [tab, setTab]         = useState("today");
+  const [moduleView, setModuleView] = useState<ModuleView>("list");
   const [search, setSearch]   = useState("");
   const [sortField, setSort]  = useState<SortField>("scheduledDate");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -140,26 +142,31 @@ export default function JobsPage() {
 
   return (
     <div className="p-6">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
+      {/* Header — title · centered view toggle · action */}
+      <div className="flex items-center gap-4 mb-6">
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2.5">
             <h1 className="text-2xl font-semibold" style={{ color: "var(--text-primary)" }}>Jobs</h1>
             <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: "var(--bg-input)", color: "var(--text-muted)" }}>{contextFiltered.length}</span>
           </div>
           <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>Daily operations — all scheduled and active work</p>
         </div>
-        <button className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors">
-          <Plus className="w-4 h-4" /> New Job
-        </button>
+        <ModuleViewToggle view={moduleView} onChange={setModuleView} />
+        <div className="flex-1 flex justify-end">
+          <button className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors">
+            <Plus className="w-4 h-4" /> New Job
+          </button>
+        </div>
       </div>
 
-      {/* Summary cards */}
-      <div className="mb-5">
-        <ModuleSummaryCards cards={summaryCards} moduleKey="jobs" />
-      </div>
+      {moduleView === "overview" && (
+        <div className="mb-5">
+          <ModuleSummaryCards cards={summaryCards} />
+        </div>
+      )}
 
       {/* Table card */}
+      {moduleView === "list" && (
       <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
         {/* Tabs + search */}
         <div className="flex items-center justify-between px-4" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
@@ -277,6 +284,7 @@ export default function JobsPage() {
           </>
         )}
       </div>
+      )}
     </div>
   );
 }

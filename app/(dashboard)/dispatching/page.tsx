@@ -3,21 +3,23 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import {
   Inbox, Search, SlidersHorizontal, Layers, Eye, EyeOff,
-  ChevronLeft, ChevronRight, LayoutGrid, CalendarDays, CalendarRange, CalendarClock,
+  ChevronLeft, ChevronRight, ChevronUp, ChevronDown, LayoutGrid, LayoutList, CalendarDays, CalendarRange, CalendarClock,
 } from "lucide-react";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
 import CalendarItemDrawer from "@/components/calendar/CalendarItemDrawer";
 import ScheduleConfirmModal, { type ScheduleDraft } from "@/components/calendar/ScheduleConfirmModal";
 import Select from "@/components/ui/Select";
 import {
-  getCalendarItems, getUnscheduledItems, getTechnicians, getTechRoster, getDispatchBoards, type CalendarScope,
+  getCalendarItems, getUnscheduledItems, getTechnicians, getTechRoster, type CalendarScope,
 } from "@/lib/calendar/data";
 import {
-  LAYER_CONFIG, CALENDAR_LAYERS, PRIORITY_CONFIG, TECH_STATUS_CONFIG, SERVICE_BLOCKS,
-  DAY_START_HOUR, DAY_END_HOUR, HOUR_PX,
+  LAYER_CONFIG, CALENDAR_LAYERS, PRIORITY_CONFIG, TECH_STATUS_CONFIG, HOUR_PX,
   type CalendarItem, type CalendarItemType, type UnscheduledItem, type DispatchMode,
 } from "@/lib/calendar/types";
-import { getDispatchSettings } from "@/lib/calendar/settings";
+import {
+  resolveDispatchSettings, defaultDispatchSettings, getBoardsForContext, itemMatchesBoard,
+  type DispatchSettings, type SettingsServiceBlock, type DispatchBoard,
+} from "@/lib/calendar/settings";
 
 type CalendarView = "dispatch" | "day" | "week" | "month";
 
@@ -29,8 +31,6 @@ function addMonths(d: Date, n: number): Date { return new Date(d.getFullYear(), 
 function isSameDay(a: Date, b: Date): boolean { return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate(); }
 function fmtTime(d: Date): string { return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }); }
 function ymd(d: Date): string { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
-function minutesFromDayStart(d: Date): number { return (d.getHours() - DAY_START_HOUR) * 60 + d.getMinutes(); }
-const HOURS = Array.from({ length: DAY_END_HOUR - DAY_START_HOUR }, (_, i) => DAY_START_HOUR + i);
 function hourLabel(h: number): string { return `${h > 12 ? h - 12 : h}${h >= 12 ? "p" : "a"}`; }
 
 export default function CalendarPage() {
@@ -41,19 +41,24 @@ export default function CalendarPage() {
   const [dispatchMode, setMode]   = useState<DispatchMode>("hourly");
   const [focus, setFocus]         = useState(() => new Date());
   const [hidden, setHidden]       = useState<Set<CalendarItemType>>(new Set());
+  const [settings, setSettings]   = useState<DispatchSettings>(() => defaultDispatchSettings());
+  const [boards, setBoards]       = useState<DispatchBoard[]>([]);
 
-  // Seed the initial view, mode, and layer visibility from saved Settings
-  // → Operations → Calendar / Dispatch. Settings define the *defaults*; once the
-  // board is open the controls below take over. Runs once on mount.
+  // Resolve the most-specific settings for the active company/location context
+  // (Organization → Company → Location), then seed view/mode/layers and load the
+  // boards available for that context. Re-runs whenever the context changes or
+  // the page mounts (e.g. navigating in from Settings), so changes show up here.
   useEffect(() => {
-    const cfg = getDispatchSettings();
+    const cfg = resolveDispatchSettings(effectiveCompanyId, effectiveLocationId);
+    setSettings(cfg);
     setView(cfg.defaultView);
     setMode(cfg.defaultDispatchMode);
-    const off = new Set<CalendarItemType>(
+    setHidden(new Set<CalendarItemType>(
       cfg.layers.filter(l => !l.enabled || !l.visibleByDefault).map(l => l.type),
-    );
-    if (off.size) setHidden(off);
-  }, []);
+    ));
+    setBoards(getBoardsForContext(effectiveCompanyId, effectiveLocationId));
+    setBoardId("all");
+  }, [effectiveCompanyId, effectiveLocationId]);
   // Per-item edits made on the board: reassignment, moved time, resized duration.
   const [edits, setEdits]         = useState<Record<string, { start?: Date; durationMinutes?: number; assignedTo?: string }>>({});
   const [boardId, setBoardId]     = useState("all");
@@ -102,12 +107,29 @@ export default function CalendarPage() {
   const roster      = getTechRoster();
   const technicians = useMemo(() => Array.from(new Set([...roster.map(r => r.name), ...getTechnicians(rawItems)])), [rawItems, roster]);
 
-  // Dispatch board / team selector — filters which technician rows show.
-  const boards      = getDispatchBoards();
-  const activeBoard = boards.find(b => b.id === boardId) ?? boards[0];
-  const boardRoster = activeBoard.techNames.length === 0
+  // Dispatch board / team selector — boards belong to a company + location and
+  // are scoped to the current context. Selecting a board filters the technician
+  // rows, scheduled items, and the unscheduled queue to that board.
+  const boardOptions = [{ value: "all", label: "All Boards" }, ...boards.map(b => ({ value: b.id, label: b.name }))];
+  const activeBoardDef = boards.find(b => b.id === boardId);
+  const boardRoster = (!activeBoardDef || activeBoardDef.techNames.length === 0)
     ? roster
-    : roster.filter(r => activeBoard.techNames.includes(r.name));
+    : activeBoardDef.techNames.map(name =>
+        roster.find(r => r.name === name) ?? { name, initials: initials(name), status: "available" as const },
+      );
+  const activeDispatcherLabel = activeBoardDef?.dispatchers.join(", ");
+
+  // Selecting a board seeds its default view/mode (still overridable afterward).
+  function selectBoard(id: string) {
+    setBoardId(id);
+    const b = boards.find(x => x.id === id);
+    if (b?.defaultView) setView(b.defaultView);
+    if (b?.defaultDispatchMode) setMode(b.defaultDispatchMode);
+  }
+
+  // Hourly grid + service blocks come straight from the resolved settings.
+  const hourly = settings.hourly;
+  const activeBlocks = settings.blocks.filter(b => b.active).sort((a, b) => a.order - b.order);
 
   const items = useMemo(() => [...rawItems, ...extra]
     .map(i => {
@@ -123,7 +145,11 @@ export default function CalendarPage() {
     .filter(i => fPrio === "all" || i.priority === fPrio),
     [rawItems, extra, edits, hidden, fTech, fType, fPrio]);
 
-  const unscheduled = allUnscheduled.filter(u => !removed.has(u.id));
+  // Narrow scheduled items + queue to the selected board (All Boards = no narrowing).
+  const boardItems  = activeBoardDef ? items.filter(i => itemMatchesBoard(i, activeBoardDef)) : items;
+  const unscheduled = allUnscheduled
+    .filter(u => !removed.has(u.id))
+    .filter(u => !activeBoardDef || itemMatchesBoard(u, activeBoardDef));
   const jobTypes = useMemo(() => Array.from(new Set(rawItems.map(i => i.jobType).filter(Boolean))) as string[], [rawItems]);
   const activeFilters = [fTech !== "all", fType !== "all", fPrio !== "all", boardId !== "all"].filter(Boolean).length;
   const availableLayers = CALENDAR_LAYERS.filter(t => ["job","agreement_visit","task","project_milestone"].includes(t) && rawItems.some(i => i.type === t));
@@ -281,8 +307,8 @@ export default function CalendarPage() {
                 </div>
                 <div className="space-y-2.5">
                   <FilterField label="Dispatch Board">
-                    <Select size="sm" value={boardId} onChange={setBoardId} options={boards.map(b => ({ value: b.id, label: b.name }))} />
-                    {activeBoard.dispatcher && <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>Dispatcher: {activeBoard.dispatcher}</p>}
+                    <Select size="sm" value={boardId} onChange={selectBoard} options={boardOptions} />
+                    {activeDispatcherLabel && <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>Dispatcher: {activeDispatcherLabel}</p>}
                   </FilterField>
                   <FilterField label="Technician"><Select size="sm" value={fTech} onChange={setFTech} options={[{ value: "all", label: "All Technicians" }, ...technicians.map(t => ({ value: t, label: t }))]} /></FilterField>
                   <FilterField label="Job Type"><Select size="sm" value={fType} onChange={setFType} options={[{ value: "all", label: "All Types" }, ...jobTypes.map(t => ({ value: t, label: t }))]} /></FilterField>
@@ -295,10 +321,10 @@ export default function CalendarPage() {
       </div>
 
       {/* Board */}
-      {view === "dispatch" && <DispatchBoard focus={focus} mode={dispatchMode} items={items} roster={boardRoster} onSelect={setSelScheduled} onMoveResize={applyMoveResize} onDropItem={(uid, tech, hour, minute) => { const u = unscheduled.find(x => x.id === uid); if (u) openConfirm(u, tech, focus, hour, minute); }} />}
-      {view === "week"     && <WeekView  focus={focus} items={items} onSelect={setSelScheduled} />}
-      {view === "day"      && <DayView   focus={focus} items={items} onSelect={setSelScheduled} />}
-      {view === "month"    && <MonthView focus={focus} items={items} onSelect={setSelScheduled} />}
+      {view === "dispatch" && <DispatchBoard focus={focus} mode={dispatchMode} items={boardItems} roster={boardRoster} dayStart={hourly.startHour} dayEnd={hourly.endHour} increment={hourly.increment} blocks={activeBlocks} onSelect={setSelScheduled} onMoveResize={applyMoveResize} onDropItem={(uid, tech, hour, minute) => { const u = unscheduled.find(x => x.id === uid); if (u) openConfirm(u, tech, focus, hour, minute); }} />}
+      {view === "week"     && <WeekView  focus={focus} items={boardItems} onSelect={setSelScheduled} />}
+      {view === "day"      && <DayView   focus={focus} items={boardItems} dayStart={hourly.startHour} dayEnd={hourly.endHour} onSelect={setSelScheduled} />}
+      {view === "month"    && <MonthView focus={focus} items={boardItems} onSelect={setSelScheduled} />}
 
       {/* Unscheduled queue — BELOW the board */}
       <UnscheduledQueue
@@ -322,38 +348,41 @@ function initials(name: string): string {
 }
 
 // ─── Dispatch board ───────────────────────────────────────
-const TOTAL_MIN = (DAY_END_HOUR - DAY_START_HOUR) * 60;
 const ROW_H = 64;
-
-const SNAP = 15;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-const snap = (v: number) => Math.round(v / SNAP) * SNAP;
-function startMinOf(i: CalendarItem) { return (i.start.getHours() - DAY_START_HOUR) * 60 + i.start.getMinutes(); }
-function minToTime(min: number) { const h = DAY_START_HOUR + Math.floor(min / 60); const m = min % 60; return `${h > 12 ? h - 12 : h}:${String(m).padStart(2, "0")}${h >= 12 ? "p" : "a"}`; }
 
-function DispatchBoard({ focus, mode, items, roster, onSelect, onMoveResize, onDropItem }: {
+function DispatchBoard({ focus, mode, items, roster, dayStart, dayEnd, increment, blocks, onSelect, onMoveResize, onDropItem }: {
   focus: Date; mode: DispatchMode; items: CalendarItem[];
   roster: ReturnType<typeof getTechRoster>;
+  dayStart: number; dayEnd: number; increment: number; blocks: SettingsServiceBlock[];
   onSelect: (i: CalendarItem) => void;
   onMoveResize: (id: string, start: Date, durationMinutes: number, tech?: string) => void;
   onDropItem: (uid: string, tech: string, hour: number, minute: number) => void;
 }) {
   const dayItems = items.filter(i => isSameDay(i.start, focus) && !i.allDay);
 
+  // Hourly grid + drag snapping derived from the configured day window.
+  const totalMin = Math.max(60, (dayEnd - dayStart) * 60);
+  const hours = Array.from({ length: Math.max(1, dayEnd - dayStart) }, (_, i) => dayStart + i);
+  const subPerHour = Math.max(1, Math.round(60 / increment));
+  const snap = (v: number) => Math.round(v / increment) * increment;
+  const startMinOf = (i: CalendarItem) => (i.start.getHours() - dayStart) * 60 + i.start.getMinutes();
+  const minToTime = (min: number) => { const h = dayStart + Math.floor(min / 60); const m = min % 60; return `${h > 12 ? h - 12 : h}:${String(m).padStart(2, "0")}${h >= 12 ? "p" : "a"}`; };
+
   // Live preview while moving / resizing a block (tech = target row); queue-drag row.
   const [preview, setPreview] = useState<{ id: string; startMin: number; durationMinutes: number; tech: string } | null>(null);
   const [dragTech, setDragTech] = useState<string | null>(null);
 
   const labels = mode === "blocks"
-    ? SERVICE_BLOCKS.map(b => ({ key: b.key, label: b.label, span: b.endHour - b.startHour }))
-    : HOURS.map(h => ({ key: `h${h}`, label: hourLabel(h), span: 1 }));
+    ? blocks.map(b => ({ key: b.id, label: b.name, span: b.endHour - b.startHour }))
+    : hours.map(h => ({ key: `h${h}`, label: hourLabel(h), span: 1 }));
   const gridCells = mode === "blocks"
-    ? SERVICE_BLOCKS.map(b => ({ key: b.key, span: (b.endHour - b.startHour) * 60, half: false }))
-    : HOURS.flatMap(h => [{ key: `${h}:00`, span: 30, half: false }, { key: `${h}:30`, span: 30, half: true }]);
+    ? blocks.map(b => ({ key: b.id, span: (b.endHour - b.startHour) * 60, half: false }))
+    : hours.flatMap(h => Array.from({ length: subPerHour }, (_, k) => ({ key: `${h}:${k}`, span: increment, half: k > 0 })));
 
   function commitFromX(clientX: number, track: HTMLElement): number {
     const rect = track.getBoundingClientRect();
-    return clamp(((clientX - rect.left) / rect.width) * TOTAL_MIN, 0, TOTAL_MIN);
+    return clamp(((clientX - rect.left) / rect.width) * totalMin, 0, totalMin);
   }
 
   // Pointer-driven move (drag body, across rows) / resize (drag right edge).
@@ -371,10 +400,10 @@ function DispatchBoard({ focus, mode, items, roster, onSelect, onMoveResize, onD
       const mm = commitFromX(ev.clientX, track);
       if (Math.abs(mm - (base + grab)) > 2) moved = true;
       if (kind === "move") {
-        curStart = clamp(snap(mm - grab), 0, TOTAL_MIN - dur0); curDur = dur0;
+        curStart = clamp(snap(mm - grab), 0, totalMin - dur0); curDur = dur0;
         const overTrack = (document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null)?.closest("[data-track]") as HTMLElement | null;
         if (overTrack?.dataset.tech) curTech = overTrack.dataset.tech;
-      } else { curDur = clamp(snap(mm - base), 30, TOTAL_MIN - base); curStart = base; }
+      } else { curDur = clamp(snap(mm - base), 30, totalMin - base); curStart = base; }
       setPreview({ id: item.id, startMin: curStart, durationMinutes: curDur, tech: curTech });
     };
     const onUp = () => {
@@ -384,7 +413,7 @@ function DispatchBoard({ focus, mode, items, roster, onSelect, onMoveResize, onD
       blockEl.style.pointerEvents = "";
       setPreview(null);
       if (moved) {
-        const nd = new Date(focus); nd.setHours(DAY_START_HOUR + Math.floor(curStart / 60), curStart % 60, 0, 0);
+        const nd = new Date(focus); nd.setHours(dayStart + Math.floor(curStart / 60), curStart % 60, 0, 0);
         onMoveResize(item.id, nd, curDur, kind === "move" ? curTech : undefined);
       } else {
         onSelect(item);
@@ -413,7 +442,7 @@ function DispatchBoard({ focus, mode, items, roster, onSelect, onMoveResize, onD
         const techItems = dayItems.filter(i => (i.assignedTo ?? "") === tech.name);
         const sc = TECH_STATUS_CONFIG[tech.status];
         const bookedMin = techItems.reduce((s, i) => s + i.durationMinutes, 0);
-        const openHrs = Math.max(0, Math.round((TOTAL_MIN - bookedMin) / 60));
+        const openHrs = Math.max(0, Math.round((totalMin - bookedMin) / 60));
         const isDropTarget = dragTech === tech.name || (preview != null && preview.tech === tech.name);
         return (
           <div key={tech.name} className="flex" style={{ borderBottom: ri < roster.length - 1 ? "1px solid var(--border-subtle)" : "none" }}>
@@ -439,9 +468,9 @@ function DispatchBoard({ focus, mode, items, roster, onSelect, onMoveResize, onD
               onDrop={e => {
                 e.preventDefault(); setDragTech(null);
                 const id = e.dataTransfer.getData("text/plain"); if (!id) return;
-                const mm = Math.round(commitFromX(e.clientX, e.currentTarget) / 30) * 30;
-                const safe = clamp(mm, 0, TOTAL_MIN - 30);
-                onDropItem(id, tech.name, DAY_START_HOUR + Math.floor(safe / 60), safe % 60);
+                const mm = Math.round(commitFromX(e.clientX, e.currentTarget) / increment) * increment;
+                const safe = clamp(mm, 0, totalMin - increment);
+                onDropItem(id, tech.name, dayStart + Math.floor(safe / 60), safe % 60);
               }}>
               {/* Gridlines (visual only) */}
               <div className="absolute inset-0 flex pointer-events-none">
@@ -453,8 +482,8 @@ function DispatchBoard({ focus, mode, items, roster, onSelect, onMoveResize, onD
                 const p = preview?.id === i.id ? preview : null;
                 const sm = p ? p.startMin : startMinOf(i);
                 const dur = p ? p.durationMinutes : i.durationMinutes;
-                const left = clamp((sm / TOTAL_MIN) * 100, 0, 100);
-                const width = Math.max(3, (Math.min(dur, TOTAL_MIN - sm) / TOTAL_MIN) * 100);
+                const left = clamp((sm / totalMin) * 100, 0, 100);
+                const width = Math.max(3, (Math.min(dur, totalMin - sm) / totalMin) * 100);
                 const prio = i.priority && i.priority !== "normal" ? PRIORITY_CONFIG[i.priority] : null;
                 const movingAway = p && p.tech !== (i.assignedTo ?? "");  // dragging to another tech
                 return (
@@ -509,44 +538,100 @@ function UnscheduledQueue({ items, tab, setTab, search, setSearch, onSelect }: {
 
   const count = (key: string) => key === "all" ? items.length : key === "urgent" ? items.filter(u => u.priority === "urgent").length : items.filter(u => u.type === key).length;
 
+  const [collapsed, setCollapsed] = useState(false);
+  const [layout, setLayout] = useState<"cards" | "list">("cards");
+
   return (
     <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 px-4 py-3 flex-wrap" style={{ borderBottom: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-surface-2)" }}>
+      <div className="flex items-center justify-between gap-3 px-4 py-3 flex-wrap" style={{ borderBottom: collapsed ? "none" : "1px solid var(--border-subtle)", backgroundColor: "var(--bg-surface-2)" }}>
         <div className="flex items-center gap-2">
           <Inbox className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
           <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Unscheduled Queue</p>
           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "var(--bg-input)", color: "var(--text-muted)" }}>{items.length}</span>
         </div>
-        <div className="flex items-center gap-2 rounded-lg px-3 py-1.5" style={{ backgroundColor: "var(--bg-input)" }}>
-          <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted)" }} />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search queue…" className="bg-transparent text-sm outline-none w-40" style={{ color: "var(--text-primary)" }} />
+        <div className="flex items-center gap-2">
+          {!collapsed && (
+            <>
+              <div className="flex items-center gap-2 rounded-lg px-3 py-1.5" style={{ backgroundColor: "var(--bg-input)" }}>
+                <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted)" }} />
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search queue…" className="bg-transparent text-sm outline-none w-40" style={{ color: "var(--text-primary)" }} />
+              </div>
+              {/* Card / List layout toggle */}
+              <div className="flex items-center rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+                {([{ key: "cards", icon: LayoutGrid }, { key: "list", icon: LayoutList }] as const).map(o => {
+                  const active = layout === o.key;
+                  return (
+                    <button key={o.key} onClick={() => setLayout(o.key)} title={o.key === "cards" ? "Card view" : "List view"}
+                      className="px-2 py-1.5 transition-colors"
+                      style={{ backgroundColor: active ? "#4f46e5" : "var(--bg-surface)", color: active ? "#fff" : "var(--text-muted)" }}>
+                      <o.icon className="w-3.5 h-3.5" />
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+          {/* Minimize / expand */}
+          <button onClick={() => setCollapsed(c => !c)} title={collapsed ? "Expand queue" : "Minimize queue"}
+            className="p-1.5 rounded-lg transition-colors hover:bg-[var(--bg-input)]"
+            style={{ border: "1px solid var(--border)", color: "var(--text-muted)" }}>
+            {collapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+          </button>
         </div>
       </div>
-      {/* Triage tabs */}
-      <div className="flex items-center gap-0.5 px-3 py-2 flex-wrap" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-        {TABS.map(t => {
-          const active = tab === t.key; const c = count(t.key);
-          if (c === 0 && t.key !== "all") return null;
-          return (
-            <button key={t.key} onClick={() => setTab(t.key)}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors"
-              style={{ backgroundColor: active ? "var(--accent-soft-bg)" : "transparent", color: active ? "var(--accent-text)" : "var(--text-muted)", border: `1px solid ${active ? "var(--accent-soft-border)" : "transparent"}` }}>
-              {t.label}<span className="text-[10px] font-bold px-1 py-0.5 rounded-full" style={{ backgroundColor: active ? "var(--accent-soft-2-bg)" : "var(--bg-input)", color: active ? "var(--accent-text)" : "var(--text-muted)" }}>{c}</span>
-            </button>
-          );
-        })}
-      </div>
-      {/* Cards grid */}
-      <div className="p-3">
-        {filtered.length === 0 ? (
-          <p className="text-sm text-center py-8" style={{ color: "var(--text-muted)" }}>Nothing to triage here.</p>
-        ) : (
-          <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
-            {filtered.map(u => <QueueCard key={u.id} item={u} onSelect={onSelect} />)}
+      {!collapsed && (
+        <>
+          {/* Triage tabs */}
+          <div className="flex items-center gap-0.5 px-3 py-2 flex-wrap" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+            {TABS.map(t => {
+              const active = tab === t.key; const c = count(t.key);
+              if (c === 0 && t.key !== "all") return null;
+              return (
+                <button key={t.key} onClick={() => setTab(t.key)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors"
+                  style={{ backgroundColor: active ? "var(--accent-soft-bg)" : "transparent", color: active ? "var(--accent-text)" : "var(--text-muted)", border: `1px solid ${active ? "var(--accent-soft-border)" : "transparent"}` }}>
+                  {t.label}<span className="text-[10px] font-bold px-1 py-0.5 rounded-full" style={{ backgroundColor: active ? "var(--accent-soft-2-bg)" : "var(--bg-input)", color: active ? "var(--accent-text)" : "var(--text-muted)" }}>{c}</span>
+                </button>
+              );
+            })}
           </div>
-        )}
+          {/* Body — cards grid or compact list */}
+          <div className="p-3">
+            {filtered.length === 0 ? (
+              <p className="text-sm text-center py-8" style={{ color: "var(--text-muted)" }}>Nothing to triage here.</p>
+            ) : layout === "cards" ? (
+              <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
+                {filtered.map(u => <QueueCard key={u.id} item={u} onSelect={onSelect} />)}
+              </div>
+            ) : (
+              <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border-subtle)" }}>
+                {filtered.map((u, i) => <QueueRow key={u.id} item={u} onSelect={onSelect} last={i === filtered.length - 1} />)}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Compact list row for the queue's List layout — draggable like the card.
+function QueueRow({ item: u, onSelect, last }: { item: UnscheduledItem; onSelect: (u: UnscheduledItem) => void; last: boolean }) {
+  const cfg = LAYER_CONFIG[u.type]; const prio = PRIORITY_CONFIG[u.priority];
+  return (
+    <div draggable onDragStart={e => e.dataTransfer.setData("text/plain", u.id)}
+      onClick={() => onSelect(u)}
+      className="flex items-center gap-3 px-3 py-2.5 cursor-grab active:cursor-grabbing transition-colors hover:bg-[var(--bg-surface-2)]"
+      style={{ borderBottom: last ? "none" : "1px solid var(--border-subtle)", borderLeft: `3px solid ${u.color}` }}>
+      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: cfg.color + "22", color: cfg.color }}>{cfg.label}</span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{u.title}</p>
+        <p className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>{u.customerName ?? u.reason}{u.city ? ` · ${u.city}` : ""}</p>
       </div>
+      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: prio.bg, color: prio.color }}>{prio.label}</span>
+      {u.value && <span className="text-xs font-bold shrink-0 w-16 text-right" style={{ color: "var(--text-primary)" }}>{u.value}</span>}
+      <span className="text-[10px] shrink-0 w-24 text-right" style={{ color: "var(--text-muted)" }}>{u.durationMinutes}m{u.preferredDate ? ` · ${u.preferredDate}` : ""}</span>
     </div>
   );
 }
@@ -607,15 +692,17 @@ function WeekView({ focus, items, onSelect }: { focus: Date; items: CalendarItem
   );
 }
 
-function DayView({ focus, items, onSelect }: { focus: Date; items: CalendarItem[]; onSelect: (i: CalendarItem) => void }) {
+function DayView({ focus, items, dayStart, dayEnd, onSelect }: { focus: Date; items: CalendarItem[]; dayStart: number; dayEnd: number; onSelect: (i: CalendarItem) => void }) {
   const dayItems = items.filter(i => isSameDay(i.start, focus)); const allDay = dayItems.filter(i => i.allDay); const timed = dayItems.filter(i => !i.allDay);
+  const hours = Array.from({ length: Math.max(1, dayEnd - dayStart) }, (_, i) => dayStart + i);
+  const minutesFromStart = (d: Date) => (d.getHours() - dayStart) * 60 + d.getMinutes();
   return (
     <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
       {allDay.length > 0 && <div className="p-2 space-y-1.5" style={{ borderBottom: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-surface-2)" }}>{allDay.map(i => <ItemChip key={i.id} item={i} onSelect={onSelect} />)}</div>}
-      <div className="relative" style={{ height: `${HOURS.length * HOUR_PX}px` }}>
-        {HOURS.map((h, i) => <div key={h} className="absolute left-0 right-0 flex" style={{ top: `${i*HOUR_PX}px`, height: `${HOUR_PX}px`, borderTop: "1px solid var(--border-subtle)" }}><span className="text-[10px] px-2 pt-1 shrink-0 w-14" style={{ color: "var(--text-muted)" }}>{hourLabel(h)}</span></div>)}
+      <div className="relative" style={{ height: `${hours.length * HOUR_PX}px` }}>
+        {hours.map((h, i) => <div key={h} className="absolute left-0 right-0 flex" style={{ top: `${i*HOUR_PX}px`, height: `${HOUR_PX}px`, borderTop: "1px solid var(--border-subtle)" }}><span className="text-[10px] px-2 pt-1 shrink-0 w-14" style={{ color: "var(--text-muted)" }}>{hourLabel(h)}</span></div>)}
         {timed.map(i => {
-          const top = Math.max(0, (minutesFromDayStart(i.start)/60)*HOUR_PX); const height = Math.max(24, (i.durationMinutes/60)*HOUR_PX - 2);
+          const top = Math.max(0, (minutesFromStart(i.start)/60)*HOUR_PX); const height = Math.max(24, (i.durationMinutes/60)*HOUR_PX - 2);
           return (
             <button key={i.id} onClick={() => onSelect(i)} className="absolute rounded-lg px-2 py-1 text-left overflow-hidden transition-opacity hover:opacity-90" style={{ top: `${top}px`, height: `${height}px`, left: "60px", right: "8px", backgroundColor: i.color + "22", borderLeft: `3px solid ${i.color}` }}>
               <p className="text-[11px] font-semibold truncate" style={{ color: "var(--text-primary)" }}>{i.title}</p>
