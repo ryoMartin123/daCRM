@@ -78,7 +78,12 @@ export type HierarchyMode =
 
 export interface OrgSettings {
   mode: HierarchyMode;
+  // Hierarchy layer visibility
   multiCompany: boolean;
   multiLocation: boolean;
   serviceAreasEnabled: boolean;
+  // Module availability
+  projectsEnabled: boolean;
+  agreementsEnabled: boolean;
+  marketingEnabled: boolean;
 }

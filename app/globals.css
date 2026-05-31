@@ -37,39 +37,201 @@
 }
 
 /* ─── Dark theme ─────────────────────────────────────────── */
+/*
+ * Design intent: deep navy-black page, controlled elevation hierarchy.
+ * Elevation: page (darkest) → surface → surface-2 (lightest readable step).
+ * Text: muted off-white — readable without glaring.
+ * Colors: desaturated in dark mode via badge filter rule below.
+ */
 [data-theme="dark"] {
-  --bg-page:          #0f1117;
-  --bg-surface:       #1a1f2e;
-  --bg-surface-2:     #141824;
-  --bg-input:         #252b3b;
+  /* ── Backgrounds — neutral charcoal ── */
+  --bg-page:          #171717;   /* main background */
+  --bg-surface:       #1f1f1f;   /* secondary — cards lift above the page */
+  --bg-surface-2:     #292929;   /* hover, elevated surfaces */
+  --bg-input:         #292929;   /* inputs match elevated surface */
 
-  --border:           #2d3348;
-  --border-subtle:    #1e2436;
+  /* ── Borders — neutral, low-contrast ── */
+  --border:           #333333;   /* subtle dividers */
+  --border-subtle:    #262626;   /* near-invisible row separators */
 
-  --text-primary:     #e2e8f0;
-  --text-secondary:   #8892a4;
-  --text-muted:       #5a6478;
+  /* ── Text — soft neutral off-white ── */
+  --text-primary:     #e4e4e4;   /* comfortable to read, not glaring */
+  --text-secondary:   #9a9a9a;   /* secondary labels */
+  --text-muted:       #6b6b6b;   /* timestamps, placeholders */
 
-  --sidebar-bg:              #090d16;
-  --sidebar-border:          #141824;
-  --sidebar-text:            #5a6478;
-  --sidebar-text-active:     #e2e8f0;
-  --sidebar-item-active:     #141824;
-  --sidebar-section-label:   #374055;
+  /* ── Sidebar ── */
+  --sidebar-bg:              #121212;   /* slightly darker than page */
+  --sidebar-border:          #242424;
+  --sidebar-text:            #8a8a8a;
+  --sidebar-text-active:     #e4e4e4;
+  --sidebar-item-active:     #1f1f1f;   /* matches surface */
+  --sidebar-section-label:   #5a5a5a;
 
-  --topbar-bg:        #1a1f2e;
-  --topbar-border:    #2d3348;
+  /* ── Top bar ── */
+  --topbar-bg:        #1f1f1f;   /* matches surface */
+  --topbar-border:    #262626;
 
-  --bubble-out-bg:    #4f46e5;
-  --bubble-out-text:  #ffffff;
-  --bubble-in-bg:     #252b3b;
-  --bubble-in-text:   #e2e8f0;
+  /* ── Messaging ── */
+  --bubble-out-bg:    #4338ca;   /* subdued indigo */
+  --bubble-out-text:  #f1f1f1;
+  --bubble-in-bg:     #292929;
+  --bubble-in-text:   #e4e4e4;
 
-  --shadow-card:      0 1px 3px 0 rgba(0, 0, 0, 0.3);
+  /* ── Shadows ── */
+  --shadow-card:      0 2px 6px 0 rgba(0, 0, 0, 0.55),
+                      0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+/* ─── Dark mode: desaturate inline-colored badges & pills ─────────
+ *
+ * Most status badges, type badges, and context pills use hardcoded
+ * Tailwind hex values as inline styles — they can't respond to CSS
+ * variables. This filter targets <span> pill shapes with inline
+ * background-color and reduces their saturation so they feel at home
+ * on a dark background without requiring changes to every component.
+ */
+[data-theme="dark"] span[style*="background-color"],
+[data-theme="dark"] span[style*="background:"] {
+  filter: saturate(0.5) brightness(1.15);
 }
 
 body {
   background-color: var(--bg-page);
   color: var(--text-primary);
   font-family: var(--font-family-sans);
+}
+
+/* ─── react-grid-layout — drag, drop, resize ─────────────────────── */
+
+/* Drop placeholder — ghost of where item will land */
+.react-grid-item.react-grid-placeholder {
+  background: rgba(79, 70, 229, 0.08) !important;
+  border: 2px dashed #6366f1 !important;
+  border-radius: 12px !important;
+  opacity: 1 !important;
+  box-shadow: inset 0 0 0 4px rgba(79,70,229,0.06) !important;
+}
+
+/* Item transitions — smooth repositioning; off while actively dragging */
+.react-grid-item {
+  transition: none !important;
+}
+.react-grid-item.cssTransforms {
+  transition: transform 180ms ease, box-shadow 180ms ease !important;
+}
+.react-grid-item.resizing,
+.react-grid-item.react-draggable-dragging {
+  transition: none !important;
+  z-index: 100 !important;
+  opacity: 0.85 !important;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.18) !important;
+  cursor: grabbing !important;
+}
+
+/* ── Resize handle ── hidden in normal mode, shown in edit mode ─── */
+.react-resizable-handle {
+  background-image: none !important;
+  background: transparent !important;
+  width: 28px !important;
+  height: 28px !important;
+  opacity: 0 !important;
+  transition: opacity 0.15s ease !important;
+}
+.react-resizable-handle::after {
+  content: '' !important;
+  position: absolute !important;
+  right: 5px !important;
+  bottom: 5px !important;
+  width: 12px !important;
+  height: 12px !important;
+  border-right: 2.5px solid #4f46e5 !important;
+  border-bottom: 2.5px solid #4f46e5 !important;
+  border-radius: 0 0 3px 0 !important;
+}
+/* Only show resize handles when the grid container is in edit mode */
+.dashboard-grid-editing .react-resizable-handle {
+  opacity: 0.45 !important;
+}
+.dashboard-grid-editing .react-grid-item:hover .react-resizable-handle {
+  opacity: 1 !important;
+}
+
+/* ── Widget editing outline (applied via JS className) ───────────── */
+.dashboard-widget-editing {
+  outline: 2px dashed rgba(99, 102, 241, 0.35);
+  outline-offset: 0;
+  transition: outline-color 0.15s ease, box-shadow 0.15s ease;
+}
+.dashboard-widget-editing:hover {
+  outline-color: rgba(99, 102, 241, 0.65);
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.08);
+}
+
+/* ── Widget content — thin scrollbar when content overflows ──────── */
+.dashboard-widget-content {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.dashboard-widget-content::-webkit-scrollbar {
+  width: 4px;
+}
+.dashboard-widget-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+.dashboard-widget-content::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border-radius: 2px;
+}
+.dashboard-widget-content::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-muted);
+}
+
+/* ─── Google Places Autocomplete dropdown — themed & de-branded ─── */
+.pac-container {
+  margin-top: 6px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background-color: var(--bg-surface);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
+  font-family: var(--font-family-sans);
+  overflow: hidden;
+}
+.pac-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+.pac-item:hover,
+.pac-item-selected {
+  background-color: var(--bg-surface-2);
+}
+.pac-item-query {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.pac-matched {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+/* Hide the default location-pin icon for a cleaner look */
+.pac-icon,
+.pac-icon-marker {
+  display: none;
+}
+/* Hide the "powered by Google" logo row */
+.pac-logo:after {
+  display: none !important;
+  content: none !important;
+}
+.hdpi.pac-logo:after {
+  display: none !important;
 }

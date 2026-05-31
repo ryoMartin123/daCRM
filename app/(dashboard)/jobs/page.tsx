@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Search, Plus, SlidersHorizontal, ChevronUp, ChevronDown, FolderKanban } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ALL_JOBS, JOB_STATUS_CONFIG, type Job, type JobStatus, type JobType } from "@/lib/jobs/data";
+import { ALL_JOBS, resolveJobStatus, type Job, type JobType } from "@/lib/jobs/data";
 import { ALL_PROJECTS, PROJECT_STATUS_CONFIG, getProjectProgress, type ProjectStatus } from "@/lib/projects/data";
+import { getJobStatuses } from "@/lib/job-config/data";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
 
 const TODAY = "May 30, 2026";
@@ -85,6 +86,10 @@ export default function JobsPage() {
   const [search, setSearch]   = useState("");
   const [sortField, setSort]  = useState<SortField>("scheduledDate");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  // Configured job statuses from settings (drive badge labels + colors).
+  const [statusConfig, setStatusConfig] = useState<{ key: string; name: string; color: string }[]>([]);
+  useEffect(() => { setStatusConfig(getJobStatuses().filter(s => s.active)); }, []);
 
   const isProjects = tab === "projects";
 
@@ -200,7 +205,7 @@ export default function JobsPage() {
               {displayed.length === 0 ? (
                 <div className="py-16 text-center"><p className="text-sm" style={{ color: "var(--text-muted)" }}>No jobs match the current filter.</p></div>
               ) : displayed.map((job, i) => {
-                const s = JOB_STATUS_CONFIG[job.status];
+                const s = resolveJobStatus(job.status, statusConfig);
                 return (
                   <Link key={job.id} href={`/jobs/${job.id}`}
                     className="grid px-4 py-3 items-center hover:bg-[var(--bg-surface-2)] transition-colors"

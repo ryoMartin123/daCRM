@@ -1,22 +1,33 @@
 "use client";
 
-import { use, useState } from "react";
+import React, { use, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, Pencil, Trash2,
   Phone, Mail, MapPin, Building2, Calendar,
   CheckCircle, Circle, AlertCircle,
   ChevronRight, Plus, MessageSquare,
+  UserPlus, User, Home, TrendingUp,
+  Briefcase, ClipboardList, FilePen, FileCheck,
+  Receipt, DollarSign, FileText, RefreshCw,
+  Image as ImageIcon, Paperclip, Smartphone, CheckSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  getCustomer, getContacts, getProperties, getEquipment, getJobs, getLeads, getNotes,
+  getCustomer, getContacts, getProperties, getEquipment, getJobs, getLeads, getNotes, getTasks,
   type Contact, type Property, type CustomerType, type CustomerStatus,
   type JobStatus, type LeadStatus, type NoteType, type EquipmentStatus, type PropertyType,
 } from "@/lib/customers/data";
-import { serviceAreas } from "@/lib/hierarchy/data";
+import { companies, locations, serviceAreas } from "@/lib/hierarchy/data";
 import { formatPhone, validatePhone, validateEmail } from "@/lib/utils/validation";
 import { AGREEMENTS } from "@/lib/agreements/data";
+import { QUOTE_STATUS_STYLE, INVOICE_STATUS_STYLE } from "@/lib/quotes/types";
+import { getQuotesForCustomer, getInvoicesForCustomer, fmt as fmtCurrency } from "@/lib/quotes/data";
+import { AddressAutocomplete, EMPTY_ADDRESS, type ParsedAddress } from "@/components/address/AddressAutocomplete";
+import UiSelect from "@/components/ui/Select";
+import PhotoGallery from "@/components/files/PhotoGallery";
+import { getActivityEvents } from "@/lib/activity/data";
+import { type ActivityEvent, type EventType, type FilterCategory, EVENT_FILTER_MAP } from "@/lib/activity/types";
 
 // ─── Badge helpers ────────────────────────────────────────
 function typePill(type: CustomerType) {
@@ -46,51 +57,140 @@ const NOTE_ICON: Record<NoteType, typeof MessageSquare> = {
   note: MessageSquare, call: Phone, email: Mail, visit: MapPin,
 };
 
-const TABS = ["Overview", "Contacts", "Properties", "Equipment", "Jobs", "Leads", "Agreements", "Photos & Files", "Notes", "Communication", "Billing"];
+const TABS = ["Overview", "Contacts", "Properties", "Equipment", "Jobs", "Leads", "Agreements", "Photos & Files", "Notes", "Communication", "Billing", "Timeline"];
+
+// ─── Account structure display label ─────────────────────
+const STRUCTURE_LABEL: Record<string, string> = {
+  residential:         "Single Property",
+  property_management: "Property Management",
+  multi_site:          "Multi-Site",
+  commercial:          "Commercial",
+  other:               "Other",
+};
 
 // ─── Overview tab ─────────────────────────────────────────
 function OverviewTab({ id }: { id: string }) {
-  const customer   = getCustomer(id)!;
-  const contacts   = getContacts(id);
-  const jobs       = getJobs(id);
-  const leads      = getLeads(id);
-  const notes      = getNotes(id);
-  const agreements = AGREEMENTS.filter(a => a.customer === customer.name);
-  const primary    = contacts.find(c => c.isPrimary) ?? contacts[0];
-  const recentJobs = jobs.slice(0, 3);
-  const openLeads  = leads.filter(l => l.status !== "Won" && l.status !== "Lost");
+  const customer    = getCustomer(id)!;
+  const contacts    = getContacts(id);
+  const properties  = getProperties(id);
+  const jobs        = getJobs(id);
+  const leads       = getLeads(id);
+  const notes       = getNotes(id);
+  const tasks       = getTasks(id);
+  const agreements  = AGREEMENTS.filter(a => a.customer === customer.name);
+
+  const primary     = contacts.find(c => c.isPrimary) ?? contacts[0];
+  const primaryProp = properties.find(p => p.isPrimary) ?? properties[0];
+  const openJobs    = jobs.filter(j => j.status === "Scheduled" || j.status === "In Progress");
+  const openLeads   = leads.filter(l => l.status !== "Won" && l.status !== "Lost");
+  const openTasks   = tasks.filter(t => t.status !== "completed");
+
+  const company     = companies.find(c => c.id === customer.companyId);
+  const location    = locations.find(l => l.id === customer.locationId);
+  const serviceArea = customer.serviceAreaId
+    ? serviceAreas.find(s => s.id === customer.serviceAreaId)
+    : null;
 
   return (
     <div className="grid grid-cols-3 gap-6">
-      {/* Left: contact info + summary */}
+
+      {/* ── Left column ───────────────────────────────── */}
       <div className="space-y-4">
-        {/* Contact */}
-        <Card title="Contact">
+
+        {/* Account info */}
+        <Card title="Account">
           <div className="space-y-2.5">
-            <InfoRow icon={Phone} value={customer.phone} />
-            {customer.email && <InfoRow icon={Mail}  value={customer.email} />}
-            <InfoRow icon={MapPin} value={`${customer.address}, ${customer.city}, ${customer.state} ${customer.zip}`} />
-            {customer.type === "Commercial" && <InfoRow icon={Building2} value={customer.locationName} />}
+            <div className="flex items-center justify-between">
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>Type</span>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={typePill(customer.type)}>{customer.type}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>Structure</span>
+              <span className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>
+                {STRUCTURE_LABEL[customer.accountType] ?? customer.accountType}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>Status</span>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={statusPill(customer.status)}>{customer.status}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>Since</span>
+              <span className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>{customer.since}</span>
+            </div>
           </div>
         </Card>
 
-        {/* Summary */}
-        <Card title="Account Summary">
-          <div className="space-y-2">
-            {[
-              { label: "Customer since", value: customer.since },
-              { label: "Total jobs",     value: String(jobs.length) },
-              { label: "Open leads",     value: String(openLeads.length) },
-              { label: "Agreements",     value: String(agreements.length) },
-              { label: "Branch",         value: customer.locationName },
-            ].map(({ label, value }) => (
-              <div key={label} className="flex justify-between">
-                <span className="text-xs" style={{ color: "var(--text-muted)" }}>{label}</span>
-                <span className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>{value}</span>
+        {/* Assignment */}
+        <Card title="Assignment">
+          <div className="space-y-2.5">
+            {company && (
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs shrink-0" style={{ color: "var(--text-muted)" }}>Company</span>
+                <span className="text-xs font-medium text-right truncate" style={{ color: "var(--text-primary)" }}>{company.name}</span>
               </div>
-            ))}
+            )}
+            {location && (
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs shrink-0" style={{ color: "var(--text-muted)" }}>Location</span>
+                <span className="text-xs font-medium text-right truncate" style={{ color: "var(--text-primary)" }}>{location.name}</span>
+              </div>
+            )}
+            {serviceArea && (
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs shrink-0" style={{ color: "var(--text-muted)" }}>Service Area</span>
+                <span className="text-xs font-medium text-right truncate" style={{ color: "var(--text-primary)" }}>{serviceArea.name}</span>
+              </div>
+            )}
           </div>
         </Card>
+
+        {/* Primary contact */}
+        {primary && (
+          <Card title="Primary Contact">
+            <div className="space-y-2.5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-[10px] font-bold shrink-0">
+                  {primary.name.split(" ").map(w => w[0] ?? "").join("").slice(0, 2).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold leading-tight" style={{ color: "var(--text-primary)" }}>{primary.name}</p>
+                  {primary.role && <p className="text-xs" style={{ color: "var(--text-muted)" }}>{primary.role}</p>}
+                </div>
+              </div>
+              {primary.phone && <InfoRow icon={Phone} value={primary.phone} />}
+              {primary.email && <InfoRow icon={Mail}  value={primary.email} />}
+            </div>
+          </Card>
+        )}
+
+        {/* Primary property */}
+        {primaryProp && (
+          <Card title="Primary Property">
+            <div className="space-y-2">
+              {primaryProp.label && (
+                <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{primaryProp.label}</p>
+              )}
+              <InfoRow icon={MapPin} value={`${primaryProp.address}, ${primaryProp.city}, ${primaryProp.state} ${primaryProp.zip}`} />
+              {(primaryProp.sqft || primaryProp.yearBuilt) && (
+                <div className="flex gap-4 pt-1">
+                  {primaryProp.sqft && (
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: "var(--text-muted)" }}>Sq Ft</p>
+                      <p className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>{primaryProp.sqft.toLocaleString()}</p>
+                    </div>
+                  )}
+                  {primaryProp.yearBuilt && (
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: "var(--text-muted)" }}>Built</p>
+                      <p className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>{primaryProp.yearBuilt}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </Card>
+        )}
 
         {/* Tags */}
         {customer.tags.length > 0 && (
@@ -105,7 +205,7 @@ function OverviewTab({ id }: { id: string }) {
           </Card>
         )}
 
-        {/* Notes preview */}
+        {/* Account notes */}
         {customer.notes && (
           <Card title="Notes">
             <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>{customer.notes}</p>
@@ -113,20 +213,17 @@ function OverviewTab({ id }: { id: string }) {
         )}
       </div>
 
-      {/* Right: jobs, agreements, leads */}
+      {/* ── Right column ──────────────────────────────── */}
       <div className="col-span-2 space-y-4">
-        {/* Recent jobs */}
-        <SectionCard
-          title="Recent Jobs"
-          count={jobs.length}
-          action={{ label: "View all", onClick: () => {} }}
-        >
-          {recentJobs.length === 0 ? (
-            <Empty text="No jobs yet" />
-          ) : recentJobs.map((job, i) => {
+
+        {/* Open jobs */}
+        <SectionCard title="Open Jobs" count={openJobs.length} action={{ label: "View all", onClick: () => {} }}>
+          {openJobs.length === 0 ? (
+            <Empty text="No open jobs" />
+          ) : openJobs.map((job, i) => {
             const s = jobStatusStyle(job.status);
             return (
-              <Row key={job.id} last={i === recentJobs.length - 1}>
+              <Row key={job.id} last={i === openJobs.length - 1}>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{job.title}</p>
                   <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{job.date} · {job.tech}{job.amount ? ` · ${job.amount}` : ""}</p>
@@ -139,12 +236,32 @@ function OverviewTab({ id }: { id: string }) {
           })}
         </SectionCard>
 
+        {/* Upcoming tasks */}
+        <SectionCard title="Upcoming Tasks" count={openTasks.length}>
+          {openTasks.length === 0 ? (
+            <Empty text="No upcoming tasks" />
+          ) : openTasks.map((task, i) => {
+            const isOverdue = task.status === "overdue";
+            return (
+              <Row key={task.id} last={i === openTasks.length - 1}>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{task.title}</p>
+                  <p className="text-xs mt-0.5" style={{ color: isOverdue ? "#dc2626" : "var(--text-muted)" }}>
+                    Due {task.dueDate}{task.assignedTo ? ` · ${task.assignedTo}` : ""}
+                  </p>
+                </div>
+                {isOverdue && (
+                  <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full ml-3 shrink-0" style={{ backgroundColor: "#fee2e2", color: "#991b1b" }}>
+                    Overdue
+                  </span>
+                )}
+              </Row>
+            );
+          })}
+        </SectionCard>
+
         {/* Active agreements */}
-        <SectionCard
-          title="Agreements"
-          count={agreements.length}
-          action={{ label: "View all", onClick: () => {} }}
-        >
+        <SectionCard title="Agreements" count={agreements.length} action={{ label: "View all", onClick: () => {} }}>
           {agreements.length === 0 ? (
             <Empty text="No active agreements">
               <button className="mt-2 text-xs font-medium text-indigo-600 hover:text-indigo-700">Create agreement →</button>
@@ -156,7 +273,9 @@ function OverviewTab({ id }: { id: string }) {
                 <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>Renews {a.renewalDate} · {a.visitFrequency}</p>
               </div>
               <div className="flex items-center gap-2 shrink-0 ml-3">
-                <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{a.annualValue.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}/yr</span>
+                <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                  {a.annualValue.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}/yr
+                </span>
                 <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: "#d1fae5", color: "#065f46" }}>Active</span>
               </div>
             </Row>
@@ -184,13 +303,13 @@ function OverviewTab({ id }: { id: string }) {
           </SectionCard>
         )}
 
-        {/* Recent notes */}
+        {/* Recent activity */}
         {notes.length > 0 && (
-          <SectionCard title="Recent Notes" count={notes.length}>
-            {notes.slice(0, 3).map((note, i) => {
+          <SectionCard title="Recent Activity" count={notes.length}>
+            {notes.slice(0, 4).map((note, i) => {
               const Icon = NOTE_ICON[note.type];
               return (
-                <Row key={note.id} last={i === Math.min(2, notes.length - 1)}>
+                <Row key={note.id} last={i === Math.min(3, notes.length - 1)}>
                   <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center shrink-0 mr-2.5">
                     <Icon className="w-3 h-3 text-indigo-600" />
                   </div>
@@ -203,6 +322,7 @@ function OverviewTab({ id }: { id: string }) {
             })}
           </SectionCard>
         )}
+
       </div>
     </div>
   );
@@ -324,11 +444,8 @@ function AddContactForm({
         </div>
         <div>
           <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Role</label>
-          <select value={form.role} onChange={e => onChange("role", e.target.value)}
-            className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-            style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }}>
-            {CONTACT_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
+          <UiSelect value={form.role} onChange={v => onChange("role", v)}
+            options={CONTACT_ROLES.map(r => ({ value: r, label: r }))} />
         </div>
       </div>
 
@@ -444,7 +561,7 @@ function ContactsTab({ id }: { id: string }) {
   }
 
   return (
-    <div className="space-y-4 max-w-2xl">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
           {contacts.length} {contacts.length === 1 ? "Contact" : "Contacts"}
@@ -467,9 +584,11 @@ function ContactsTab({ id }: { id: string }) {
         />
       )}
 
-      {contacts.map(c => (
-        <ContactCard key={c.id} contact={c} onSetPrimary={handleSetPrimary} />
-      ))}
+      <div className="grid grid-cols-2 gap-4">
+        {contacts.map(c => (
+          <ContactCard key={c.id} contact={c} onSetPrimary={handleSetPrimary} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -478,12 +597,13 @@ function ContactsTab({ id }: { id: string }) {
 const PROPERTY_TYPES: PropertyType[] = ["Residential", "Commercial", "Industrial", "Multi-Family"];
 
 interface PropertyFormData {
-  label: string; address: string; city: string; state: string; zip: string;
+  label: string;
+  parsedAddress: ParsedAddress;
   type: PropertyType; serviceAreaId: string; sqft: string; yearBuilt: string;
   accessNotes: string; isPrimary: boolean;
 }
 const EMPTY_PROPERTY_FORM: PropertyFormData = {
-  label: "", address: "", city: "", state: "GA", zip: "",
+  label: "", parsedAddress: { ...EMPTY_ADDRESS },
   type: "Residential", serviceAreaId: "", sqft: "", yearBuilt: "",
   accessNotes: "", isPrimary: false,
 };
@@ -592,43 +712,22 @@ function AddPropertyForm({
         </div>
         <div>
           <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Property Type</label>
-          <select value={form.type} onChange={e => onChange("type", e.target.value as PropertyType)}
-            className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-            style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }}>
-            {PROPERTY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
+          <UiSelect value={form.type} onChange={v => onChange("type", v as PropertyType)}
+            options={PROPERTY_TYPES.map(t => ({ value: t, label: t }))} />
         </div>
       </div>
 
       <div>
-        <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Street Address <span style={{ color: "#ef4444" }}>*</span></label>
-        <input value={form.address} onChange={e => onChange("address", e.target.value)}
-          placeholder="123 Main St"
-          className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-          style={{ border: `1px solid ${errors.address ? "#ef4444" : "var(--border)"}`, backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }} />
-        {errors.address && <p className="text-xs mt-1" style={{ color: "#ef4444" }}>{errors.address}</p>}
-      </div>
-
-      <div className="grid grid-cols-3 gap-2">
-        <div className="col-span-1">
-          <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>City <span style={{ color: "#ef4444" }}>*</span></label>
-          <input value={form.city} onChange={e => onChange("city", e.target.value)} placeholder="City"
-            className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-            style={{ border: `1px solid ${errors.city ? "#ef4444" : "var(--border)"}`, backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }} />
-          {errors.city && <p className="text-xs mt-1" style={{ color: "#ef4444" }}>{errors.city}</p>}
-        </div>
-        <div>
-          <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>State</label>
-          <input value={form.state} onChange={e => onChange("state", e.target.value)} placeholder="GA"
-            className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-            style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }} />
-        </div>
-        <div>
-          <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Zip</label>
-          <input value={form.zip} onChange={e => onChange("zip", e.target.value)} placeholder="30909"
-            className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-            style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }} />
-        </div>
+        <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>
+          Address <span style={{ color: "#ef4444" }}>*</span>
+        </label>
+        <AddressAutocomplete
+          value={form.parsedAddress}
+          onChange={addr => onChange("parsedAddress", addr)}
+          placeholder="Start typing a street address…"
+          required
+          error={errors.address}
+        />
       </div>
 
       <div className="grid grid-cols-3 gap-3">
@@ -646,14 +745,9 @@ function AddPropertyForm({
         </div>
         <div>
           <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Service Area</label>
-          <select value={form.serviceAreaId} onChange={e => onChange("serviceAreaId", e.target.value)}
-            className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-            style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }}>
-            <option value="">None</option>
-            {serviceAreas.filter(s => s.status === "active").map(s => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
+          <UiSelect value={form.serviceAreaId} onChange={v => onChange("serviceAreaId", v)}
+            placeholder="None"
+            options={[{ value: "", label: "None" }, ...serviceAreas.filter(s => s.status === "active").map(s => ({ value: s.id, label: s.name }))]} />
         </div>
       </div>
 
@@ -679,7 +773,7 @@ function AddPropertyForm({
             style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
             Cancel
           </button>
-          <button onClick={onSave} disabled={!form.address.trim() || !form.city.trim()}
+          <button onClick={onSave} disabled={!form.parsedAddress.addressLine1.trim()}
             className="px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-40 transition-colors">
             Save Property
           </button>
@@ -702,8 +796,7 @@ function PropertiesTab({ id }: { id: string }) {
 
   function handleSave() {
     const errs: Record<string, string> = {};
-    if (!form.address.trim()) errs.address = "Address is required";
-    if (!form.city.trim())    errs.city    = "City is required";
+    if (!form.parsedAddress.addressLine1.trim()) errs.address = "Address is required";
     if (Object.keys(errs).length > 0) { setFormErrors(errs); return; }
 
     const hasPrimary = properties.some(p => p.isPrimary);
@@ -711,10 +804,10 @@ function PropertiesTab({ id }: { id: string }) {
       id: `p-${Date.now()}`,
       customerId: id,
       label:        form.label.trim() || undefined,
-      address:      form.address.trim(),
-      city:         form.city.trim(),
-      state:        form.state.trim(),
-      zip:          form.zip.trim(),
+      address:      form.parsedAddress.addressLine1,
+      city:         form.parsedAddress.city,
+      state:        form.parsedAddress.state,
+      zip:          form.parsedAddress.postalCode,
       type:         form.type,
       sqft:         form.sqft ? parseInt(form.sqft) : undefined,
       yearBuilt:    form.yearBuilt ? parseInt(form.yearBuilt) : undefined,
@@ -737,7 +830,7 @@ function PropertiesTab({ id }: { id: string }) {
   const hasPrimary = properties.some(p => p.isPrimary);
 
   return (
-    <div className="space-y-4 max-w-3xl">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
           {properties.length} {properties.length === 1 ? "Property" : "Properties"}
@@ -761,9 +854,11 @@ function PropertiesTab({ id }: { id: string }) {
         />
       )}
 
-      {properties.map(p => (
-        <PropertyCard key={p.id} property={p} />
-      ))}
+      <div className="grid grid-cols-2 gap-4">
+        {properties.map(p => (
+          <PropertyCard key={p.id} property={p} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -874,7 +969,7 @@ function NotesTab({ id }: { id: string }) {
   const notes = getNotes(id);
 
   return (
-    <div className="space-y-4 max-w-2xl">
+    <div className="space-y-4">
       {/* Add note */}
       <div className="rounded-xl p-4" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
         <textarea
@@ -895,11 +990,11 @@ function NotesTab({ id }: { id: string }) {
         </div>
       </div>
 
-      {/* Notes timeline */}
+      {/* Notes grid */}
       {notes.length === 0 ? (
         <p className="text-sm text-center py-8" style={{ color: "var(--text-muted)" }}>No notes yet</p>
       ) : (
-        <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-4">
           {notes.map((note) => {
             const Icon = NOTE_ICON[note.type];
             return (
@@ -976,6 +1071,358 @@ function EquipmentTab({ id }: { id: string }) {
             );
           })}
         </TableCard>
+      )}
+    </div>
+  );
+}
+
+// ─── Billing tab ──────────────────────────────────────────
+// Placeholder layout — wired to real data when Phase 2 quote/invoice
+// builder is built. Column shapes match lib/quotes/types.ts exactly.
+
+const QUOTE_COLS  = ["Quote #", "Title", "Linked To", "Status", "Total", "Expires"];
+const INVOICE_COLS = ["Invoice #", "Title", "Linked To", "Status", "Total", "Balance Due", "Due Date"];
+
+function BillingSection({
+  title,
+  cols,
+  buttonLabel,
+  statusStyles,
+}: {
+  title: string;
+  cols: string[];
+  buttonLabel: string;
+  statusStyles: Record<string, { label: string; bg: string; color: string }>;
+}) {
+  const exampleStatuses = Object.values(statusStyles).slice(0, 3);
+
+  return (
+    <div
+      className="rounded-xl overflow-hidden"
+      style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}
+    >
+      {/* Header */}
+      <div
+        className="flex items-center justify-between px-4 py-3"
+        style={{ borderBottom: "1px solid var(--border-subtle)" }}
+      >
+        <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{title}</p>
+        <button
+          disabled
+          className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg opacity-40 cursor-not-allowed"
+          style={{ backgroundColor: "#4f46e5", color: "#fff" }}
+          title="Coming in Phase 2"
+        >
+          <Plus className="w-3.5 h-3.5" /> {buttonLabel}
+        </button>
+      </div>
+
+      {/* Column headers */}
+      <div
+        className="grid px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider"
+        style={{
+          gridTemplateColumns: `repeat(${cols.length}, 1fr)`,
+          color: "var(--text-muted)",
+          borderBottom: "1px solid var(--border-subtle)",
+          backgroundColor: "var(--bg-surface-2)",
+        }}
+      >
+        {cols.map(c => <span key={c}>{c}</span>)}
+      </div>
+
+      {/* Empty state */}
+      <div className="px-4 py-10 text-center space-y-3">
+        <p className="text-sm font-medium" style={{ color: "var(--text-muted)" }}>
+          No {title.toLowerCase()} yet
+        </p>
+        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+          {title === "Quotes"
+            ? "Quotes can be linked to a lead, job, project, or created directly on the account."
+            : "Invoices can be generated from an approved quote or created manually against a job, project, or agreement."}
+        </p>
+        <div className="flex items-center justify-center gap-2 pt-1">
+          {exampleStatuses.map(s => (
+            <span
+              key={s.label}
+              className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+              style={{ backgroundColor: s.bg, color: s.color }}
+            >
+              {s.label}
+            </span>
+          ))}
+          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>· · ·</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BillingTab({ id }: { id: string }) {
+  const quotes   = getQuotesForCustomer(id);
+  const invoices = getInvoicesForCustomer(id);
+  const outstanding = invoices.filter(i => i.balanceDue > 0).reduce((s, i) => s + i.balanceDue, 0);
+
+  function Section({ title, children }: { title: string; children: React.ReactNode }) {
+    return (
+      <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+        <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+          <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{title}</p>
+          <button className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg"
+            style={{ backgroundColor: "#4f46e5", color: "#fff" }}>
+            <Plus className="w-3.5 h-3.5" /> New
+          </button>
+        </div>
+        {children}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {outstanding > 0 && (
+        <div className="rounded-xl px-4 py-3 flex items-center gap-3"
+          style={{ backgroundColor: "#fef3c7", border: "1px solid #fde68a" }}>
+          <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: "#92400e" }} />
+          <p className="text-xs font-medium" style={{ color: "#92400e" }}>
+            {fmtCurrency(outstanding)} outstanding across {invoices.filter(i => i.balanceDue > 0).length} unpaid invoice(s)
+          </p>
+        </div>
+      )}
+
+      {/* Quotes */}
+      <Section title={`Quotes (${quotes.length})`}>
+        {quotes.length === 0 ? (
+          <div className="px-4 py-8 text-center"><p className="text-sm" style={{ color: "var(--text-muted)" }}>No quotes yet</p></div>
+        ) : (
+          <>
+            <div className="grid px-4 py-2 text-[10px] font-semibold uppercase tracking-wider"
+              style={{ gridTemplateColumns: "1fr 2fr 1.2fr 0.8fr 0.8fr", color: "var(--text-muted)", borderBottom: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-surface-2)" }}>
+              <span>Quote #</span><span>Title</span><span>Linked To</span><span>Status</span><span className="text-right">Total</span>
+            </div>
+            {quotes.map((q, i) => {
+              const s = QUOTE_STATUS_STYLE[q.status];
+              return (
+                <Link key={q.id} href={`/quotes/${q.id}`}
+                  className="grid px-4 py-3 items-center hover:bg-[var(--bg-surface-2)] transition-colors"
+                  style={{ gridTemplateColumns: "1fr 2fr 1.2fr 0.8fr 0.8fr", borderBottom: i < quotes.length - 1 ? "1px solid var(--border-subtle)" : "none", textDecoration: "none" }}>
+                  <span className="text-sm font-mono font-medium" style={{ color: "var(--text-primary)" }}>{q.quoteNumber}</span>
+                  <span className="text-sm truncate" style={{ color: "var(--text-secondary)" }}>{q.title}</span>
+                  <span className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{q.linkedLabel ?? "—"}</span>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full inline-block"
+                    style={{ backgroundColor: s.bg, color: s.color }}>{s.label}</span>
+                  <span className="text-sm font-semibold text-right" style={{ color: "var(--text-primary)" }}>
+                    {q.total > 0 ? fmtCurrency(q.total) : "TBD"}
+                  </span>
+                </Link>
+              );
+            })}
+          </>
+        )}
+      </Section>
+
+      {/* Invoices */}
+      <Section title={`Invoices (${invoices.length})`}>
+        {invoices.length === 0 ? (
+          <div className="px-4 py-8 text-center"><p className="text-sm" style={{ color: "var(--text-muted)" }}>No invoices yet</p></div>
+        ) : (
+          <>
+            <div className="grid px-4 py-2 text-[10px] font-semibold uppercase tracking-wider"
+              style={{ gridTemplateColumns: "1fr 2fr 1.2fr 0.8fr 0.7fr 0.7fr", color: "var(--text-muted)", borderBottom: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-surface-2)" }}>
+              <span>Invoice #</span><span>Title</span><span>Linked To</span><span>Status</span><span className="text-right">Total</span><span className="text-right">Balance</span>
+            </div>
+            {invoices.map((inv, i) => {
+              const s = INVOICE_STATUS_STYLE[inv.status];
+              return (
+                <Link key={inv.id} href={`/invoices/${inv.id}`}
+                  className="grid px-4 py-3 items-center hover:bg-[var(--bg-surface-2)] transition-colors"
+                  style={{ gridTemplateColumns: "1fr 2fr 1.2fr 0.8fr 0.7fr 0.7fr", borderBottom: i < invoices.length - 1 ? "1px solid var(--border-subtle)" : "none", textDecoration: "none" }}>
+                  <span className="text-sm font-mono font-medium" style={{ color: "var(--text-primary)" }}>{inv.invoiceNumber}</span>
+                  <span className="text-sm truncate" style={{ color: "var(--text-secondary)" }}>{inv.title}</span>
+                  <span className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{inv.linkedLabel ?? "—"}</span>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full inline-block"
+                    style={{ backgroundColor: s.bg, color: s.color }}>{s.label}</span>
+                  <span className="text-sm font-semibold text-right" style={{ color: "var(--text-primary)" }}>{fmtCurrency(inv.total)}</span>
+                  <span className="text-sm font-semibold text-right"
+                    style={{ color: inv.balanceDue > 0 ? (inv.status === "past_due" ? "#dc2626" : "var(--text-primary)") : "#10b981" }}>
+                    {inv.balanceDue > 0 ? fmtCurrency(inv.balanceDue) : "Paid"}
+                  </span>
+                </Link>
+              );
+            })}
+          </>
+        )}
+      </Section>
+    </div>
+  );
+}
+
+// ─── Timeline tab ─────────────────────────────────────────
+
+type EventConfig = {
+  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+  bg: string;
+  color: string;
+  label: string;
+};
+
+const EVENT_CONFIG: Record<EventType, EventConfig> = {
+  account_created:    { icon: UserPlus,      bg: "#e0e7ff", color: "#4f46e5", label: "Account Created" },
+  contact_added:      { icon: User,          bg: "#e0e7ff", color: "#4f46e5", label: "Contact Added" },
+  property_added:     { icon: Home,          bg: "#e0e7ff", color: "#4f46e5", label: "Property Added" },
+  lead_created:       { icon: TrendingUp,    bg: "#fef3c7", color: "#92400e", label: "Lead Created" },
+  lead_stage_changed: { icon: TrendingUp,    bg: "#fef3c7", color: "#92400e", label: "Lead Stage Changed" },
+  job_created:        { icon: Briefcase,     bg: "#e0e7ff", color: "#3730a3", label: "Job Created" },
+  job_scheduled:      { icon: Calendar,      bg: "#e0e7ff", color: "#3730a3", label: "Job Scheduled" },
+  job_completed:      { icon: CheckCircle,   bg: "#d1fae5", color: "#065f46", label: "Job Completed" },
+  work_order_created: { icon: ClipboardList, bg: "#e0e7ff", color: "#3730a3", label: "Work Order Created" },
+  quote_created:      { icon: FilePen,       bg: "#f5f3ff", color: "#6d28d9", label: "Quote Created" },
+  quote_sent:         { icon: FilePen,       bg: "#f5f3ff", color: "#6d28d9", label: "Quote Sent" },
+  quote_accepted:     { icon: FileCheck,     bg: "#d1fae5", color: "#065f46", label: "Quote Accepted" },
+  invoice_created:    { icon: Receipt,       bg: "#f5f3ff", color: "#6d28d9", label: "Invoice Created" },
+  payment_received:   { icon: DollarSign,    bg: "#d1fae5", color: "#065f46", label: "Payment Received" },
+  agreement_created:  { icon: FileText,      bg: "#ecfdf5", color: "#059669", label: "Agreement Created" },
+  agreement_renewed:  { icon: RefreshCw,     bg: "#ecfdf5", color: "#059669", label: "Agreement Renewed" },
+  photo_uploaded:     { icon: ImageIcon,     bg: "#eff6ff", color: "#2563eb", label: "Photo Uploaded" },
+  file_uploaded:      { icon: Paperclip,     bg: "#eff6ff", color: "#2563eb", label: "File Uploaded" },
+  note_added:         { icon: MessageSquare, bg: "var(--bg-input)", color: "var(--text-secondary)", label: "Note Added" },
+  email_sent:         { icon: Mail,          bg: "#eff6ff", color: "#2563eb", label: "Email Sent" },
+  sms_sent:           { icon: Smartphone,    bg: "#eff6ff", color: "#2563eb", label: "SMS Sent" },
+  call_logged:        { icon: Phone,         bg: "#eff6ff", color: "#2563eb", label: "Call Logged" },
+  task_created:       { icon: CheckSquare,   bg: "#fef3c7", color: "#92400e", label: "Task Created" },
+  task_completed:     { icon: CheckSquare,   bg: "#d1fae5", color: "#065f46", label: "Task Completed" },
+};
+
+const FILTER_TABS: { key: FilterCategory | "all"; label: string }[] = [
+  { key: "all",           label: "All" },
+  { key: "notes",         label: "Notes" },
+  { key: "jobs",          label: "Jobs" },
+  { key: "quotes",        label: "Quotes" },
+  { key: "invoices",      label: "Invoices" },
+  { key: "communication", label: "Communication" },
+  { key: "photos",        label: "Photos" },
+  { key: "tasks",         label: "Tasks" },
+  { key: "agreements",    label: "Agreements" },
+];
+
+function TimelineTab({ id }: { id: string }) {
+  const events = getActivityEvents(id);
+  const [filter, setFilter] = useState<FilterCategory | "all">("all");
+
+  const filtered = filter === "all"
+    ? events
+    : events.filter(e => EVENT_FILTER_MAP[e.eventType] === filter);
+
+  // Count per filter for badges
+  const counts = FILTER_TABS.reduce<Record<string, number>>((acc, f) => {
+    acc[f.key] = f.key === "all"
+      ? events.length
+      : events.filter(e => EVENT_FILTER_MAP[e.eventType] === f.key).length;
+    return acc;
+  }, {});
+
+  return (
+    <div className="space-y-5">
+      {/* Filter pills */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {FILTER_TABS.map(f => {
+          const active = filter === f.key;
+          const count  = counts[f.key] ?? 0;
+          if (f.key !== "all" && count === 0) return null;
+          return (
+            <button
+              key={f.key}
+              onClick={() => setFilter(f.key)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
+              style={{
+                backgroundColor: active ? "#4f46e5" : "var(--bg-input)",
+                color: active ? "#fff" : "var(--text-secondary)",
+              }}
+            >
+              {f.label}
+              <span
+                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                style={{
+                  backgroundColor: active ? "rgba(255,255,255,0.25)" : "var(--bg-surface)",
+                  color: active ? "#fff" : "var(--text-muted)",
+                }}
+              >
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Timeline */}
+      {filtered.length === 0 ? (
+        <div className="py-12 text-center rounded-xl" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>No events in this category</p>
+        </div>
+      ) : (
+        <div className="relative">
+          {/* Vertical connector line */}
+          <div
+            className="absolute top-5 bottom-5"
+            style={{ left: "19px", width: "2px", backgroundColor: "var(--border-subtle)" }}
+          />
+
+          <div className="space-y-1">
+            {filtered.map((event) => {
+              const config = EVENT_CONFIG[event.eventType];
+              const Icon   = config.icon;
+              return (
+                <div key={event.id} className="relative flex gap-4 py-3">
+                  {/* Icon bubble */}
+                  <div
+                    className="relative z-10 w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+                    style={{
+                      backgroundColor: config.bg,
+                      boxShadow: "0 0 0 2px var(--bg-page)",
+                    }}
+                  >
+                    <Icon className="w-4 h-4" style={{ color: config.color }} />
+                  </div>
+
+                  {/* Content */}
+                  <div
+                    className="flex-1 min-w-0 rounded-xl px-4 py-3"
+                    style={{
+                      backgroundColor: "var(--bg-surface)",
+                      border: "1px solid var(--border-subtle)",
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span
+                            className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                            style={{ backgroundColor: config.bg, color: config.color }}
+                          >
+                            {config.label}
+                          </span>
+                        </div>
+                        <p className="text-sm font-medium mt-1" style={{ color: "var(--text-primary)" }}>
+                          {event.title}
+                        </p>
+                        {event.description && (
+                          <p className="text-xs mt-0.5 leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+                            {event.description}
+                          </p>
+                        )}
+                      </div>
+                      <span className="text-xs shrink-0 mt-0.5" style={{ color: "var(--text-muted)" }}>
+                        {event.displayDate}
+                      </span>
+                    </div>
+                    <p className="text-[10px] mt-2" style={{ color: "var(--text-muted)" }}>
+                      {event.createdBy}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
     </div>
   );
@@ -1084,9 +1531,10 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         {tab === "Leads"          && <LeadsTab       id={id} />}
         {tab === "Agreements"     && <AgreementsTab  id={id} />}
         {tab === "Notes"          && <NotesTab       id={id} />}
-        {tab === "Photos & Files" && <StubTab label="Photos & Files" link="/files" />}
+        {tab === "Photos & Files" && <PhotoGallery recordLevel="account" scope={{ accountId: id }} accountName={customer.name} />}
         {tab === "Communication"  && <StubTab label="Communication" link="/inbox" />}
-        {tab === "Billing"        && <StubTab label="Billing" />}
+        {tab === "Billing"        && <BillingTab id={id} />}
+        {tab === "Timeline"       && <TimelineTab  id={id} />}
       </div>
     </div>
   );

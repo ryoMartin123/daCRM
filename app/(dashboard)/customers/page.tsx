@@ -13,7 +13,7 @@ import NewCustomerModal from "@/components/customers/NewCustomerModal";
 const TABS = [
   { key: "all",         label: "All",         fn: (_: Customer) => true },
   { key: "customers",   label: "Customers",   fn: (c: Customer) => c.status === "Customer" },
-  { key: "leads",       label: "Leads",       fn: (c: Customer) => c.status === "Lead" },
+  { key: "prospects",   label: "Prospects",   fn: (c: Customer) => c.status === "Prospect" },
   // Residential = homeowners/renters; Commercial = all business account types
   { key: "residential", label: "Residential", fn: (c: Customer) => c.accountType === "residential" },
   { key: "commercial",  label: "Commercial",  fn: (c: Customer) => c.accountType !== "residential" },

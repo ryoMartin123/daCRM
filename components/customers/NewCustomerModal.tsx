@@ -10,6 +10,8 @@ import { useCustomers } from "@/components/providers/CustomerProvider";
 import { locations } from "@/lib/hierarchy/data";
 import { formatPhone, validatePhone, validateEmail } from "@/lib/utils/validation";
 import type { AccountType, PropertyType, Customer, CustomerType, CustomerStatus } from "@/lib/customers/data";
+import { AddressAutocomplete, EMPTY_ADDRESS, type ParsedAddress } from "@/components/address/AddressAutocomplete";
+import UiSelect from "@/components/ui/Select";
 
 // ─── Types ────────────────────────────────────────────────
 interface QuickData {
@@ -32,20 +34,17 @@ interface WizardData {
   contactEmail: string;
   contactMethod: "phone" | "email" | "text";
   propertyLabel: string;
-  propertyAddress: string;
-  propertyCity: string;
-  propertyState: string;
-  propertyZip: string;
+  propertyParsedAddress: ParsedAddress;
   propertyType: PropertyType;
   accessNotes: string;
 }
 
 const DEFAULT_WIZARD: WizardData = {
   accountType: "residential",
-  name: "", status: "Lead", locationId: "", serviceAreaId: "", leadSource: "",
+  name: "", status: "Prospect", locationId: "", serviceAreaId: "", leadSource: "",
   contactName: "", contactRole: "Homeowner", contactPhone: "", contactEmail: "", contactMethod: "text",
-  propertyLabel: "", propertyAddress: "", propertyCity: "", propertyState: "GA",
-  propertyZip: "", propertyType: "Residential", accessNotes: "",
+  propertyLabel: "", propertyParsedAddress: { ...EMPTY_ADDRESS },
+  propertyType: "Residential", accessNotes: "",
 };
 
 // ─── Account type options ─────────────────────────────────
@@ -69,10 +68,7 @@ function buildCustomer(
   status: CustomerStatus,
   locationId: string,
   serviceAreaId: string,
-  address: string,
-  city: string,
-  state: string,
-  zip: string,
+  parsedAddress: ParsedAddress,
   email: string,
 ): Customer {
   const loc     = locations.find(l => l.id === locationId);
@@ -91,14 +87,14 @@ function buildCustomer(
     accountType,
     type,
     status,
-    companyId:    loc?.companyId  ?? "co_hvac",
-    locationId:   (locationId      || loc?.id)      ?? "",
-    serviceAreaId: serviceAreaId  || undefined,
+    companyId:    loc?.companyId ?? "co_hvac",
+    locationId:   (locationId || loc?.id) ?? "",
+    serviceAreaId: serviceAreaId || undefined,
     locationName: loc?.name ?? "",
-    address:  address.trim(),
-    city:     city.trim(),
-    state:    state.trim(),
-    zip:      zip.trim(),
+    address:  parsedAddress.addressLine1,
+    city:     parsedAddress.city,
+    state:    parsedAddress.state,
+    zip:      parsedAddress.postalCode,
     phone:    phone.trim(),
     email:    email.trim() || undefined,
     since: new Date().toLocaleDateString("en-US", { month: "short", year: "numeric" }),
@@ -183,13 +179,7 @@ function PhoneInput({ value, onChange, error, required }: {
 function Select({ value, onChange, options }: {
   value: string; onChange: (v: string) => void; options: { value: string; label: string }[];
 }) {
-  return (
-    <select value={value} onChange={e => onChange(e.target.value)}
-      className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-      style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }}>
-      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-    </select>
-  );
+  return <UiSelect value={value} onChange={onChange} options={options} />;
 }
 
 // ─── Success state ────────────────────────────────────────
@@ -236,7 +226,7 @@ function QuickAddContent({ onClose }: { onClose: () => void }) {
 
     const customer = buildCustomer(
       data.name, data.phone, data.accountType, status,
-      data.locationId, "", "", "", "", "", "",
+      data.locationId, "", { ...EMPTY_ADDRESS }, "",
     );
     addCustomer(customer);
     setSubmitted(true);
@@ -275,10 +265,10 @@ function QuickAddContent({ onClose }: { onClose: () => void }) {
         )}
       </div>
       <div className="px-6 py-4 flex gap-2" style={{ borderTop: "1px solid var(--border-subtle)" }}>
-        <button onClick={() => handleSave("Lead")} disabled={!data.name.trim()}
+        <button onClick={() => handleSave("Prospect")} disabled={!data.name.trim()}
           className="flex-1 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-40"
           style={{ border: "1px solid var(--border)", color: "var(--text-secondary)", backgroundColor: "var(--bg-surface)" }}>
-          Save as Lead
+          Save as Prospect
         </button>
         <button onClick={() => handleSave("Customer")} disabled={!data.name.trim()}
           className="flex-1 py-2 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors disabled:opacity-40">
@@ -327,7 +317,7 @@ function Step2({ data, set }: { data: WizardData; set: <K extends keyof WizardDa
       </Field>
       <Field label="Status">
         <div className="flex gap-2">
-          {(["Lead", "Customer"] as const).map(s => (
+          {(["Prospect", "Customer"] as const).map(s => (
             <button key={s} onClick={() => set("status", s)}
               className="flex-1 py-2 rounded-lg text-sm font-medium transition-all"
               style={{ border: `1.5px solid ${data.status === s ? "#4f46e5" : "var(--border)"}`, backgroundColor: data.status === s ? "#e0e7ff" : "var(--bg-surface-2)", color: data.status === s ? "#4f46e5" : "var(--text-secondary)" }}>
@@ -418,21 +408,13 @@ function Step4({ data, set }: { data: WizardData; set: <K extends keyof WizardDa
           placeholder={data.accountType === "residential" ? "e.g. Main Residence" : "e.g. Main Office"} />
       </Field>
       <Field label="Address" required>
-        <Input value={data.propertyAddress} onChange={v => set("propertyAddress", v)} placeholder="Street address" />
+        <AddressAutocomplete
+          value={data.propertyParsedAddress}
+          onChange={addr => set("propertyParsedAddress", addr)}
+          placeholder="Start typing a street address…"
+          required
+        />
       </Field>
-      <div className="grid grid-cols-3 gap-2">
-        <div className="col-span-1">
-          <Field label="City" required>
-            <Input value={data.propertyCity} onChange={v => set("propertyCity", v)} placeholder="City" />
-          </Field>
-        </div>
-        <Field label="State">
-          <Input value={data.propertyState} onChange={v => set("propertyState", v)} placeholder="GA" />
-        </Field>
-        <Field label="Zip">
-          <Input value={data.propertyZip} onChange={v => set("propertyZip", v)} placeholder="00000" />
-        </Field>
-      </div>
       <Field label="Property Type">
         <div className="flex flex-wrap gap-2">
           {propertyTypes.map(t => (
@@ -485,7 +467,7 @@ function WizardContent({ onClose }: { onClose: () => void }) {
       else { const e = validatePhone(data.contactPhone); if (e) errs.contactPhone = e; }
       if (data.contactEmail.trim()) { const e = validateEmail(data.contactEmail); if (e) errs.contactEmail = e; }
     }
-    if (step === 4 && !data.propertyAddress.trim()) errs.propertyAddress = "Address is required";
+    if (step === 4 && !data.propertyParsedAddress.addressLine1.trim()) errs.propertyAddress = "Address is required";
     return errs;
   }
 
@@ -501,7 +483,7 @@ function WizardContent({ onClose }: { onClose: () => void }) {
     const customer = buildCustomer(
       data.name, data.contactPhone, data.accountType, data.status,
       data.locationId, data.serviceAreaId,
-      data.propertyAddress, data.propertyCity, data.propertyState, data.propertyZip,
+      data.propertyParsedAddress,
       data.contactEmail,
     );
     addCustomer(customer);
@@ -512,7 +494,7 @@ function WizardContent({ onClose }: { onClose: () => void }) {
     (step === 1) ||
     (step === 2 && data.name.trim() !== "") ||
     (step === 3 && data.contactName.trim() !== "" && data.contactPhone.trim() !== "") ||
-    (step === 4 && data.propertyAddress.trim() !== "");
+    (step === 4 && data.propertyParsedAddress.addressLine1.trim() !== "");
 
   if (submitted) return <SuccessState name={data.name} onClose={onClose} />;
 

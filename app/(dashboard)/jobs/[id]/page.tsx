@@ -1,12 +1,20 @@
 "use client";
 
-import { use, useState } from "react";
+import React, { use, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Pencil, CheckCircle, Circle, ChevronRight, Phone, MapPin, User, Clock, Calendar, DollarSign, Briefcase, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Pencil, CheckCircle, Circle, ChevronRight, Phone, MapPin, User, Clock, Calendar, DollarSign, Briefcase, AlertTriangle, Camera, ListChecks } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getJob, getWorkOrder, getJobNotes, JOB_STATUS_CONFIG, type JobNoteType } from "@/lib/jobs/data";
+import { getJob, getWorkOrder, getJobNotes, resolveJobStatus, type JobNoteType } from "@/lib/jobs/data";
+import { getJobStatuses } from "@/lib/job-config/data";
+import {
+  suggestTemplateForJobType, getChecklist, getPhotos, getInstructions,
+  CHECKLIST_TYPE_LABELS, type ChecklistItem as TemplateChecklistItem,
+} from "@/lib/work-order-templates/data";
 import { getProject } from "@/lib/projects/data";
 import { getCustomer } from "@/lib/customers/data";
+import { getQuotesForJob, getInvoicesForJob, fmt } from "@/lib/quotes/data";
+import { QUOTE_STATUS_STYLE, INVOICE_STATUS_STYLE } from "@/lib/quotes/types";
+import PhotoGallery from "@/components/files/PhotoGallery";
 
 const TABS = ["Overview", "Work Order", "Checklist", "Photos & Files", "Notes", "Customer", "Invoice / Estimate", "History"];
 
@@ -18,7 +26,7 @@ function OverviewTab({ jobId }: { jobId: string }) {
   const project = job.projectId ? getProject(job.projectId) : null;
   const wo      = getWorkOrder(jobId);
   const notes   = getJobNotes(jobId);
-  const s       = JOB_STATUS_CONFIG[job.status];
+  const s       = resolveJobStatus(job.status, getJobStatuses().filter(st => st.active));
 
   const doneItems  = wo?.checklist.filter(i => i.isComplete).length ?? 0;
   const totalItems = wo?.checklist.length ?? 0;
@@ -144,96 +152,223 @@ function OverviewTab({ jobId }: { jobId: string }) {
 }
 
 // ─── Work Order tab ───────────────────────────────────────
+// Badge color per checklist item type
+const CHECK_TYPE_BADGE: Record<string, { bg: string; color: string }> = {
+  checkbox:   { bg: "var(--bg-input)", color: "var(--text-secondary)" },
+  short_text: { bg: "#e0e7ff", color: "#3730a3" },
+  long_text:  { bg: "#e0e7ff", color: "#3730a3" },
+  number:     { bg: "#dbeafe", color: "#1e40af" },
+  dropdown:   { bg: "#ede9fe", color: "#5b21b6" },
+  photo:      { bg: "#eff6ff", color: "#2563eb" },
+  signature:  { bg: "#fce7f3", color: "#9d174d" },
+  datetime:   { bg: "#fef3c7", color: "#92400e" },
+};
+
 function WorkOrderTab({ jobId }: { jobId: string }) {
-  const wo = getWorkOrder(jobId);
-  if (!wo) return <StubContent label="No work order created for this job." />;
-  const doneItems  = wo.checklist.filter(i => i.isComplete).length;
-  const pct = wo.checklist.length > 0 ? Math.round((doneItems / wo.checklist.length) * 100) : 0;
+  const job = getJob(jobId)!;
+  const template = suggestTemplateForJobType(job.type);
+
+  if (!template) return <StubContent label="No work order template configured. Add one in Settings → Work Orders." />;
+
+  const checklist    = getChecklist(template.id).filter(c => c.active);
+  const photos       = getPhotos(template.id);
+  const instructions = getInstructions(template.id);
+  const requiredCount = checklist.filter(c => c.required).length;
 
   return (
     <div className="max-w-2xl space-y-4">
+      {/* Template header */}
       <div className="rounded-xl p-6" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
-        <div className="flex items-start justify-between mb-4">
+        <div className="flex items-start justify-between mb-1">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--text-muted)" }}>Work Order</p>
-            <h2 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>{wo.title}</h2>
+            <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--text-muted)" }}>Work Order Template</p>
+            <h2 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>{template.name}</h2>
           </div>
-          <span className="text-[10px] font-semibold px-2 py-1 rounded-full"
-            style={{ backgroundColor: wo.status === "completed" ? "#d1fae5" : wo.status === "in_progress" ? "#dbeafe" : "var(--bg-input)", color: wo.status === "completed" ? "#065f46" : wo.status === "in_progress" ? "#1e40af" : "var(--text-muted)" }}>
-            {wo.status.replace("_", " ")}
+          <span className="text-[10px] font-semibold px-2 py-1 rounded-full flex items-center gap-1"
+            style={{ backgroundColor: "#e0e7ff", color: "#4f46e5" }}>
+            <ListChecks className="w-3 h-3" /> Suggested by job type
           </span>
         </div>
-        <div className="mb-4">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs" style={{ color: "var(--text-muted)" }}>Checklist completion</span>
-            <span className="text-xs font-bold" style={{ color: pct === 100 ? "#10b981" : "var(--text-secondary)" }}>{pct}%</span>
-          </div>
-          <div className="h-1.5 rounded-full" style={{ backgroundColor: "var(--bg-input)" }}>
-            <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, backgroundColor: pct === 100 ? "#10b981" : "#4f46e5" }} />
-          </div>
-        </div>
-        <div className="pt-4" style={{ borderTop: "1px solid var(--border-subtle)" }}>
-          <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>Instructions</p>
-          <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "var(--text-secondary)" }}>{wo.instructions}</p>
+        {template.description && (
+          <p className="text-sm mt-2" style={{ color: "var(--text-secondary)" }}>{template.description}</p>
+        )}
+        <div className="flex flex-wrap gap-2 mt-3">
+          <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ backgroundColor: "var(--bg-input)", color: "var(--text-muted)" }}>
+            {checklist.length} checklist items
+          </span>
+          <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ backgroundColor: "var(--bg-input)", color: "var(--text-muted)" }}>
+            {requiredCount} required
+          </span>
+          <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ backgroundColor: "var(--bg-input)", color: "var(--text-muted)" }}>
+            {photos.length} photo rules
+          </span>
         </div>
       </div>
+
+      {/* Instructions */}
+      {(instructions.internal || instructions.safety) && (
+        <div className="rounded-xl p-5 space-y-4" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+          {instructions.internal && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--text-muted)" }}>Field Instructions</p>
+              <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "var(--text-secondary)" }}>{instructions.internal}</p>
+            </div>
+          )}
+          {instructions.safety && (
+            <div className="rounded-lg px-3 py-2" style={{ backgroundColor: "#fffbeb", border: "1px solid #fde68a" }}>
+              <p className="text-[10px] font-semibold uppercase tracking-widest mb-1 text-amber-700">Safety Notes</p>
+              <p className="text-xs leading-relaxed text-amber-800 whitespace-pre-line">{instructions.safety}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Checklist preview */}
+      <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+        <div className="px-4 py-3" style={{ borderBottom: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-surface-2)" }}>
+          <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Checklist</p>
+        </div>
+        {checklist.length === 0 ? (
+          <div className="px-4 py-6 text-center"><p className="text-sm" style={{ color: "var(--text-muted)" }}>No checklist items on this template.</p></div>
+        ) : checklist.map((c, i) => {
+          const badge = CHECK_TYPE_BADGE[c.type] ?? CHECK_TYPE_BADGE.checkbox;
+          return (
+            <div key={c.id} className="flex items-center gap-3 px-4 py-2.5"
+              style={{ borderBottom: i < checklist.length - 1 ? "1px solid var(--border-subtle)" : "none" }}>
+              <Circle className="w-4 h-4 shrink-0" style={{ color: "var(--border)" }} />
+              <span className="text-sm flex-1" style={{ color: "var(--text-primary)" }}>{c.label}</span>
+              {c.required && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: "#fee2e2", color: "#991b1b" }}>Required</span>}
+              <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: badge.bg, color: badge.color }}>{CHECKLIST_TYPE_LABELS[c.type]}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Required photos */}
+      <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+        <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-surface-2)" }}>
+          <Camera className="w-4 h-4" style={{ color: "#2563eb" }} />
+          <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Required Photos</p>
+        </div>
+        {photos.length === 0 ? (
+          <div className="px-4 py-6 text-center"><p className="text-sm" style={{ color: "var(--text-muted)" }}>No required photo rules on this template.</p></div>
+        ) : photos.map((p, i) => (
+          <div key={p.id} className="flex items-center gap-3 px-4 py-2.5"
+            style={{ borderBottom: i < photos.length - 1 ? "1px solid var(--border-subtle)" : "none" }}>
+            <Camera className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted)" }} />
+            <span className="text-sm flex-1" style={{ color: "var(--text-primary)" }}>{p.category}</span>
+            {p.notes && <span className="text-[11px] truncate max-w-48" style={{ color: "var(--text-muted)" }}>{p.notes}</span>}
+            <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>min {p.minCount}</span>
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded"
+              style={{ backgroundColor: p.required ? "#fee2e2" : "var(--bg-input)", color: p.required ? "#991b1b" : "var(--text-muted)" }}>
+              {p.required ? "Required" : "Optional"}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Materials & completion */}
+      {(instructions.materials || instructions.completion || instructions.customerFacing) && (
+        <div className="grid grid-cols-2 gap-4">
+          {instructions.materials && (
+            <div className="rounded-xl p-4" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+              <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--text-muted)" }}>Materials / Notes</p>
+              <p className="text-xs leading-relaxed whitespace-pre-line" style={{ color: "var(--text-secondary)" }}>{instructions.materials}</p>
+            </div>
+          )}
+          {instructions.completion && (
+            <div className="rounded-xl p-4" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+              <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--text-muted)" }}>Completion Requirements</p>
+              <p className="text-xs leading-relaxed whitespace-pre-line" style={{ color: "var(--text-secondary)" }}>{instructions.completion}</p>
+            </div>
+          )}
+          {instructions.customerFacing && (
+            <div className="rounded-xl p-4" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+              <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--text-muted)" }}>Customer-Facing Notes</p>
+              <p className="text-xs leading-relaxed whitespace-pre-line" style={{ color: "var(--text-secondary)" }}>{instructions.customerFacing}</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-// ─── Checklist tab ────────────────────────────────────────
+// ─── Checklist tab — interactive, driven by the template ──
 function ChecklistTab({ jobId }: { jobId: string }) {
-  const wo = getWorkOrder(jobId);
-  const [items, setItems] = useState(wo?.checklist ?? []);
+  const job = getJob(jobId)!;
+  const template = suggestTemplateForJobType(job.type);
+  const templateItems: TemplateChecklistItem[] = template ? getChecklist(template.id).filter(c => c.active) : [];
 
-  if (!wo) return <StubContent label="No checklist for this job." />;
+  // Local execution state for this job's work order instance.
+  const [done, setDone] = useState<Record<string, boolean>>({});
 
-  function toggle(id: string) {
-    setItems(prev => prev.map(item =>
-      item.id === id ? { ...item, isComplete: !item.isComplete, completedBy: !item.isComplete ? "Marcus Reyes" : undefined } : item
-    ));
+  if (!template || templateItems.length === 0) {
+    return <StubContent label="No checklist configured for this job type. Add items in Settings → Work Orders → Checklists." />;
   }
 
-  const done = items.filter(i => i.isComplete).length;
-  const pct  = items.length > 0 ? Math.round((done / items.length) * 100) : 0;
+  function toggle(id: string) { setDone(prev => ({ ...prev, [id]: !prev[id] })); }
+
+  // Only checkbox/photo/signature items are "completable"; others are data fields.
+  const completable = templateItems.filter(c => ["checkbox", "photo", "signature"].includes(c.type));
+  const doneCount = completable.filter(c => done[c.id]).length;
+  const pct = completable.length > 0 ? Math.round((doneCount / completable.length) * 100) : 0;
 
   return (
     <div className="max-w-xl space-y-4">
       {/* Progress */}
       <div className="rounded-xl p-4" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{done} of {items.length} complete</span>
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{doneCount} of {completable.length} complete</span>
           <span className="text-sm font-bold" style={{ color: pct === 100 ? "#10b981" : "#4f46e5" }}>{pct}%</span>
         </div>
+        <p className="text-[10px] mb-2" style={{ color: "var(--text-muted)" }}>Template: {template.name}</p>
         <div className="h-2 rounded-full" style={{ backgroundColor: "var(--bg-input)" }}>
           <div className="h-2 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: pct === 100 ? "#10b981" : "#4f46e5" }} />
         </div>
       </div>
 
-      {/* Items */}
+      {/* Items rendered by type */}
       <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
-        {items.map((item, i) => (
-          <button
-            key={item.id}
-            onClick={() => toggle(item.id)}
-            className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--bg-surface-2)]"
-            style={i < items.length - 1 ? { borderBottom: "1px solid var(--border-subtle)" } : undefined}
-          >
-            {item.isComplete
-              ? <CheckCircle className="w-5 h-5 shrink-0 text-emerald-500" />
-              : <Circle      className="w-5 h-5 shrink-0" style={{ color: "var(--border)" }} />}
-            <div className="flex-1 min-w-0">
-              <span className={cn("text-sm", item.isComplete ? "line-through" : "")}
-                style={{ color: item.isComplete ? "var(--text-muted)" : "var(--text-primary)" }}>
-                {item.label}
-              </span>
-              {item.completedBy && (
-                <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>✓ {item.completedBy}</p>
+        {templateItems.map((item, i) => {
+          const isCompletable = ["checkbox", "photo", "signature"].includes(item.type);
+          const checked = done[item.id];
+          const border = i < templateItems.length - 1 ? { borderBottom: "1px solid var(--border-subtle)" } : undefined;
+          const badge = CHECK_TYPE_BADGE[item.type] ?? CHECK_TYPE_BADGE.checkbox;
+
+          if (isCompletable) {
+            return (
+              <button key={item.id} onClick={() => toggle(item.id)}
+                className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--bg-surface-2)]" style={border}>
+                {checked
+                  ? <CheckCircle className="w-5 h-5 shrink-0 text-emerald-500" />
+                  : <Circle className="w-5 h-5 shrink-0" style={{ color: "var(--border)" }} />}
+                <span className={cn("text-sm flex-1", checked ? "line-through" : "")}
+                  style={{ color: checked ? "var(--text-muted)" : "var(--text-primary)" }}>{item.label}</span>
+                {item.required && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: "#fee2e2", color: "#991b1b" }}>Required</span>}
+                <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full shrink-0" style={{ backgroundColor: badge.bg, color: badge.color }}>{CHECKLIST_TYPE_LABELS[item.type]}</span>
+              </button>
+            );
+          }
+          // Data-entry items (text/number/dropdown/datetime) shown as labeled inputs
+          return (
+            <div key={item.id} className="px-4 py-3" style={border}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{item.label}</span>
+                {item.required && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: "#fee2e2", color: "#991b1b" }}>Required</span>}
+                <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full ml-auto" style={{ backgroundColor: badge.bg, color: badge.color }}>{CHECKLIST_TYPE_LABELS[item.type]}</span>
+              </div>
+              {item.type === "long_text" ? (
+                <textarea rows={2} placeholder="Enter…" className="w-full rounded-lg px-3 py-1.5 text-sm outline-none resize-none"
+                  style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface-2)", color: "var(--text-primary)" }} />
+              ) : (
+                <input type={item.type === "number" ? "number" : item.type === "datetime" ? "datetime-local" : "text"} placeholder="Enter…"
+                  className="w-full rounded-lg px-3 py-1.5 text-sm outline-none"
+                  style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface-2)", color: "var(--text-primary)" }} />
               )}
             </div>
-            <span className="text-[10px] shrink-0" style={{ color: "var(--text-muted)" }}>#{item.sortOrder}</span>
-          </button>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -325,6 +460,72 @@ function StubTab({ label }: { label: string }) {
   return <div className="rounded-xl p-10 text-center" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}><p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{label}</p><p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>Coming soon</p></div>;
 }
 
+// ─── Job financials tab ───────────────────────────────────
+function JobFinancialsTab({ jobId }: { jobId: string }) {
+  const quotes   = getQuotesForJob(jobId);
+  const invoices = getInvoicesForJob(jobId);
+
+  function Section({ title, children }: { title: string; children: React.ReactNode }) {
+    return (
+      <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+        <div className="px-4 py-3" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+          <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{title}</p>
+        </div>
+        {children}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 max-w-3xl">
+      <Section title={`Quotes (${quotes.length})`}>
+        {quotes.length === 0 ? (
+          <div className="px-4 py-8 text-center"><p className="text-sm" style={{ color: "var(--text-muted)" }}>No quotes for this job</p></div>
+        ) : quotes.map((q, i) => {
+          const s = QUOTE_STATUS_STYLE[q.status];
+          return (
+            <Link key={q.id} href={`/quotes/${q.id}`}
+              className="flex items-center gap-4 px-4 py-3 hover:bg-[var(--bg-surface-2)] transition-colors"
+              style={{ borderBottom: i < quotes.length - 1 ? "1px solid var(--border-subtle)" : "none", textDecoration: "none" }}>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-mono font-medium" style={{ color: "var(--text-primary)" }}>{q.quoteNumber}</p>
+                <p className="text-xs mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>{q.title}</p>
+              </div>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0" style={{ backgroundColor: s.bg, color: s.color }}>{s.label}</span>
+              <span className="text-sm font-semibold shrink-0" style={{ color: "var(--text-primary)" }}>{q.total > 0 ? fmt(q.total) : "TBD"}</span>
+              <ChevronRight className="w-4 h-4 shrink-0" style={{ color: "var(--text-muted)" }} />
+            </Link>
+          );
+        })}
+      </Section>
+
+      <Section title={`Invoices (${invoices.length})`}>
+        {invoices.length === 0 ? (
+          <div className="px-4 py-8 text-center"><p className="text-sm" style={{ color: "var(--text-muted)" }}>No invoices for this job</p></div>
+        ) : invoices.map((inv, i) => {
+          const s = INVOICE_STATUS_STYLE[inv.status];
+          return (
+            <Link key={inv.id} href={`/invoices/${inv.id}`}
+              className="flex items-center gap-4 px-4 py-3 hover:bg-[var(--bg-surface-2)] transition-colors"
+              style={{ borderBottom: i < invoices.length - 1 ? "1px solid var(--border-subtle)" : "none", textDecoration: "none" }}>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-mono font-medium" style={{ color: "var(--text-primary)" }}>{inv.invoiceNumber}</p>
+                <p className="text-xs mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>{inv.title}</p>
+              </div>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0" style={{ backgroundColor: s.bg, color: s.color }}>{s.label}</span>
+              <div className="text-right shrink-0">
+                <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{fmt(inv.total)}</p>
+                {inv.balanceDue > 0 && <p className="text-[10px]" style={{ color: inv.status === "past_due" ? "#dc2626" : "var(--text-muted)" }}>{fmt(inv.balanceDue)} due</p>}
+              </div>
+              <ChevronRight className="w-4 h-4 shrink-0" style={{ color: "var(--text-muted)" }} />
+            </Link>
+          );
+        })}
+      </Section>
+    </div>
+  );
+}
+
 // ─── Shared primitives ────────────────────────────────────
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -363,7 +564,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
     );
   }
 
-  const s       = JOB_STATUS_CONFIG[job.status];
+  const s       = resolveJobStatus(job.status, getJobStatuses().filter(st => st.active));
   const project = job.projectId ? getProject(job.projectId) : null;
 
   return (
@@ -421,8 +622,8 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
         {tab === "Checklist"         && <ChecklistTab jobId={id} />}
         {tab === "Notes"             && <NotesTab     jobId={id} />}
         {tab === "Customer"          && <CustomerTab  jobId={id} />}
-        {tab === "Photos & Files"    && <StubTab label="Photos & Files" />}
-        {tab === "Invoice / Estimate"&& <StubTab label="Invoice / Estimate" />}
+        {tab === "Photos & Files"    && <PhotoGallery recordLevel="job" scope={{ accountId: job.accountId, jobId: id, projectId: job.projectId }} accountName={job.customerName} />}
+        {tab === "Invoice / Estimate"&& <JobFinancialsTab jobId={id} />}
         {tab === "History"           && <StubTab label="History" />}
       </div>
     </div>

@@ -25,6 +25,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const saved = localStorage.getItem("crm-theme") as Theme | null;
     if (saved === "dark" || saved === "light") {
       setThemeState(saved);
+      document.documentElement.setAttribute("data-theme", saved);
+    } else {
+      // Ensure the attribute is always set, even on first visit
+      document.documentElement.setAttribute("data-theme", "light");
     }
   }, []);
 

@@ -71,6 +71,7 @@ interface HierarchyContextValue {
   // Business structure config — readable and settable from the settings page.
   orgSettings: OrgSettings;
   setOrgMode: (mode: HierarchyMode) => void;
+  setOrgSetting: <K extends keyof OrgSettings>(key: K, value: OrgSettings[K]) => void;
 }
 
 const HierarchyContext = createContext<HierarchyContextValue | null>(null);
@@ -149,14 +150,36 @@ export function HierarchyProvider({ children }: { children: React.ReactNode }) {
     persistSelection({ company, location, serviceArea: v });
   }
 
-  // Switch business structure mode using presets.
+  // Switch business structure mode — applies hierarchy preset, preserves module flags.
   function setOrgMode(mode: HierarchyMode) {
-    const next = MODE_PRESETS[mode];
+    const preset = MODE_PRESETS[mode];
+    const next: OrgSettings = {
+      ...settings,          // keep existing module flags
+      ...preset,            // overwrite hierarchy flags + mode
+    };
     setSettings(next);
-    // Reset selections that are no longer applicable.
-    if (!next.multiCompany)   { setCompanyState("all"); }
-    if (!next.multiLocation)  { setLocationState("all"); }
+    if (!next.multiCompany)        { setCompanyState("all"); }
+    if (!next.multiLocation)       { setLocationState("all"); }
     if (!next.serviceAreasEnabled) { setServiceAreaState("all"); }
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+  }
+
+  // Fine-grained update for individual toggle fields.
+  function setOrgSetting<K extends keyof OrgSettings>(key: K, value: OrgSettings[K]) {
+    const next = { ...settings, [key]: value };
+    // Sync mode if hierarchy flags now match a preset exactly.
+    const match = (Object.keys(MODE_PRESETS) as HierarchyMode[]).find(m => {
+      const p = MODE_PRESETS[m];
+      return p.multiCompany === next.multiCompany &&
+             p.multiLocation === next.multiLocation &&
+             p.serviceAreasEnabled === next.serviceAreasEnabled;
+    });
+    if (match) next.mode = match;
+    setSettings(next);
+    // Reset selectors if a hierarchy layer was disabled.
+    if (key === "multiCompany"      && !value) setCompanyState("all");
+    if (key === "multiLocation"     && !value) setLocationState("all");
+    if (key === "serviceAreasEnabled" && !value) setServiceAreaState("all");
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
   }
 
@@ -197,6 +220,7 @@ export function HierarchyProvider({ children }: { children: React.ReactNode }) {
     activeScopeLabel,
     orgSettings: settings,
     setOrgMode,
+    setOrgSetting,
   };
 
   return (

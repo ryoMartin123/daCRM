@@ -6,6 +6,7 @@ import { ArrowLeft, Pencil, CheckCircle, Circle, ChevronRight, MapPin, User, Cal
 import { getProject, getProjectTasks, getProjectProgress, PROJECT_STATUS_CONFIG, PROJECT_TYPE_LABELS } from "@/lib/projects/data";
 import { getJobsForProject, JOB_STATUS_CONFIG } from "@/lib/jobs/data";
 import { getCustomer } from "@/lib/customers/data";
+import PhotoGallery from "@/components/files/PhotoGallery";
 
 const TABS = ["Overview", "Jobs", "Tasks", "Photos & Files", "Scope", "Estimates", "Invoices", "Notes", "Timeline"];
 
@@ -284,7 +285,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
         {tab === "Jobs"          && <JobsTab     projectId={id} />}
         {tab === "Tasks"         && <TasksTab    projectId={id} />}
         {tab === "Scope"         && <ScopeTab    projectId={id} />}
-        {tab === "Photos & Files"&& <StubTab label="Photos & Files" />}
+        {tab === "Photos & Files"&& <PhotoGallery recordLevel="project" scope={{ accountId: project.accountId, projectId: id }} accountName={project.customerName} />}
         {tab === "Estimates"     && <StubTab label="Estimates" />}
         {tab === "Invoices"      && <StubTab label="Invoices" />}
         {tab === "Notes"         && <StubTab label="Notes" />}

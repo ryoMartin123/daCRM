@@ -6,12 +6,14 @@
 // ─── Types ────────────────────────────────────────────────
 export type AccountType    = "residential" | "commercial" | "property_management" | "multi_site" | "other";
 export type CustomerType   = "Residential" | "Commercial";   // display label, derived from accountType
-export type CustomerStatus = "Customer" | "Lead";
+export type CustomerStatus = "Customer" | "Prospect";
 export type PropertyType   = "Residential" | "Commercial" | "Industrial" | "Multi-Family";
 export type JobStatus      = "Scheduled" | "In Progress" | "Completed" | "Canceled";
 export type LeadStatus     = "New" | "Contacted" | "Quoted" | "Won" | "Lost";
 export type NoteType       = "note" | "call" | "email" | "visit";
 export type EquipmentStatus = "operational" | "needs_service" | "retired";
+export type TaskStatus     = "open" | "overdue" | "completed";
+export type TaskType       = "follow_up" | "call" | "schedule" | "send_estimate" | "send_agreement" | "other";
 
 export interface Customer {
   id: string;
@@ -118,16 +120,16 @@ export const ALL_CUSTOMERS: Customer[] = [
   { id: "2",  name: "Hammond LLC",            initials: "HL", accountType: "commercial",         type: "Commercial",  status: "Customer", companyId: "co_hvac",    locationId: "loc_augusta",  serviceAreaId: "sa_augusta",   locationName: "Augusta Branch",  address: "1200 Industrial Way",    city: "Augusta",   state: "GA", zip: "30901", phone: "(706) 442-8800", email: "office@hammondllc.com",    since: "Mar 2021", tags: ["Commercial", "Net-30"],    notes: "Large commercial account. Coordinate with property manager D. Webb. Invoice on the 1st." },
   { id: "3",  name: "K. Brennan",             initials: "KB", accountType: "residential",        type: "Residential", status: "Customer", companyId: "co_hvac",    locationId: "loc_augusta",  serviceAreaId: "sa_augusta",   locationName: "Augusta Branch",  address: "27 Maple Ct",            city: "Augusta",   state: "GA", zip: "30907", phone: "(706) 555-0888", email: "kbrennan@gmail.com",       since: "Aug 2023", tags: [],                          notes: "" },
   { id: "4",  name: "Lakeside Apartments",    initials: "LA", accountType: "property_management",type: "Commercial",  status: "Customer", companyId: "co_hvac",    locationId: "loc_evans",    serviceAreaId: "sa_evans",     locationName: "Evans Branch",    address: "88 Lakeside Dr",         city: "Evans",     state: "GA", zip: "30809", phone: "(706) 555-2200", email: "management@lakeside.com",  since: "Feb 2020", tags: ["Plumbing Membership"],     notes: "24-unit complex. Contact: Mike Torres. Emergency access required." },
-  { id: "5",  name: "T. Okafor",              initials: "TO", accountType: "residential",        type: "Residential", status: "Lead",     companyId: "co_hvac",    locationId: "loc_augusta",  serviceAreaId: "sa_martinez",  locationName: "Augusta Branch",  address: "334 Pinehurst Rd",       city: "Martinez",  state: "GA", zip: "30907", phone: "(803) 391-4422", email: "tokafor@email.com",        since: "May 2026", tags: [],                          notes: "Roof damage inquiry from web form. Needs estimate." },
-  { id: "6",  name: "Southeast Restoration",  initials: "SR", accountType: "commercial",         type: "Commercial",  status: "Lead",     companyId: "co_roofing", locationId: "loc_columbia", serviceAreaId: "sa_columbia",  locationName: "Columbia Branch", address: "555 Commerce Blvd",      city: "Columbia",  state: "SC", zip: "29201", phone: "(803) 229-1183", email: "info@serestoration.com",   since: "May 2026", tags: [],                          notes: "Consulting retainer inquiry. Decision maker is COO." },
+  { id: "5",  name: "T. Okafor",              initials: "TO", accountType: "residential",        type: "Residential", status: "Prospect",     companyId: "co_hvac",    locationId: "loc_augusta",  serviceAreaId: "sa_martinez",  locationName: "Augusta Branch",  address: "334 Pinehurst Rd",       city: "Martinez",  state: "GA", zip: "30907", phone: "(803) 391-4422", email: "tokafor@email.com",        since: "May 2026", tags: [],                          notes: "Roof damage inquiry from web form. Needs estimate." },
+  { id: "6",  name: "Southeast Restoration",  initials: "SR", accountType: "commercial",         type: "Commercial",  status: "Prospect",     companyId: "co_roofing", locationId: "loc_columbia", serviceAreaId: "sa_columbia",  locationName: "Columbia Branch", address: "555 Commerce Blvd",      city: "Columbia",  state: "SC", zip: "29201", phone: "(803) 229-1183", email: "info@serestoration.com",   since: "May 2026", tags: [],                          notes: "Consulting retainer inquiry. Decision maker is COO." },
   { id: "7",  name: "Alvarez Residence",      initials: "AR", accountType: "residential",        type: "Residential", status: "Customer", companyId: "co_hvac",    locationId: "loc_augusta",  serviceAreaId: "sa_augusta",   locationName: "Augusta Branch",  address: "1840 Peach Orchard Rd",  city: "Augusta",   state: "GA", zip: "30906", phone: "(706) 555-3391", email: "alvarez.fam@email.com",    since: "Jun 2021", tags: ["HVAC Agreement"],          notes: "Spring visit is overdue — customer was out of town." },
   { id: "8",  name: "ABC Property Group",     initials: "AP", accountType: "property_management",type: "Commercial",  status: "Customer", companyId: "co_hvac",    locationId: "loc_augusta",  serviceAreaId: "sa_augusta",   locationName: "Augusta Branch",  address: "890 Business Park Dr",   city: "Augusta",   state: "GA", zip: "30904", phone: "(706) 555-7890", email: "mgmt@abcproperty.com",     since: "Nov 2019", tags: ["Property Maintenance"],    notes: "Commercial property group with 3 locations. Requires monthly summary." },
   { id: "9",  name: "Jennifer Torres",        initials: "JT", accountType: "residential",        type: "Residential", status: "Customer", companyId: "co_hvac",    locationId: "loc_augusta",  serviceAreaId: "sa_augusta",   locationName: "Augusta Branch",  address: "1450 Riverwatch Pkwy",   city: "Augusta",   state: "GA", zip: "30909", phone: "(706) 555-3344", email: "jtorres@gmail.com",        since: "Mar 2023", tags: [],                          notes: "" },
   { id: "10", name: "Grovetown Storage LLC",  initials: "GS", accountType: "commercial",         type: "Commercial",  status: "Customer", companyId: "co_hvac",    locationId: "loc_augusta",  serviceAreaId: "sa_grovetown", locationName: "Augusta Branch",  address: "200 Storage Way",        city: "Grovetown", state: "GA", zip: "30813", phone: "(706) 555-6677", email: "ops@grovetownstorage.com", since: "Jul 2022", tags: [],                          notes: "Storage facility. Renewal coming up July 1." },
-  { id: "11", name: "Michael Dunbar",         initials: "MD", accountType: "residential",        type: "Residential", status: "Lead",     companyId: "co_hvac",    locationId: "loc_evans",    serviceAreaId: "sa_evans",     locationName: "Evans Branch",    address: "78 Clubhouse Dr",        city: "Evans",     state: "GA", zip: "30809", phone: "(706) 555-1234", email: "m.dunbar@email.com",       since: "Apr 2026", tags: [],                          notes: "Called about new construction HVAC install." },
+  { id: "11", name: "Michael Dunbar",         initials: "MD", accountType: "residential",        type: "Residential", status: "Prospect",     companyId: "co_hvac",    locationId: "loc_evans",    serviceAreaId: "sa_evans",     locationName: "Evans Branch",    address: "78 Clubhouse Dr",        city: "Evans",     state: "GA", zip: "30809", phone: "(706) 555-1234", email: "m.dunbar@email.com",       since: "Apr 2026", tags: [],                          notes: "Called about new construction HVAC install." },
   { id: "12", name: "Evans Professional Park",initials: "EP", accountType: "commercial",         type: "Commercial",  status: "Customer", companyId: "co_hvac",    locationId: "loc_evans",    serviceAreaId: "sa_evans",     locationName: "Evans Branch",    address: "3000 Professional Pkwy", city: "Evans",     state: "GA", zip: "30809", phone: "(706) 555-8899", email: "admin@evanspro.com",       since: "Jan 2021", tags: ["HVAC Agreement"],          notes: "Renewal pricing discussion needed." },
   { id: "13", name: "Donna Reeves",           initials: "DR", accountType: "residential",        type: "Residential", status: "Customer", companyId: "co_hvac",    locationId: "loc_augusta",  serviceAreaId: "sa_augusta",   locationName: "Augusta Branch",  address: "50 Windsor Spring Rd",   city: "Augusta",   state: "GA", zip: "30906", phone: "(706) 555-4455", email: "dreeves@email.com",        since: "Sep 2020", tags: [],                          notes: "" },
-  { id: "14", name: "Columbia Health Systems",initials: "CH", accountType: "commercial",         type: "Commercial",  status: "Lead",     companyId: "co_roofing", locationId: "loc_columbia", serviceAreaId: "sa_columbia",  locationName: "Columbia Branch", address: "1301 Taylor St",         city: "Columbia",  state: "SC", zip: "29201", phone: "(803) 555-9900", email: "facilities@colhealth.com", since: "May 2026", tags: [],                          notes: "Facilities director is the decision maker." },
+  { id: "14", name: "Columbia Health Systems",initials: "CH", accountType: "commercial",         type: "Commercial",  status: "Prospect",     companyId: "co_roofing", locationId: "loc_columbia", serviceAreaId: "sa_columbia",  locationName: "Columbia Branch", address: "1301 Taylor St",         city: "Columbia",  state: "SC", zip: "29201", phone: "(803) 555-9900", email: "facilities@colhealth.com", since: "May 2026", tags: [],                          notes: "Facilities director is the decision maker." },
   { id: "15", name: "Carlos Vega",            initials: "CV", accountType: "residential",        type: "Residential", status: "Customer", companyId: "co_roofing", locationId: "loc_columbia", serviceAreaId: "sa_aiken",     locationName: "Columbia Branch", address: "209 Bees Creek Rd",      city: "Aiken",     state: "SC", zip: "29803", phone: "(803) 555-7712", email: "cvega@gmail.com",          since: "Feb 2022", tags: ["Plumbing Membership"],     notes: "" },
 ];
 
@@ -262,6 +264,46 @@ export const NOTES: Record<string, CustomerNote[]> = {
     { id: "n4-2", customerId: "4", date: "Apr 12, 2026", user: "Sara (CSR)", userInitials: "SC", type: "note",  text: "Mike Torres reported drain issue in unit 14. Dispatched M. Cole same day." },
   ],
 };
+
+// ─── Tasks ────────────────────────────────────────────────
+export interface CustomerTask {
+  id: string;
+  customerId: string;
+  title: string;
+  type: TaskType;
+  dueDate: string;
+  assignedTo?: string;
+  status: TaskStatus;
+  notes?: string;
+}
+
+export const TASKS: Record<string, CustomerTask[]> = {
+  "1": [
+    { id: "t1-1", customerId: "1", title: "Follow up on water heater quote",   type: "follow_up",     dueDate: "Jun 5, 2026",  assignedTo: "Sara (CSR)", status: "open" },
+    { id: "t1-2", customerId: "1", title: "Schedule air quality test",         type: "schedule",      dueDate: "Jun 20, 2026", assignedTo: "J. Patel",   status: "open" },
+  ],
+  "2": [
+    { id: "t2-1", customerId: "2", title: "Send roofing replacement proposal", type: "send_estimate", dueDate: "Jun 3, 2026",  assignedTo: "D. Nguyen",  status: "open" },
+    { id: "t2-2", customerId: "2", title: "Call D. Webb re: Building 2 HVAC",  type: "call",          dueDate: "Jun 10, 2026", assignedTo: "Sara (CSR)", status: "open" },
+  ],
+  "4": [
+    { id: "t4-1", customerId: "4", title: "Send Q3 plumbing inspection reminder", type: "send_agreement", dueDate: "Jul 15, 2026", assignedTo: "Sara (CSR)", status: "open" },
+  ],
+  "7": [
+    { id: "t7-1", customerId: "7", title: "Confirm spring HVAC appointment",   type: "call",          dueDate: "Jun 3, 2026",  assignedTo: "Sara (CSR)", status: "open" },
+  ],
+  "8": [
+    { id: "t8-1", customerId: "8", title: "Send monthly property summary",     type: "other",         dueDate: "May 31, 2026", assignedTo: "Sara (CSR)", status: "overdue" },
+    { id: "t8-2", customerId: "8", title: "Renewal pricing discussion",        type: "call",          dueDate: "Jun 15, 2026", assignedTo: "Marcus Reyes", status: "open" },
+  ],
+  "12": [
+    { id: "t12-1", customerId: "12", title: "Discuss renewal pricing",         type: "call",          dueDate: "Jun 12, 2026", assignedTo: "Sara (CSR)", status: "open" },
+  ],
+};
+
+export function getTasks(customerId: string): CustomerTask[] {
+  return TASKS[customerId] ?? [];
+}
 
 // ─── Runtime store (pre-Supabase) ────────────────────────
 // Newly created customers are pushed here so getCustomer() and

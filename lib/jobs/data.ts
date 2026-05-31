@@ -6,7 +6,7 @@
 //   projects, jobs, work_orders, checklist_items, job_notes
 
 // ─── Types ────────────────────────────────────────────────
-export type JobStatus      = "scheduled" | "en_route" | "in_progress" | "completed" | "canceled" | "no_show";
+export type JobStatus      = "new" | "scheduled" | "en_route" | "in_progress" | "waiting_on_parts" | "waiting_on_customer" | "completed" | "invoiced" | "closed" | "canceled" | "no_show";
 export type JobType        = "maintenance" | "repair" | "installation" | "inspection" | "emergency" | "estimate" | "warranty" | "replacement" | "other";
 export type JobPriority    = "low" | "normal" | "high" | "urgent";
 export type WorkOrderStatus = "pending" | "in_progress" | "completed";
@@ -68,13 +68,35 @@ export interface JobNote {
 
 // ─── Status display config ────────────────────────────────
 export const JOB_STATUS_CONFIG: Record<JobStatus, { label: string; bg: string; color: string }> = {
-  scheduled:   { label: "Scheduled",   bg: "#e0e7ff", color: "#3730a3" },
-  en_route:    { label: "En Route",    bg: "#fef3c7", color: "#92400e" },
-  in_progress: { label: "In Progress", bg: "#dbeafe", color: "#1e40af" },
-  completed:   { label: "Completed",   bg: "#d1fae5", color: "#065f46" },
-  canceled:    { label: "Canceled",    bg: "var(--bg-input)", color: "var(--text-muted)" },
-  no_show:     { label: "No Show",     bg: "#fee2e2", color: "#991b1b" },
+  new:                  { label: "New",                  bg: "var(--bg-input)", color: "var(--text-secondary)" },
+  scheduled:            { label: "Scheduled",            bg: "#e0e7ff",         color: "#3730a3" },
+  en_route:             { label: "En Route",             bg: "#fef3c7",         color: "#92400e" },
+  in_progress:          { label: "In Progress",          bg: "#dbeafe",         color: "#1e40af" },
+  waiting_on_parts:     { label: "Waiting on Parts",     bg: "#fef3c7",         color: "#92400e" },
+  waiting_on_customer:  { label: "Waiting on Customer",  bg: "#fef3c7",         color: "#92400e" },
+  completed:            { label: "Completed",            bg: "#d1fae5",         color: "#065f46" },
+  invoiced:             { label: "Invoiced",             bg: "#ecfdf5",         color: "#059669" },
+  closed:               { label: "Closed",               bg: "var(--bg-input)", color: "var(--text-muted)" },
+  canceled:             { label: "Canceled",             bg: "var(--bg-input)", color: "var(--text-muted)" },
+  no_show:              { label: "No Show",              bg: "#fee2e2",         color: "#991b1b" },
 };
+
+// Resolves a job's status to display config from the company's configured
+// Job Statuses (Settings → Job Types & Statuses), falling back to the built-in
+// JOB_STATUS_CONFIG for any status key not present in settings.
+// Call from a client component with the array from getJobStatuses().
+export interface StatusDisplay { label: string; bg: string; color: string }
+
+export function resolveJobStatus(
+  statusKey: string,
+  configured: { key: string; name: string; color: string }[],
+): StatusDisplay {
+  const match = configured.find(s => s.key === statusKey);
+  if (match) return { label: match.name, color: match.color, bg: match.color + "22" };
+  const legacy = JOB_STATUS_CONFIG[statusKey as JobStatus];
+  if (legacy) return legacy;
+  return { label: statusKey, bg: "var(--bg-input)", color: "var(--text-secondary)" };
+}
 
 export const JOB_TYPE_CONFIG: Record<JobType, string> = {
   maintenance:  "#6366f1", repair:      "#ef4444",

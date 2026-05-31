@@ -1,124 +1,66 @@
+"use client";
+
 import Link from "next/link";
-import { Filter, ExternalLink } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { ExternalLink } from "lucide-react";
+import { ALL_JOBS, JOB_STATUS_CONFIG } from "@/lib/jobs/data";
+import { useHierarchy } from "@/components/providers/HierarchyProvider";
 
-const jobs = [
-  {
-    time: "08:00",
-    duration: "90 min",
-    customer: "Alvarez Residence",
-    service: "HVAC tune-up",
-    address: "412 Oak St",
-    tech: "J. Patel",
-    status: "En route",
-  },
-  {
-    time: "10:30",
-    duration: "90 min",
-    customer: "Lakeside Apts",
-    service: "Drain cleaning",
-    address: "88 Lakeside Dr",
-    tech: "M. Cole",
-    status: "In progress",
-  },
-  {
-    time: "13:00",
-    duration: "90 min",
-    customer: "Hammond LLC",
-    service: "Roof inspection",
-    address: "1200 Industrial Way",
-    tech: "D. Nguyen",
-    status: "Scheduled",
-  },
-  {
-    time: "15:30",
-    duration: "90 min",
-    customer: "K. Brennan",
-    service: "Water heater install",
-    address: "27 Maple Ct",
-    tech: "J. Patel",
-    status: "Scheduled",
-  },
-];
-
-const statusStyles: Record<string, string> = {
-  "En route": "bg-amber-100 text-amber-700",
-  "In progress": "bg-blue-100 text-blue-700",
-  Scheduled: "bg-gray-100 text-gray-500",
-};
+const TODAY = "May 30, 2026";
 
 export default function TodaysJobs() {
+  const { effectiveCompanyId, effectiveLocationId } = useHierarchy();
+
+  const jobs = ALL_JOBS
+    .filter(j => !effectiveCompanyId  || j.companyId  === effectiveCompanyId)
+    .filter(j => !effectiveLocationId || j.locationId === effectiveLocationId)
+    .filter(j => j.scheduledDate === TODAY || j.status === "in_progress" || j.status === "en_route")
+    .sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
+
   return (
-    <div
-      className="rounded-xl overflow-hidden"
-      style={{
-        backgroundColor: "var(--bg-surface)",
-        border: "1px solid var(--border-subtle)",
-        boxShadow: "var(--shadow-card)",
-      }}
-    >
-      <div
-        className="flex items-center justify-between px-5 py-4"
-        style={{ borderBottom: "1px solid var(--border-subtle)" }}
-      >
-        <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-          Today&apos;s jobs
-        </h2>
-        <div className="flex items-center gap-3">
-          <button style={{ color: "var(--text-muted)" }}>
-            <Filter className="w-4 h-4" />
-          </button>
-          <Link
-            href="/jobs"
-            className="flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-700"
-          >
-            View all
-            <ExternalLink className="w-3 h-3" />
-          </Link>
+    <div className="rounded-xl overflow-hidden"
+      style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+      <div className="flex items-center justify-between px-5 py-4"
+        style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+        <div>
+          <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Today&apos;s Jobs</h2>
+          <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>{TODAY}</p>
         </div>
+        <Link href="/jobs" className="flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-700">
+          View all <ExternalLink className="w-3 h-3" />
+        </Link>
       </div>
 
-      <div>
-        {jobs.map((job, i) => (
-          <div
-            key={i}
-            className="flex items-center gap-4 px-5 py-3 cursor-pointer transition-colors hover:opacity-90"
-            style={
-              i < jobs.length - 1
-                ? { borderBottom: "1px solid var(--border-subtle)" }
-                : undefined
-            }
-          >
-            <div className="w-14 shrink-0">
-              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                {job.time}
-              </p>
-              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                {job.duration}
-              </p>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>
-                {job.customer}
-              </p>
-              <p className="text-xs truncate" style={{ color: "var(--text-muted)" }}>
-                {job.service} · {job.address}
-              </p>
-            </div>
-            <span className="text-xs shrink-0" style={{ color: "var(--text-secondary)" }}>
-              {job.tech}
-            </span>
-            <span
-              className={cn(
-                "text-[10px] font-semibold px-2 py-1 rounded-full shrink-0",
-                statusStyles[job.status]
-              )}
-            >
-              {job.status}
-            </span>
-          </div>
-        ))}
-      </div>
+      {jobs.length === 0 ? (
+        <div className="px-5 py-8 text-center">
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>No jobs scheduled today.</p>
+        </div>
+      ) : (
+        <div>
+          {jobs.map((job, i) => {
+            const s = JOB_STATUS_CONFIG[job.status];
+            return (
+              <Link key={job.id} href={`/jobs/${job.id}`}
+                className="flex items-center gap-4 px-5 py-3 hover:bg-[var(--bg-surface-2)] transition-colors"
+                style={{ borderBottom: i < jobs.length - 1 ? "1px solid var(--border-subtle)" : "none", textDecoration: "none" }}>
+                <div className="w-16 shrink-0">
+                  <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{job.scheduledTime}</p>
+                  <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>{job.durationMinutes}m</p>
+                </div>
+                <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-600 shrink-0">
+                  {job.customerInitials}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{job.customerName}</p>
+                  <p className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{job.title}</p>
+                </div>
+                <span className="text-xs shrink-0" style={{ color: "var(--text-secondary)" }}>{job.assignedTo}</span>
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0"
+                  style={{ backgroundColor: s.bg, color: s.color }}>{s.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

@@ -47,15 +47,19 @@ export const serviceAreas: ServiceArea[] = [
 // ─── Organization settings ────────────────────────────────
 // Stored in organization_settings table in production.
 // Change mode here to see the UI adapt instantly.
+// Default module flags — all on for the prototype.
+const DEFAULT_MODULES = { projectsEnabled: true, agreementsEnabled: true, marketingEnabled: true };
+
 export const orgSettings: OrgSettings = {
-  mode: "multi_company",       // ← change to "simple" | "multi_location" | "advanced_territory" to preview
+  mode: "advanced_territory",
   multiCompany: true,
   multiLocation: true,
   serviceAreasEnabled: true,
+  ...DEFAULT_MODULES,
 };
 
-// Mode presets for the settings UI
-export const MODE_PRESETS: Record<OrgSettings["mode"], OrgSettings> = {
+// Mode presets — hierarchy layers only. Module flags are preserved when switching modes.
+export const MODE_PRESETS: Record<OrgSettings["mode"], Omit<OrgSettings, "projectsEnabled" | "agreementsEnabled" | "marketingEnabled">> = {
   simple:             { mode: "simple",             multiCompany: false, multiLocation: false, serviceAreasEnabled: false },
   multi_location:     { mode: "multi_location",     multiCompany: false, multiLocation: true,  serviceAreasEnabled: false },
   multi_company:      { mode: "multi_company",       multiCompany: true,  multiLocation: true,  serviceAreasEnabled: false },
