@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { X, CalendarClock } from "lucide-react";
 import Select from "@/components/ui/Select";
+import DatePicker from "@/components/ui/DatePicker";
+import TimePicker from "@/components/ui/TimePicker";
 import type { UnscheduledItem } from "@/lib/calendar/types";
 
 export interface ScheduleDraft {
@@ -51,12 +53,10 @@ export default function ScheduleConfirmModal({
 
           <div className="grid grid-cols-2 gap-3">
             <Field label="Date">
-              <input type="date" value={d.date} onChange={e => set("date", e.target.value)}
-                className="w-full rounded-lg px-3 py-2 text-sm outline-none" style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }} />
+              <DatePicker value={d.date} onChange={v => set("date", v)} clearable={false} />
             </Field>
             <Field label="Time">
-              <input type="time" value={d.time} onChange={e => set("time", e.target.value)}
-                className="w-full rounded-lg px-3 py-2 text-sm outline-none" style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }} />
+              <TimePicker value={d.time} onChange={v => set("time", v)} />
             </Field>
           </div>
 

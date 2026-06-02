@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import JobWizard from "@/components/jobs/JobWizard";
 import { Search, Plus, SlidersHorizontal, ChevronUp, ChevronDown, FolderKanban, Calendar, CalendarClock, Loader, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ALL_JOBS, getSessionJobs, resolveJobStatus, type Job, type JobType } from "@/lib/jobs/data";
@@ -92,6 +94,8 @@ function ProjectsInline({ projects, companyId, locationId }: { projects: Project
 export default function JobsPage() {
   const { effectiveCompanyId, effectiveLocationId } = useHierarchy();
 
+  const router = useRouter();
+  const [showCreate, setShowCreate] = useState(false);
   const [tab, setTab]         = useState("today");
   const [moduleView, setModuleView] = useState<ModuleView>("list");
   const [search, setSearch]   = useState("");
@@ -162,7 +166,7 @@ export default function JobsPage() {
         </div>
         <ModuleViewToggle view={moduleView} onChange={setModuleView} />
         <div className="flex-1 flex justify-end">
-          <button className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors">
+          <button onClick={() => setShowCreate(true)} className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors">
             <Plus className="w-4 h-4" /> New Job
           </button>
         </div>
@@ -284,6 +288,12 @@ export default function JobsPage() {
           </>
         )}
       </div>
+      )}
+
+      {showCreate && (
+        <JobWizard
+          onClose={() => setShowCreate(false)}
+          onCreated={(jid) => { setShowCreate(false); router.push(`/jobs/${jid}`); }} />
       )}
     </div>
   );

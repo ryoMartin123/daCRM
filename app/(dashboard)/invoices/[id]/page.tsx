@@ -4,7 +4,7 @@ import React, { use, useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Pencil, Download, Printer, Eye, ChevronRight, ChevronDown, Receipt, DollarSign, Briefcase, FolderKanban, FilePen, Copy, Ban, X } from "lucide-react";
-import { getInvoice, getQuote, fmt, updateInvoiceStatus, recordPayment, duplicateInvoice, voidInvoice } from "@/lib/quotes/data";
+import { getInvoice, getQuote, fmt, updateInvoiceStatus, recordPayment, duplicateInvoice, voidInvoice, updateInvoice, type InvoiceRecord } from "@/lib/quotes/data";
 import { INVOICE_STATUS_STYLE, type InvoiceStatus } from "@/lib/quotes/types";
 import { getCustomer } from "@/lib/customers/data";
 import InvoicePreview from "@/components/quotes/InvoicePreview";
@@ -397,12 +397,8 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
 
       <div className="flex-1 overflow-y-auto p-6" style={{ backgroundColor: "var(--bg-page)" }}>
         {tab === "Details" && <DetailsTab id={id} />}
-        {(tab === "Notes" || tab === "History") && (
-          <div className="max-w-xl rounded-xl p-8 text-center" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
-            <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{tab}</p>
-            <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>Coming in Phase 2</p>
-          </div>
-        )}
+        {tab === "Notes"   && <InvoiceNotesTab invoice={invoice} onSaved={refresh} />}
+        {tab === "History" && <InvoiceHistoryTab invoice={invoice} />}
       </div>
 
       {/* Preview modal */}
@@ -425,6 +421,68 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
 
       {showPay && <PaymentModal balanceDue={invoice.balanceDue} invoiceNumber={invoice.invoiceNumber} onSubmit={submitPayment} onClose={() => setShowPay(false)} />}
       {showEdit && <InvoiceWizard editInvoice={invoice} onClose={() => setShowEdit(false)} onCreated={() => { setShowEdit(false); refresh(); }} />}
+    </div>
+  );
+}
+
+// ─── Notes tab ────────────────────────────────────────────
+function InvoiceNotesTab({ invoice, onSaved }: { invoice: InvoiceRecord; onSaved: () => void }) {
+  const [customerNotes, setCustomerNotes] = useState(invoice.customerNotes ?? "");
+  const [internalNotes, setInternalNotes] = useState(invoice.internalNotes ?? "");
+  const [saved, setSaved] = useState(false);
+  const dirty = customerNotes !== (invoice.customerNotes ?? "") || internalNotes !== (invoice.internalNotes ?? "");
+  function save() {
+    updateInvoice(invoice.id, { customerNotes, internalNotes });
+    setSaved(true); setTimeout(() => setSaved(false), 2000);
+    onSaved();
+  }
+  return (
+    <div className="max-w-2xl space-y-4">
+      <div className="rounded-xl p-4" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+        <label className="block text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>Invoice Notes <span className="normal-case font-normal">(shown on the invoice)</span></label>
+        <textarea value={customerNotes} onChange={e => setCustomerNotes(e.target.value)} rows={4} placeholder="Payment terms, remittance details…"
+          className="w-full rounded-lg px-3 py-2 text-sm outline-none resize-none" style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }} />
+      </div>
+      <div className="rounded-xl p-4" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+        <label className="block text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>Internal Notes <span className="normal-case font-normal">(team only)</span></label>
+        <textarea value={internalNotes} onChange={e => setInternalNotes(e.target.value)} rows={3} placeholder="Internal context not shown to the customer…"
+          className="w-full rounded-lg px-3 py-2 text-sm outline-none resize-none" style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }} />
+      </div>
+      <div className="flex justify-end">
+        <button onClick={save} disabled={!dirty && !saved}
+          className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-40"
+          style={{ backgroundColor: saved ? "#10b981" : "#4f46e5" }}>{saved ? "Saved ✓" : "Save Notes"}</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── History tab (created → sent → payments → paid) ───────
+function InvoiceHistoryTab({ invoice }: { invoice: InvoiceRecord }) {
+  const events: { label: string; detail?: string; at?: string }[] = [];
+  events.push({ label: "Invoice created", detail: invoice.invoiceNumber, at: invoice.createdAt });
+  if (invoice.status !== "draft") events.push({ label: "Marked sent", detail: `Due ${invoice.dueDate}` });
+  (invoice.payments ?? []).forEach(p => events.push({ label: "Payment recorded", detail: fmt(p.amount), at: p.at }));
+  if (invoice.status === "paid" && invoice.paidAt) events.push({ label: "Paid in full", at: invoice.paidAt });
+  if (invoice.status === "void") events.push({ label: "Invoice voided" });
+
+  return (
+    <div className="max-w-2xl rounded-xl p-5" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+      <p className="text-xs font-semibold uppercase tracking-widest mb-4" style={{ color: "var(--text-muted)" }}>History</p>
+      <div className="space-y-0">
+        {events.map((e, i) => (
+          <div key={i} className="flex gap-3 pb-4 last:pb-0">
+            <div className="flex flex-col items-center">
+              <div className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: "#4f46e5" }} />
+              {i < events.length - 1 && <div className="w-px flex-1 mt-1" style={{ backgroundColor: "var(--border-subtle)" }} />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm" style={{ color: "var(--text-primary)" }}>{e.label}{e.detail ? <span style={{ color: "var(--text-muted)" }}> · {e.detail}</span> : null}</p>
+              {e.at && <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>{e.at}</p>}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

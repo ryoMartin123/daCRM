@@ -11,7 +11,7 @@ import CalendarItemDrawer from "@/components/calendar/CalendarItemDrawer";
 import ScheduleConfirmModal, { type ScheduleDraft } from "@/components/calendar/ScheduleConfirmModal";
 import Select from "@/components/ui/Select";
 import {
-  getCalendarItems, getUnscheduledItems, getUnscheduledJobs, getTechnicians, getTechRoster, type CalendarScope,
+  getCalendarItems, getUnscheduledItems, getUnscheduledJobs, getSessionCalendarItems, getTechnicians, getTechRoster, type CalendarScope,
 } from "@/lib/calendar/data";
 import {
   LAYER_CONFIG, CALENDAR_LAYERS, PRIORITY_CONFIG, TECH_STATUS_CONFIG, HOUR_PX,
@@ -82,11 +82,16 @@ export default function CalendarPage() {
   const [removed, setRemoved]     = useState<Set<string>>(new Set());
   const [confirm, setConfirm]     = useState<{ item: UnscheduledItem; draft: ScheduleDraft } | null>(null);
 
-  // Unscheduled jobs (e.g. converted from a quote) live in the session job store;
-  // load them client-side so they merge into the queue without a hydration gap.
+  // Jobs created in-session (New Job form / quote conversion) live in the session
+  // store; load them client-side so they merge into the queue (unscheduled) and
+  // the board/calendar (scheduled) without a hydration gap.
   const [sessionUnscheduled, setSessionUnscheduled] = useState<UnscheduledItem[]>([]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { setSessionUnscheduled(getUnscheduledJobs(scope)); }, [effectiveCompanyId, effectiveLocationId, effectiveServiceAreaId]);
+  const [sessionItems, setSessionItems] = useState<CalendarItem[]>([]);
+  useEffect(() => {
+    const s: CalendarScope = { companyId: effectiveCompanyId, locationId: effectiveLocationId, serviceAreaId: effectiveServiceAreaId };
+    setSessionUnscheduled(getUnscheduledJobs(s));
+    setSessionItems(getSessionCalendarItems(s));
+  }, [effectiveCompanyId, effectiveLocationId, effectiveServiceAreaId]);
 
   // Selection (drawer)
   const [selScheduled, setSelScheduled]     = useState<CalendarItem | null>(null);
@@ -153,7 +158,7 @@ export default function CalendarPage() {
   const hourly = settings.hourly;
   const activeBlocks = settings.blocks.filter(b => b.active).sort((a, b) => a.order - b.order);
 
-  const items = useMemo(() => [...rawItems, ...extra]
+  const items = useMemo(() => [...rawItems, ...sessionItems, ...extra]
     .map(i => {
       const e = edits[i.id];
       if (!e) return i;
@@ -165,7 +170,7 @@ export default function CalendarPage() {
     .filter(i => fTech === "all" || i.assignedTo === fTech)
     .filter(i => fType === "all" || i.jobType === fType)
     .filter(i => fPrio === "all" || i.priority === fPrio),
-    [rawItems, extra, edits, hidden, fTech, fType, fPrio]);
+    [rawItems, sessionItems, extra, edits, hidden, fTech, fType, fPrio]);
 
   // Narrow scheduled items + queue to the selected board (All Boards = no narrowing).
   const boardItems  = activeBoardDef ? items.filter(i => itemMatchesBoard(i, activeBoardDef)) : items;

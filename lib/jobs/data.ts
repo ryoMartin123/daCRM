@@ -246,10 +246,37 @@ function extraJobs(): Job[] {
   return _extraJobs!;
 }
 
+// Overrides persist edits (status changes, reschedules) to *seed* jobs without
+// mutating the constant array.
+const JOBS_OV_KEY = "crm-job-overrides";
+let _jobOverrides: Record<string, Partial<Job>> | null = null;
+function jobOverrides(): Record<string, Partial<Job>> {
+  if (_jobOverrides) return _jobOverrides;
+  if (typeof window === "undefined") return {};
+  try { const r = localStorage.getItem(JOBS_OV_KEY); _jobOverrides = r ? JSON.parse(r) : {}; }
+  catch { _jobOverrides = {}; }
+  return _jobOverrides!;
+}
+function applyJobOverride(j: Job): Job { const o = jobOverrides()[j.id]; return o ? { ...j, ...o } : j; }
+
 // Session-created jobs only (for hydration-safe merging in client lists).
-export function getSessionJobs(): Job[] { return extraJobs(); }
+export function getSessionJobs(): Job[] { return extraJobs().map(applyJobOverride); }
 // All jobs (seed + session). Server-side returns seed only.
-export function getAllJobs(): Job[] { return [...extraJobs(), ...ALL_JOBS]; }
+export function getAllJobs(): Job[] { return [...extraJobs(), ...ALL_JOBS].map(applyJobOverride); }
+
+// Update a job (e.g. status progression). Session jobs mutate in place; seed jobs via overrides.
+export function updateJob(id: string, patch: Partial<Job>): Job | undefined {
+  if (extraJobs().some(j => j.id === id)) {
+    _extraJobs = extraJobs().map(j => j.id === id ? { ...j, ...patch } : j);
+    try { localStorage.setItem(JOBS_KEY, JSON.stringify(_extraJobs)); } catch { /* ignore */ }
+  } else {
+    const all = { ...jobOverrides() };
+    all[id] = { ...all[id], ...patch };
+    _jobOverrides = all;
+    try { localStorage.setItem(JOBS_OV_KEY, JSON.stringify(all)); } catch { /* ignore */ }
+  }
+  return getJob(id);
+}
 
 export interface NewJobInput {
   companyId: string; locationId: string; serviceAreaId?: string;
@@ -286,7 +313,8 @@ export function createJob(input: NewJobInput): Job {
 export const JOBS_MAP: Record<string, Job> = Object.fromEntries(ALL_JOBS.map(j => [j.id, j]));
 
 export function getJob(id: string): Job | undefined {
-  return JOBS_MAP[id] ?? extraJobs().find(j => j.id === id);
+  const base = JOBS_MAP[id] ?? extraJobs().find(j => j.id === id);
+  return base ? applyJobOverride(base) : undefined;
 }
 
 export function getJobsForProject(projectId: string): Job[] {

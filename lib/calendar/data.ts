@@ -1,7 +1,7 @@
 // Calendar aggregator — normalizes scheduled records from many modules into
 // CalendarItem[]. Filtering by hierarchy scope happens here so views stay dumb.
 
-import { ALL_JOBS, getAllJobs, WORK_ORDERS, JOB_STATUS_CONFIG, type Job } from "@/lib/jobs/data";
+import { ALL_JOBS, getAllJobs, getSessionJobs, WORK_ORDERS, JOB_STATUS_CONFIG, type Job } from "@/lib/jobs/data";
 import { ALL_TASKS } from "@/lib/tasks/data";
 import { AGREEMENTS } from "@/lib/agreements/data";
 import { ALL_PROJECTS } from "@/lib/projects/data";
@@ -242,6 +242,18 @@ export function getUnscheduledItems(scope: CalendarScope): UnscheduledItem[] {
   // Priority sort: urgent → high → normal → low
   const rank: Record<ItemPriority, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
   return out.sort((x, y) => rank[x.priority] - rank[y.priority]);
+}
+
+// Scheduled jobs created in-session (e.g. via the New Job form). The board/
+// calendar build their seed items from ALL_JOBS during render; these are merged
+// in client-side via an effect so they appear without a hydration mismatch.
+export function getSessionCalendarItems(scope: CalendarScope): CalendarItem[] {
+  const out: CalendarItem[] = [];
+  for (const job of getSessionJobs()) {
+    const item = jobToItem(job);          // null when the job has no scheduled date
+    if (item && inScope(item, scope)) out.push(item);
+  }
+  return out;
 }
 
 // Jobs that exist but have no scheduled slot yet (e.g. created by converting a

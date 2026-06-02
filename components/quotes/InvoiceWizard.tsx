@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { X, Plus, Trash2, Check, ChevronLeft, ChevronRight, FileText, Send, Package, Tag } from "lucide-react";
 import UiSelect from "@/components/ui/Select";
+import DatePicker from "@/components/ui/DatePicker";
 import InvoicePreview, { type InvoicePreviewData } from "@/components/quotes/InvoicePreview";
 import CatalogPicker from "@/components/quotes/CatalogPicker";
 import { getAllCustomers, getProperties } from "@/lib/customers/data";
@@ -217,8 +218,7 @@ export default function InvoiceWizard({ preset, editInvoice, onClose, onCreated 
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Due Date *</label>
-                  <input type="date" value={dueDate} onChange={ev => setDueDate(ev.target.value)}
-                    className="w-full rounded-lg px-3 py-2 text-sm outline-none" style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }} />
+                  <DatePicker value={dueDate} onChange={setDueDate} placeholder="Pick a due date" clearable={false} />
                 </div>
               </div>
               <div>

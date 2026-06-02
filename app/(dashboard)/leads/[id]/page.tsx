@@ -16,6 +16,7 @@ import {
 import { getActivityEvents } from "@/lib/activity/data";
 import { EVENT_FILTER_MAP } from "@/lib/activity/types";
 import UiSelect from "@/components/ui/Select";
+import DatePicker from "@/components/ui/DatePicker";
 import { companies, locations, serviceAreas } from "@/lib/hierarchy/data";
 import { getCustomer } from "@/lib/customers/data";
 import { getQuotesForLead, fmt as fmtCurrency } from "@/lib/quotes/data";
@@ -428,9 +429,7 @@ function ConvertTab({ id }: { id: string }) {
             </div>
             <div>
               <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Scheduled Date</label>
-              <input type="date" value={jobDate} onChange={e => setJobDate(e.target.value)}
-                className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-                style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }} />
+              <DatePicker value={jobDate} onChange={setJobDate} placeholder="Pick a date" />
             </div>
           </div>
           <div className="flex gap-2 justify-end pt-1">

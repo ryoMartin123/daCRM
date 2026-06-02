@@ -3,9 +3,10 @@
 import React, { use, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Pencil, CheckCircle, Circle, ChevronRight, Phone, MapPin, User, Clock, Calendar, DollarSign, Briefcase, AlertTriangle, Camera, ListChecks, Plus } from "lucide-react";
+import { ArrowLeft, CheckCircle, Circle, ChevronRight, Phone, MapPin, User, Clock, Calendar, DollarSign, Briefcase, AlertTriangle, Camera, ListChecks, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getJob, getWorkOrder, getJobNotes, resolveJobStatus, type JobNoteType } from "@/lib/jobs/data";
+import { getJob, updateJob, getWorkOrder, getJobNotes, resolveJobStatus, type JobNoteType, type JobStatus } from "@/lib/jobs/data";
+import UiSelect from "@/components/ui/Select";
 import { getJobStatuses } from "@/lib/job-config/data";
 import {
   suggestTemplateForJobType, getChecklist, getPhotos, getInstructions,
@@ -573,8 +574,16 @@ function InfoRow({ icon: Icon, label, value }: { icon: typeof Phone; label: stri
 export default function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id }    = use(params);
   const [tab, setTab] = useState("Overview");
+  const [job, setJob] = useState(() => getJob(id));
+  const refresh = () => setJob(getJob(id));
 
-  const job = getJob(id);
+  function changeStatus(next: string) {
+    const patch: { status: JobStatus; completedDate?: string } = { status: next as JobStatus };
+    if (next === "completed") patch.completedDate = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    updateJob(id, patch);
+    refresh();
+  }
+
   if (!job) {
     return (
       <div className="p-6">
@@ -614,12 +623,16 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm" style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
-              <Pencil className="w-3.5 h-3.5" /> Edit
-            </button>
-            <button className="px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors">
-              Mark Complete
-            </button>
+            <div className="w-44">
+              <UiSelect size="sm" value={job.status} onChange={changeStatus}
+                options={getJobStatuses().filter(st => st.active).map(st => ({ value: st.key, label: st.name }))} />
+            </div>
+            {job.status !== "completed" && (
+              <button onClick={() => changeStatus("completed")}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors">
+                Mark Complete
+              </button>
+            )}
           </div>
         </div>
         {/* Tabs */}

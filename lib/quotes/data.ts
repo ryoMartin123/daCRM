@@ -65,10 +65,13 @@ export interface QuoteRecord extends Quote {
   deleted?: boolean;
 }
 
+export interface InvoicePayment { id: string; amount: number; at: string; method?: string }
+
 export interface InvoiceRecord extends Invoice {
   lineItems: LineItem[];
   internalNotes?: string;
   customerNotes?: string;          // customer-facing notes / terms shown on the invoice
+  payments?: InvoicePayment[];     // recorded payments (history)
   // Denormalized
   customerName: string;
   customerInitials: string;
@@ -459,7 +462,10 @@ export function recordPayment(id: string, amount: number): InvoiceRecord | undef
   const inv = getInvoice(id);
   if (!inv) return;
   const balance = Math.max(0, Math.round((inv.balanceDue - amount) * 100) / 100);
-  const patch: Partial<InvoiceRecord> = { balanceDue: balance };
+  const patch: Partial<InvoiceRecord> = {
+    balanceDue: balance,
+    payments: [...(inv.payments ?? []), { id: `pay-${Date.now()}`, amount, at: nowStamp() }],
+  };
   if (balance <= 0) { patch.status = "paid"; patch.paidAt = nowStamp(); }
   else patch.status = "partially_paid";
   persistInvoiceEdit(id, patch);
