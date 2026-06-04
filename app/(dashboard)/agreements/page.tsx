@@ -1,16 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Search, Plus, SlidersHorizontal, ChevronUp, ChevronDown,
   FileText, CalendarCheck, RefreshCw, DollarSign, LayoutTemplate,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  AGREEMENTS, TEMPLATES, AGREEMENT_STATS, formatValue,
+  AGREEMENTS, TEMPLATES, AGREEMENT_STATS, formatValue, getAllAgreements,
   type AgreementStatus, type CustomerAgreement, type AgreementTemplate,
 } from "@/lib/agreements/data";
+import AgreementBuilder from "@/components/agreements/AgreementBuilder";
 import ModuleSummaryCards from "@/components/shared/ModuleSummaryCards";
 import ModuleViewToggle, { type ModuleView } from "@/components/shared/ModuleViewToggle";
 import StatusTabs from "@/components/shared/StatusTabs";
@@ -113,16 +115,22 @@ function TemplatesTable() {
 
 // ─── Page ─────────────────────────────────────────────────
 export default function AgreementsPage() {
+  const router = useRouter();
   const [tab, setTab]         = useState("all");
   const [search, setSearch]   = useState("");
   const [sortField, setSort]  = useState<SortField>("customer");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [moduleView, setModuleView] = useState<ModuleView>("list");
+  const [showBuilder, setShowBuilder] = useState(false);
+
+  // Merge in session-created agreements client-side (avoids a hydration gap).
+  const [agreements, setAgreements] = useState<CustomerAgreement[]>(AGREEMENTS);
+  useEffect(() => { setAgreements(getAllAgreements()); }, [showBuilder]);
 
   const isTemplates = tab === "templates";
   const tabFn = TABS.find((t) => t.key === tab)?.fn ?? (() => true);
 
-  const displayed = AGREEMENTS
+  const displayed = agreements
     .filter(tabFn)
     .filter((a) => {
       if (!search) return true;
@@ -178,7 +186,7 @@ export default function AgreementsPage() {
               className="text-xs font-bold px-2 py-0.5 rounded-full"
               style={{ backgroundColor: "var(--bg-input)", color: "var(--text-muted)" }}
             >
-              {AGREEMENTS.length}
+              {agreements.length}
             </span>
           </div>
           <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>
@@ -188,13 +196,15 @@ export default function AgreementsPage() {
         <ModuleViewToggle view={moduleView} onChange={setModuleView} />
         <div className="flex-1 flex items-center justify-end gap-2">
           <button
+            onClick={() => router.push("/settings?section=agreements")}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm transition-colors"
             style={{ border: "1px solid var(--border)", color: "var(--text-secondary)", backgroundColor: "var(--bg-surface)" }}
           >
             <LayoutTemplate className="w-4 h-4" />
             Templates
           </button>
-          <button className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors">
+          <button onClick={() => setShowBuilder(true)}
+            className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors">
             <Plus className="w-4 h-4" />
             New Agreement
           </button>
@@ -228,7 +238,7 @@ export default function AgreementsPage() {
           style={{ borderBottom: "1px solid var(--border-subtle)" }}
         >
           <StatusTabs active={tab} onChange={k => setTab(k as typeof tab)}
-            tabs={TABS.map(t => ({ key: t.key, label: t.label, count: t.key === "templates" ? TEMPLATES.length : AGREEMENTS.filter(t.fn).length }))} />
+            tabs={TABS.map(t => ({ key: t.key, label: t.label, count: t.key === "templates" ? TEMPLATES.length : agreements.filter(t.fn).length }))} />
 
           {!isTemplates && (
             <div className="flex items-center gap-2">
@@ -411,7 +421,7 @@ export default function AgreementsPage() {
               }}
             >
               <span>
-                Showing {displayed.length} of {AGREEMENTS.filter(tabFn).length} agreements
+                Showing {displayed.length} of {agreements.filter(tabFn).length} agreements
               </span>
               <div className="flex items-center gap-1">
                 <button
@@ -431,6 +441,13 @@ export default function AgreementsPage() {
           </>
         )}
       </div>
+      )}
+
+      {showBuilder && (
+        <AgreementBuilder
+          onClose={() => setShowBuilder(false)}
+          onCreated={(id) => { setShowBuilder(false); router.push(`/agreements/${id}`); }}
+        />
       )}
     </div>
   );

@@ -3,7 +3,7 @@
 
 import { ALL_JOBS, getAllJobs, getSessionJobs, WORK_ORDERS, JOB_STATUS_CONFIG, type Job } from "@/lib/jobs/data";
 import { ALL_TASKS } from "@/lib/tasks/data";
-import { AGREEMENTS } from "@/lib/agreements/data";
+import { getAllAgreements } from "@/lib/agreements/data";
 import { ALL_PROJECTS } from "@/lib/projects/data";
 import { getAllQuotes } from "@/lib/quotes/data";
 import { locations as HIER_LOCATIONS } from "@/lib/hierarchy/data";
@@ -102,7 +102,7 @@ export function getCalendarItems(scope: CalendarScope): CalendarItem[] {
   }
 
   // Agreement visits (scheduled, not completed)
-  for (const a of AGREEMENTS) {
+  for (const a of getAllAgreements()) {
     const loc = resolveAgreementLocation(a.location);
     for (const v of a.visits) {
       if (v.status !== "scheduled") continue;
@@ -223,7 +223,7 @@ export function getUnscheduledItems(scope: CalendarScope): UnscheduledItem[] {
   }
 
   // Agreement visits due
-  for (const a of AGREEMENTS) {
+  for (const a of getAllAgreements()) {
     if (a.status !== "due_soon" && a.status !== "overdue") continue;
     const loc = resolveAgreementLocation(a.location);
     if (!inScope({ companyId: loc.companyId, locationId: loc.locationId }, scope)) continue;

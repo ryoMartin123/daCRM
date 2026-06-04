@@ -13,11 +13,11 @@ import {
   setQuoteNotes, getQuoteActivity, reopenQuote, resendQuote, archiveQuote, unarchiveQuote, deleteQuote,
   createInvoiceFromQuote, type QuoteRecord,
 } from "@/lib/quotes/data";
-import { downloadQuotePdf } from "@/lib/quotes/pdf";
+import { downloadProposalPdf } from "@/lib/quotes/proposalPdf";
+import { proposalDocFromQuote } from "@/lib/quotes/proposalDoc";
 import { QUOTE_STATUS_STYLE, type QuoteStatus } from "@/lib/quotes/types";
 import { getCustomer } from "@/lib/customers/data";
-import QuotePreview from "@/components/quotes/QuotePreview";
-import QuoteWizard from "@/components/quotes/QuoteWizard";
+import ProposalDocument from "@/components/quotes/ProposalDocument";
 
 const TABS = ["Details", "Notes", "Activity"];
 
@@ -332,7 +332,6 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
   const [tab, setTab] = useState("Details");
   const [quote, setQuote] = useState(() => getQuote(id));
   const [showPreview, setShowPreview] = useState(false);
-  const [showEdit, setShowEdit] = useState(false);
 
   if (!quote) {
     return (
@@ -362,18 +361,12 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
   }
   function doCreateInvoice() { const inv = createInvoiceFromQuote(id); if (inv) router.push(`/invoices/${inv.id}`); }
 
-  // The customer-facing document used by Preview, instant PDF download, and Print.
-  const previewData = {
-    quoteNumber: quote.quoteNumber, title: quote.title, customerName: quote.customerName,
-    propertyLabel: quote.propertyLabel, locationName: quote.locationName, expiresAt: quote.expiresAt,
-    assignedTo: quote.assignedTo ?? quote.createdBy, createdAt: quote.createdAt,
-    lineItems: quote.lineItems, subtotal: quote.subtotal, tax: quote.tax, total: quote.total,
-    customerNotes: quote.customerNotes,
-    stamp: quote.status === "approved" || quote.status === "converted" ? "APPROVED" : undefined,
-  };
+  // The full customer-facing proposal used by Preview, instant PDF, and Print —
+  // includes every section the quote carries, not just line items.
+  const docData = proposalDocFromQuote(quote);
 
   // Instant PDF: builds and saves "<quote-number>.pdf" — no print dialog.
-  function downloadPdf() { downloadQuotePdf(previewData); }
+  function downloadPdf() { downloadProposalPdf(docData); }
 
   // Print = open the system print dialog showing only the quote document.
   function printQuote() {
@@ -429,7 +422,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
               onCreateInvoice={doCreateInvoice}
               onDownloadPdf={downloadPdf}
               onPrint={printQuote}
-              onEdit={() => setShowEdit(true)}
+              onEdit={() => router.push(`/quotes/${id}/builder`)}
               onArchive={doArchive}
               onUnarchive={doUnarchive}
               onDelete={doDelete}
@@ -462,25 +455,22 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
       {/* Preview modal */}
       {showPreview && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setShowPreview(false)}>
-          <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-2xl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2 rounded-t-2xl" style={{ backgroundColor: "var(--bg-surface)", borderBottom: "1px solid var(--border-subtle)" }}>
-              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Quote Preview</p>
+          <div className="w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-2 rounded-t-2xl sticky top-0" style={{ backgroundColor: "var(--bg-surface)", borderBottom: "1px solid var(--border-subtle)" }}>
+              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Proposal Preview</p>
               <button onClick={() => setShowPreview(false)} style={{ color: "var(--text-muted)" }}><X className="w-4 h-4" /></button>
             </div>
-            <QuotePreview data={previewData} />
+            <div className="p-4" style={{ backgroundColor: "#e5e7eb" }}>
+              <ProposalDocument data={docData} />
+            </div>
           </div>
         </div>
       )}
 
-      {/* Hidden printable document — the only thing shown when Download triggers print. */}
+      {/* Hidden printable document — the only thing shown when Print triggers. */}
       <div className="print-doc" aria-hidden>
-        <QuotePreview data={previewData} />
+        <ProposalDocument data={docData} shadow={false} />
       </div>
-
-      {/* Edit quote (reuses the wizard in edit mode) */}
-      {showEdit && (
-        <QuoteWizard editQuote={quote} onClose={() => setShowEdit(false)} onCreated={() => { setShowEdit(false); refresh(); }} />
-      )}
     </div>
   );
 }

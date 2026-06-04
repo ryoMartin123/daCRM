@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useState, useEffect } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, Pencil, RefreshCw, XCircle,
@@ -9,8 +9,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  AGREEMENTS, TEMPLATES, formatValue,
-  type AgreementStatus, type VisitStatus,
+  AGREEMENTS, TEMPLATES, formatValue, getAgreement,
+  type AgreementStatus, type VisitStatus, type CustomerAgreement,
 } from "@/lib/agreements/data";
 
 // ─── Status configs ───────────────────────────────────────
@@ -429,7 +429,9 @@ export default function AgreementDetailPage({
   const { id } = use(params);
   const [activeTab, setActiveTab] = useState("Overview");
 
-  const agreement = AGREEMENTS.find((a) => a.id === id);
+  // Seed lookup on the server; merge in session-created agreements on the client.
+  const [agreement, setAgreement] = useState<CustomerAgreement | undefined>(() => AGREEMENTS.find((a) => a.id === id));
+  useEffect(() => { setAgreement(getAgreement(id)); }, [id]);
 
   if (!agreement) {
     return (

@@ -23,7 +23,8 @@ import { formatPhone, validatePhone, validateEmail } from "@/lib/utils/validatio
 import { AGREEMENTS } from "@/lib/agreements/data";
 import { QUOTE_STATUS_STYLE, INVOICE_STATUS_STYLE } from "@/lib/quotes/types";
 import { getQuotesForCustomer, getInvoicesForCustomer, fmt as fmtCurrency } from "@/lib/quotes/data";
-import QuoteWizard from "@/components/quotes/QuoteWizard";
+import { useRouter } from "next/navigation";
+import QuickCreateQuoteModal from "@/components/quotes/QuickCreateQuoteModal";
 import { AddressAutocomplete, EMPTY_ADDRESS, type ParsedAddress } from "@/components/address/AddressAutocomplete";
 import UiSelect from "@/components/ui/Select";
 import PhotoGallery from "@/components/files/PhotoGallery";
@@ -1159,6 +1160,7 @@ function BillingSection({
 }
 
 function BillingTab({ id }: { id: string }) {
+  const router = useRouter();
   const [wizard, setWizard] = useState(false);
   const [, forceRefresh] = useState(0);
   const quotes   = getQuotesForCustomer(id);
@@ -1184,9 +1186,9 @@ function BillingTab({ id }: { id: string }) {
   return (
     <div className="space-y-6">
       {wizard && (
-        <QuoteWizard preset={{ customerId: id, lockCustomer: true }}
+        <QuickCreateQuoteModal preset={{ customerId: id, lockCustomer: true }}
           onClose={() => setWizard(false)}
-          onCreated={() => { setWizard(false); forceRefresh(n => n + 1); }} />
+          onContinue={(qid) => { setWizard(false); router.push(`/quotes/${qid}/builder`); }} />
       )}
       {outstanding > 0 && (
         <div className="rounded-xl px-4 py-3 flex items-center gap-3"

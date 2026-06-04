@@ -9,7 +9,7 @@ import { getAllQuotes, getArchivedQuotes, fmt, type QuoteRecord } from "@/lib/qu
 import { QUOTE_STATUS_STYLE, type QuoteStatus } from "@/lib/quotes/types";
 
 type QuoteTab = "all" | "archived" | QuoteStatus;
-import QuoteWizard from "@/components/quotes/QuoteWizard";
+import QuickCreateQuoteModal from "@/components/quotes/QuickCreateQuoteModal";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
 import ModuleSummaryCards, { type SummaryCard } from "@/components/shared/ModuleSummaryCards";
 import ModuleViewToggle, { type ModuleView } from "@/components/shared/ModuleViewToggle";
@@ -255,9 +255,9 @@ export default function QuotesPage() {
       )}
 
       {showCreate && (
-        <QuoteWizard
+        <QuickCreateQuoteModal
           onClose={() => setShowCreate(false)}
-          onCreated={(id) => { setShowCreate(false); router.push(`/quotes/${id}`); }} />
+          onContinue={(id) => { setShowCreate(false); router.push(`/quotes/${id}/builder`); }} />
       )}
     </div>
   );

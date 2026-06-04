@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { X, Plus, Trash2, Check, ChevronLeft, ChevronRight, FileText, Send, Package, Tag } from "lucide-react";
 import UiSelect from "@/components/ui/Select";
+import AccountSearchSelect from "@/components/customers/AccountSearchSelect";
 import DatePicker from "@/components/ui/DatePicker";
 import InvoicePreview, { type InvoicePreviewData } from "@/components/quotes/InvoicePreview";
 import CatalogPicker from "@/components/quotes/CatalogPicker";
@@ -213,8 +214,9 @@ export default function InvoiceWizard({ preset, editInvoice, onClose, onCreated 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Customer / Account *</label>
-                  <UiSelect value={customerId} onChange={v => { setCustomerId(v); setPropertyId(""); }}
-                    disabled={Boolean(preset?.lockCustomer) || Boolean(editInvoice)} options={customers.map(c => ({ value: c.id, label: c.name }))} />
+                  <AccountSearchSelect customers={customers} value={customerId}
+                    onChange={v => { setCustomerId(v); setPropertyId(""); }}
+                    disabled={Boolean(preset?.lockCustomer) || Boolean(editInvoice)} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Due Date *</label>

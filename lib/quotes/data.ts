@@ -30,6 +30,16 @@ export interface LineItem {
   unitCost?: number;              // snapshotted cost for margin display (rep-only)
 }
 
+// ─── Proposal section (copied from a proposal template) ──
+// Snapshot of a template section on the quote. Editing the template later does
+// not change existing quotes — each quote owns its section copy.
+export interface QuoteSection {
+  key: string;          // proposal SectionKey (e.g. "recommended_solution")
+  label: string;
+  body: string;         // editable customer-facing wording
+  visible: boolean;
+}
+
 // ─── Activity log (per quote) ─────────────────────────────
 export type QuoteActivityKind =
   | "created" | "duplicated" | "status" | "sent" | "approved"
@@ -49,6 +59,8 @@ export interface QuoteRecord extends Quote {
   internalNotes?: string;
   customerNotes?: string;          // customer-facing notes shown on the quote
   templateKey?: string;            // template the quote was created from
+  proposalTemplateId?: string;     // proposal template the quote was built from
+  sections?: QuoteSection[];       // ordered, snapshot-copied proposal sections
   assignedTo?: string;             // salesperson (falls back to createdBy)
   activity?: QuoteActivity[];      // status/notes history
   // Denormalized for list display
@@ -557,6 +569,13 @@ export function updateQuote(id: string, patch: Partial<QuoteRecord>, actor = "Ma
   return getQuote(id);
 }
 
+// Quiet persist for the Quote Builder autosave — writes without logging an
+// activity entry on every keystroke (the builder logs one "edited" on exit).
+export function autosaveQuote(id: string, patch: Partial<QuoteRecord>): QuoteRecord | undefined {
+  persistEdit(id, patch);
+  return getQuote(id);
+}
+
 // Convert to a job — creates a real (unscheduled) job, links it on the quote,
 // marks the quote converted, and logs activity. Returns the new job.
 export function convertQuoteToJob(id: string, actor = "Marcus Reyes"): Job | undefined {
@@ -723,6 +742,8 @@ export interface NewQuoteInput {
   linkedLabel?: string; linkedType?: QuoteRecord["linkedType"]; linkedId?: string;
   // Metadata
   templateKey?: string; assignedTo?: string; customerNotes?: string; internalNotes?: string;
+  // Proposal template structure (snapshot-copied into the quote)
+  proposalTemplateId?: string; sections?: QuoteSection[];
   // Create as sent rather than draft (logs a "sent" activity entry)
   markSent?: boolean;
 }
@@ -754,6 +775,7 @@ export function createQuote(input: NewQuoteInput): QuoteRecord {
     customerName: input.customerName, customerInitials: input.customerInitials, locationName: input.locationName,
     propertyLabel: input.propertyLabel,
     templateKey: input.templateKey, assignedTo: input.assignedTo ?? "Marcus Reyes",
+    proposalTemplateId: input.proposalTemplateId, sections: input.sections,
     customerNotes: input.customerNotes, internalNotes: input.internalNotes,
     activity,
     linkedLabel: input.linkedLabel, linkedType: input.linkedType, linkedId: input.linkedId,

@@ -21,7 +21,8 @@ import { companies, locations, serviceAreas } from "@/lib/hierarchy/data";
 import { getCustomer } from "@/lib/customers/data";
 import { getQuotesForLead, fmt as fmtCurrency } from "@/lib/quotes/data";
 import { QUOTE_STATUS_STYLE } from "@/lib/quotes/types";
-import QuoteWizard from "@/components/quotes/QuoteWizard";
+import { useRouter } from "next/navigation";
+import QuickCreateQuoteModal from "@/components/quotes/QuickCreateQuoteModal";
 
 const TABS = ["Overview", "Activity", "Quotes", "Tasks", "Notes", "Photos & Files", "Communication", "Convert"];
 
@@ -566,6 +567,7 @@ function LeadActivityTab({ id }: { id: string }) {
 
 // ─── Quotes tab ───────────────────────────────────────────
 function LeadQuotesTab({ id }: { id: string }) {
+  const router = useRouter();
   const [wizard, setWizard] = useState(false);
   const [, forceRefresh] = useState(0);
   const lead = getLead(id);
@@ -574,9 +576,9 @@ function LeadQuotesTab({ id }: { id: string }) {
   return (
     <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
       {wizard && (
-        <QuoteWizard preset={{ customerId: lead?.accountId, leadId: id, lockCustomer: Boolean(lead?.accountId) }}
+        <QuickCreateQuoteModal preset={{ customerId: lead?.accountId, leadId: id, lockCustomer: Boolean(lead?.accountId) }}
           onClose={() => setWizard(false)}
-          onCreated={() => { setWizard(false); forceRefresh(n => n + 1); }} />
+          onContinue={(qid) => { setWizard(false); router.push(`/quotes/${qid}/builder`); }} />
       )}
       <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
         <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Quotes ({quotes.length})</p>

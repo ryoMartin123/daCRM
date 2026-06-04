@@ -335,11 +335,136 @@ export const AGREEMENT_STATS = {
 
 // ─── Helpers ──────────────────────────────────────────────
 export function formatValue(a: CustomerAgreement): string {
-  if (a.billingFrequency === "Monthly") {
-    return `$${(a.annualValue / 12).toLocaleString()}/mo`;
+  if (a.billingLabel) {
+    const per = a.billingLabel.toLowerCase();
+    if (per === "monthly")   return `$${(a.annualValue / 12).toLocaleString()}/mo`;
+    if (per === "quarterly") return `$${(a.annualValue / 4).toLocaleString()}/qtr`;
+    if (per === "per visit") return `$${(a.billingAmount ?? a.annualValue).toLocaleString()}/visit`;
+    if (per === "upfront")   return `$${a.annualValue.toLocaleString()} upfront`;
   }
-  if (a.billingFrequency === "Quarterly") {
-    return `$${(a.annualValue / 4).toLocaleString()}/qtr`;
-  }
+  if (a.billingFrequency === "Monthly")   return `$${(a.annualValue / 12).toLocaleString()}/mo`;
+  if (a.billingFrequency === "Quarterly") return `$${(a.annualValue / 4).toLocaleString()}/qtr`;
   return `$${a.annualValue.toLocaleString()}/yr`;
+}
+
+// ════════════════════════════════════════════════════════════
+// Builder snapshot fields + runtime store (created agreements)
+// ════════════════════════════════════════════════════════════
+// Built agreements snapshot the template data at creation time, so later
+// template edits never change an existing active/signed agreement.
+
+import { nextAgreementNumber } from "./settings";
+import type { TemplateService, TemplateVisit, TemplateTerm, SectionKey } from "./templates";
+
+// Optional, additive fields populated by the Agreement Builder. Existing seed
+// records (and the list/detail/calendar views) keep working without them.
+export interface AgreementBuilderSnapshot {
+  number?: string;
+  customerId?: string;
+  propertyLabel?: string;
+  contactName?: string;
+  endDate?: string;
+  coverage?: string[];                 // covered equipment/systems
+  planLevel?: string;
+  templateKey?: string;
+  servicesDetailed?: TemplateService[];
+  visitPlan?: TemplateVisit[];
+  benefits?: string[];
+  terms?: TemplateTerm[];
+  exclusions?: string;
+  sections?: SectionKey[];
+  billingLabel?: string;               // true billing cadence label (e.g. "Per Visit")
+  billingAmount?: number;              // amount per billing period
+  billingTaxable?: boolean;
+  firstBillingDate?: string;
+  renewal?: { autoRenew: boolean; termMonths: number; noticeDays: number; priceIncreasePct: number };
+}
+
+// Augment the record type with the optional snapshot fields.
+export interface CustomerAgreement extends AgreementBuilderSnapshot {}
+
+const AGR_KEY = "crm-agreements-extra";
+let _extra: CustomerAgreement[] | null = null;
+
+function extraAgreements(): CustomerAgreement[] {
+  if (_extra) return _extra;
+  if (typeof window === "undefined") return [];
+  try { const raw = localStorage.getItem(AGR_KEY); _extra = raw ? (JSON.parse(raw) as CustomerAgreement[]) : []; }
+  catch { _extra = []; }
+  return _extra;
+}
+function persistExtra(): void {
+  try { localStorage.setItem(AGR_KEY, JSON.stringify(_extra ?? [])); } catch { /* ignore */ }
+}
+
+// Session-created agreements only (client-side). Server render returns [].
+export function getSessionAgreements(): CustomerAgreement[] { return extraAgreements(); }
+// All agreements (session-created first, then seed). Use in lists/calendar so
+// built agreements surface everywhere.
+export function getAllAgreements(): CustomerAgreement[] { return [...extraAgreements(), ...AGREEMENTS]; }
+export function getAgreement(id: string): CustomerAgreement | undefined {
+  return getAllAgreements().find(a => a.id === id);
+}
+
+export interface NewAgreementInput {
+  customerId: string;
+  customer: string; customerInitials: string;
+  location: string; assignedTo?: string;
+  type: string; industry: Industry; templateId: string; templateKey?: string;
+  planLevel?: string;
+  startDate: string; endDate?: string; renewalDate: string;
+  propertyLabel?: string; contactName?: string;
+  coverage?: string[];
+  services: string[];                  // short labels (legacy display)
+  servicesDetailed?: TemplateService[];
+  visitPlan?: TemplateVisit[];
+  visits?: AgreementVisit[];           // generated visits
+  visitFrequency: VisitFrequency;
+  billingFrequency: BillingFrequency;  // nearest legacy union member
+  billingLabel?: string;               // true cadence label
+  billingAmount?: number;
+  billingTaxable?: boolean;
+  firstBillingDate?: string;
+  annualValue: number;
+  benefits?: string[];
+  terms?: TemplateTerm[];
+  exclusions?: string;
+  sections?: SectionKey[];
+  renewal?: { autoRenew: boolean; termMonths: number; noticeDays: number; priceIncreasePct: number };
+  status?: AgreementStatus;
+  notes?: string;
+}
+
+// Create a customer agreement from builder output (snapshots template data).
+export function createAgreement(input: NewAgreementInput): CustomerAgreement {
+  const visits = input.visits ?? [];
+  const nextVisit = visits.find(v => v.status === "scheduled")?.scheduled ?? null;
+  const agreement: CustomerAgreement = {
+    id: `agr-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+    number: nextAgreementNumber(),
+    templateId: input.templateId, templateKey: input.templateKey,
+    customerId: input.customerId,
+    customer: input.customer, customerInitials: input.customerInitials,
+    type: input.type, industry: input.industry,
+    status: input.status ?? "active",
+    location: input.location, assignedTo: input.assignedTo || "Unassigned",
+    startDate: input.startDate, endDate: input.endDate, renewalDate: input.renewalDate,
+    nextVisit,
+    billingFrequency: input.billingFrequency, visitFrequency: input.visitFrequency,
+    billingLabel: input.billingLabel, billingAmount: input.billingAmount, billingTaxable: input.billingTaxable,
+    firstBillingDate: input.firstBillingDate,
+    annualValue: input.annualValue,
+    services: input.services,
+    servicesDetailed: input.servicesDetailed,
+    visitPlan: input.visitPlan,
+    propertyLabel: input.propertyLabel, contactName: input.contactName,
+    coverage: input.coverage, planLevel: input.planLevel,
+    benefits: input.benefits, terms: input.terms, exclusions: input.exclusions,
+    sections: input.sections, renewal: input.renewal,
+    notes: input.notes ?? "",
+    visits,
+  };
+  _extra = [agreement, ...extraAgreements()];
+  persistExtra();
+  return agreement;
 }

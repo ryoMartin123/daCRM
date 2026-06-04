@@ -8,7 +8,8 @@ import { getJobsForProject, JOB_STATUS_CONFIG } from "@/lib/jobs/data";
 import { getCustomer } from "@/lib/customers/data";
 import { getQuotesForProject, fmt as fmtCurrency } from "@/lib/quotes/data";
 import { QUOTE_STATUS_STYLE } from "@/lib/quotes/types";
-import QuoteWizard from "@/components/quotes/QuoteWizard";
+import { useRouter } from "next/navigation";
+import QuickCreateQuoteModal from "@/components/quotes/QuickCreateQuoteModal";
 import PhotoGallery from "@/components/files/PhotoGallery";
 
 const TABS = ["Overview", "Jobs", "Tasks", "Photos & Files", "Scope", "Estimates", "Invoices", "Notes", "Timeline"];
@@ -218,6 +219,7 @@ function StubContent({ label }: { label: string }) {
 
 // ─── Estimates (quotes) tab ───────────────────────────────
 function ProjectEstimatesTab({ projectId }: { projectId: string }) {
+  const router = useRouter();
   const [wizard, setWizard] = useState(false);
   const [, forceRefresh] = useState(0);
   const project = getProject(projectId)!;
@@ -226,9 +228,9 @@ function ProjectEstimatesTab({ projectId }: { projectId: string }) {
   return (
     <div className="rounded-xl overflow-hidden max-w-3xl" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
       {wizard && (
-        <QuoteWizard preset={{ customerId: project.accountId, projectId, lockCustomer: true }}
+        <QuickCreateQuoteModal preset={{ customerId: project.accountId, projectId, lockCustomer: true }}
           onClose={() => setWizard(false)}
-          onCreated={() => { setWizard(false); forceRefresh(n => n + 1); }} />
+          onContinue={(qid) => { setWizard(false); router.push(`/quotes/${qid}/builder`); }} />
       )}
       <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
         <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Estimates ({quotes.length})</p>

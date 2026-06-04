@@ -17,7 +17,7 @@ import { getCustomer } from "@/lib/customers/data";
 import { getQuotesForJob, getInvoicesForJob, createInvoiceFromJob, fmt } from "@/lib/quotes/data";
 import { QUOTE_STATUS_STYLE, INVOICE_STATUS_STYLE } from "@/lib/quotes/types";
 import PhotoGallery from "@/components/files/PhotoGallery";
-import QuoteWizard from "@/components/quotes/QuoteWizard";
+import QuickCreateQuoteModal from "@/components/quotes/QuickCreateQuoteModal";
 
 const TABS = ["Overview", "Work Order", "Checklist", "Photos & Files", "Notes", "Customer", "Invoice / Estimate", "History"];
 
@@ -497,9 +497,9 @@ function JobFinancialsTab({ jobId }: { jobId: string }) {
   return (
     <div className="space-y-6 max-w-3xl">
       {wizard && job && (
-        <QuoteWizard preset={{ customerId: job.accountId, jobId, lockCustomer: true }}
+        <QuickCreateQuoteModal preset={{ customerId: job.accountId, jobId, lockCustomer: true }}
           onClose={() => setWizard(false)}
-          onCreated={() => { setWizard(false); forceRefresh(n => n + 1); }} />
+          onContinue={(qid) => { setWizard(false); router.push(`/quotes/${qid}/builder`); }} />
       )}
       <Section title={`Quotes (${quotes.length})`} onNew={() => setWizard(true)}>
         {quotes.length === 0 ? (
