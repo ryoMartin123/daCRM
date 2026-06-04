@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import type { LayoutItem as RGLItem } from "react-grid-layout";
 // The interactive widget grid (react-grid-layout + every widget) lives in its own
 // file for organization, but is imported normally — the grid's drag/resize and
@@ -8,7 +8,7 @@ import type { LayoutItem as RGLItem } from "react-grid-layout";
 import DashboardGrid from "@/components/dashboard/DashboardGrid";
 import {
   Settings2, Save, X, RotateCcw,
-  Plus, Eye, ChevronDown, ChevronUp,
+  Plus, GripVertical,
 } from "lucide-react";
 
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
@@ -40,100 +40,144 @@ function ContextBadge({ level }: { level: ContextLevel }) {
   );
 }
 
-// ─── Sticky customize toolbar ─────────────────────────────
-function CustomizeToolbar({
-  contextLevel, showAddPanel,
+// ─── Customize action dock ────────────────────────────────
+// Defaults inline on the same row as the Dashboard title (pos === null).
+// Grab the handle and it pops out into a free-floating bar (position:
+// fixed) the user can drag anywhere; double-click the handle to re-dock.
+type DockPos = { x: number; y: number } | null;
+
+function EditDock({
+  contextLevel, showAddPanel, pos, onPosChange,
   onToggleAdd, onSave, onCancel, onReset,
 }: {
   contextLevel: ContextLevel;
   showAddPanel: boolean;
-  onToggleAdd: () => void;
-  onSave:      () => void;
-  onCancel:    () => void;
-  onReset:     () => void;
+  pos:          DockPos;
+  onPosChange:  (p: DockPos) => void;
+  onToggleAdd:  () => void;
+  onSave:       () => void;
+  onCancel:     () => void;
+  onReset:      () => void;
 }) {
+  const ref       = useRef<HTMLDivElement>(null);
+  const dragOff   = useRef<{ dx: number; dy: number } | null>(null);
+  const floating  = pos !== null;
+
+  // Window-level listeners stay mounted; dragOff.current gates them so we
+  // only reposition while an actual drag is in progress.
+  useEffect(() => {
+    function move(e: PointerEvent) {
+      if (!dragOff.current) return;
+      const w = ref.current?.offsetWidth  ?? 0;
+      const h = ref.current?.offsetHeight ?? 0;
+      const x = Math.max(8, Math.min(e.clientX - dragOff.current.dx, window.innerWidth  - w - 8));
+      const y = Math.max(8, Math.min(e.clientY - dragOff.current.dy, window.innerHeight - h - 8));
+      onPosChange({ x, y });
+    }
+    function up() {
+      if (!dragOff.current) return;
+      dragOff.current = null;
+      document.body.style.userSelect = "";
+    }
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup",   up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup",   up);
+    };
+  }, [onPosChange]);
+
+  function startDrag(e: React.PointerEvent) {
+    if (e.button !== 0) return;
+    const rect = ref.current!.getBoundingClientRect();
+    dragOff.current = { dx: e.clientX - rect.left, dy: e.clientY - rect.top };
+    // Seed the position from the current rect so the inline→floating jump
+    // is seamless (it stays exactly where it was when grabbed).
+    onPosChange({ x: rect.left, y: rect.top });
+    document.body.style.userSelect = "none";
+  }
+
   return (
-    <div className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 px-5 py-3 rounded-xl"
+    <div ref={ref}
+      className="dashboard-edit-dock flex items-center gap-1.5 sm:gap-2 pl-1.5 pr-2 py-2 rounded-2xl"
       style={{
-        backgroundColor: "var(--accent-soft-bg)",
-        border:          "1.5px solid var(--accent-soft-border)",
-        backdropFilter:  "blur(12px)",
-        WebkitBackdropFilter: "blur(12px)",
-        boxShadow: "var(--shadow-card)",
+        backgroundColor: "var(--bg-surface)",
+        border:          "1px solid var(--accent-soft-border)",
+        backdropFilter:  "blur(16px)",
+        WebkitBackdropFilter: "blur(16px)",
+        boxShadow: floating
+          ? "0 16px 48px -10px rgba(49,46,129,0.34), 0 4px 12px -2px rgba(0,0,0,0.14)"
+          : "var(--shadow-card)",
+        ...(floating
+          ? { position: "fixed", left: pos!.x, top: pos!.y, zIndex: 50 }
+          : {}),
       }}>
 
-      {/* Left — mode indicator */}
-      <div className="flex items-center gap-2.5">
+      {/* Drag handle + mode indicator */}
+      <div
+        onPointerDown={startDrag}
+        onDoubleClick={() => onPosChange(null)}
+        title={floating ? "Drag to move · double-click to re-dock" : "Drag to detach"}
+        className="flex items-center gap-2 pl-1.5 pr-2 py-1 rounded-xl select-none cursor-grab active:cursor-grabbing">
+        <GripVertical className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
         <span className="relative flex h-2 w-2">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
             style={{ backgroundColor: "var(--accent-icon)" }} />
           <span className="relative inline-flex rounded-full h-2 w-2"
             style={{ backgroundColor: "var(--accent-icon)" }} />
         </span>
-        <p className="text-sm font-semibold" style={{ color: "var(--accent-text-strong)" }}>Customize Mode</p>
+        <span className="hidden md:inline text-sm font-semibold" style={{ color: "var(--accent-text-strong)" }}>Customize Mode</span>
         <ContextBadge level={contextLevel} />
-        <span className="text-xs hidden xl:block" style={{ color: "var(--accent-text)" }}>
-          Drag handle to move · drag corner to resize
-        </span>
       </div>
 
-      {/* Right — actions */}
-      <div className="flex items-center gap-2">
-        {/* Add Widget — toggles the panel below */}
-        <button onClick={onToggleAdd}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-          style={{
-            backgroundColor: showAddPanel ? "var(--accent-text)" : "transparent",
-            border:          `1px solid ${showAddPanel ? "var(--accent-text)" : "var(--accent-soft-border)"}`,
-            color:            showAddPanel ? "#fff" : "var(--accent-text)",
-          }}>
-          <Plus className="w-3 h-3" />
-          Add Widget
-          {showAddPanel
-            ? <ChevronUp   className="w-3 h-3" />
-            : <ChevronDown className="w-3 h-3" />}
-        </button>
+      <div className="w-px h-7" style={{ backgroundColor: "var(--border)" }} />
 
-        <div className="w-px h-4" style={{ backgroundColor: "var(--accent-soft-border)" }} />
+      {/* Actions */}
+      <button onClick={onToggleAdd}
+        className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all"
+        style={{
+          backgroundColor: showAddPanel ? "var(--accent-text)" : "var(--accent-soft-bg)",
+          color:           showAddPanel ? "#fff" : "var(--accent-text)",
+        }}>
+        <Plus className="w-3.5 h-3.5" /> Add Widget
+      </button>
 
-        <button onClick={onReset}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors"
-          style={{ border: "1px solid var(--accent-soft-border)", color: "var(--accent-text)" }}
-          title="Reset to default layout">
-          <RotateCcw className="w-3 h-3" /> Reset Default
-        </button>
-        <button onClick={onCancel}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors"
-          style={{ border: "1px solid var(--border)", color: "var(--text-secondary)", backgroundColor: "var(--bg-surface)" }}>
-          <X className="w-3 h-3" /> Cancel
-        </button>
-        <button onClick={onSave}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white transition-colors"
-          style={{ backgroundColor: "var(--accent-text)" }}>
-          <Save className="w-3 h-3" /> Save Layout
-        </button>
-      </div>
+      <button onClick={onReset}
+        className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs transition-colors hover:bg-[var(--bg-surface-2)]"
+        style={{ color: "var(--text-secondary)" }}
+        title="Reset to default layout">
+        <RotateCcw className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Reset</span>
+      </button>
+      <button onClick={onCancel}
+        className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs transition-colors hover:bg-[var(--bg-surface-2)]"
+        style={{ color: "var(--text-secondary)" }}>
+        <X className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Cancel</span>
+      </button>
+      <button onClick={onSave}
+        className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white transition-opacity hover:opacity-90"
+        style={{ backgroundColor: "var(--accent-text)", boxShadow: "0 2px 8px -1px rgba(49,46,129,0.4)" }}>
+        <Save className="w-3.5 h-3.5" /> Save Layout
+      </button>
     </div>
   );
 }
 
-// ─── Add widgets panel ────────────────────────────────────
-function AddWidgetsPanel({
-  hiddenIds, contextLevel, onAdd,
+// ─── Add widgets drawer ───────────────────────────────────
+// Slides in from the right and overlays the dashboard (no dimming
+// backdrop) so the user can watch widgets drop into the grid live as
+// they click them.
+function AddWidgetsDrawer({
+  hiddenIds, contextLevel, onAdd, onClose, onDragStartWidget, onDragEndWidget,
 }: {
-  hiddenIds: string[]; contextLevel: ContextLevel; onAdd: (id: string) => void;
+  hiddenIds: string[]; contextLevel: ContextLevel;
+  onAdd: (id: string) => void; onClose: () => void;
+  onDragStartWidget: (id: string) => void; onDragEndWidget: () => void;
 }) {
   const available = WIDGET_REGISTRY.filter(
     w => hiddenIds.includes(w.id) && w.allowedContexts.includes(contextLevel)
   );
   const otherCtx = WIDGET_REGISTRY.filter(
     w => hiddenIds.includes(w.id) && !w.allowedContexts.includes(contextLevel)
-  );
-
-  if (available.length === 0 && otherCtx.length === 0) return (
-    <div className="rounded-xl p-4 text-center" style={{ border: "1.5px dashed var(--border)", backgroundColor: "var(--bg-surface-2)" }}>
-      <p className="text-sm" style={{ color: "var(--text-muted)" }}>All widgets for this context are already visible.</p>
-    </div>
   );
 
   const grouped = available.reduce<Partial<Record<WidgetCategory, typeof WIDGET_REGISTRY>>>((acc, w) => {
@@ -143,31 +187,53 @@ function AddWidgetsPanel({
   }, {});
 
   return (
-    <div className="rounded-xl overflow-hidden"
-      style={{ border: "1.5px solid var(--accent-soft-border)", backgroundColor: "var(--bg-surface)", boxShadow: "var(--shadow-card)" }}>
-      <div className="flex items-center gap-2 px-5 py-3" style={{ borderBottom: "1px solid var(--accent-soft-border)", backgroundColor: "var(--accent-soft-bg)" }}>
-        <Plus className="w-4 h-4" style={{ color: "var(--accent-text)" }} />
-        <p className="text-sm font-semibold" style={{ color: "var(--accent-text-strong)" }}>Add Widgets</p>
-        <ContextBadge level={contextLevel} />
-        <span className="text-xs ml-1" style={{ color: "var(--accent-text)" }}>
-          — click a widget to add it to your dashboard
-        </span>
+    <div className="dashboard-edit-drawer fixed top-0 right-0 bottom-0 z-50 w-full max-w-sm flex flex-col"
+      style={{ backgroundColor: "var(--bg-surface)", borderLeft: "1px solid var(--border)", boxShadow: "-16px 0 48px -12px rgba(0,0,0,0.22)" }}>
+
+      {/* Header */}
+      <div className="flex items-center gap-2 px-5 py-4 shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+          style={{ backgroundColor: "var(--accent-soft-bg)" }}>
+          <Plus className="w-4 h-4" style={{ color: "var(--accent-text)" }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Add Widgets</p>
+            <ContextBadge level={contextLevel} />
+          </div>
+          <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>Drag onto the board, or click to add</p>
+        </div>
+        <button onClick={onClose}
+          className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-[var(--bg-surface-2)]"
+          style={{ color: "var(--text-secondary)" }} aria-label="Close">
+          <X className="w-4 h-4" />
+        </button>
       </div>
-      <div className="p-4 space-y-4">
-        {available.length > 0 ? (
+
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto dashboard-widget-content p-4 space-y-4">
+        {available.length === 0 && otherCtx.length === 0 ? (
+          <div className="rounded-xl p-6 text-center" style={{ border: "1.5px dashed var(--border)", backgroundColor: "var(--bg-surface-2)" }}>
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>All widgets for this context are already visible.</p>
+          </div>
+        ) : available.length > 0 ? (
           (Object.entries(grouped) as [WidgetCategory, typeof WIDGET_REGISTRY][]).map(([cat, widgets]) => (
             <div key={cat}>
               <p className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--accent-text)" }}>
                 {CATEGORY_LABELS[cat]}
               </p>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-2">
                 {widgets.map(w => (
-                  <button key={w.id} onClick={() => onAdd(w.id)}
-                    className="flex items-start gap-3 text-left p-3 rounded-xl transition-all hover:shadow-sm group"
+                  <button key={w.id}
+                    onClick={() => onAdd(w.id)}
+                    draggable
+                    onDragStart={e => { onDragStartWidget(w.id); e.dataTransfer.effectAllowed = "copy"; e.dataTransfer.setData("text/plain", w.id); }}
+                    onDragEnd={onDragEndWidget}
+                    className="flex items-start gap-2.5 text-left p-3 rounded-xl transition-all hover:shadow-sm cursor-grab active:cursor-grabbing"
                     style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border-subtle)" }}>
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
                       style={{ backgroundColor: "var(--accent-soft-2-bg)" }}>
-                      <Eye className="w-3.5 h-3.5" style={{ color: "var(--accent-text)" }} />
+                      <GripVertical className="w-3.5 h-3.5" style={{ color: "var(--accent-text)" }} />
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>{w.title}</p>
@@ -193,7 +259,7 @@ function AddWidgetsPanel({
             <p className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>
               Available at other context levels
             </p>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 opacity-50">
+            <div className="grid grid-cols-1 gap-2 opacity-50">
               {otherCtx.map(w => (
                 <div key={w.id} className="flex flex-col p-3 rounded-xl"
                   style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border)" }}>
@@ -224,6 +290,9 @@ export default function DashboardPage() {
   const [draft,        setDraft]        = useState<DashItem[]>(layout);
   const [customizing,  setCustomizing]  = useState(false);
   const [showAddPanel, setShowAddPanel] = useState(false);
+  const [dockPos,      setDockPos]      = useState<DockPos>(null);
+  // Widget being dragged out of the Add-Widgets drawer onto the grid.
+  const [dragWidget,   setDragWidget]   = useState<{ id: string; w: number; h: number } | null>(null);
 
   // Widgets visible + allowed at current context level, sorted by y then x
   const contextVisible = useMemo(() =>
@@ -239,6 +308,13 @@ export default function DashboardPage() {
     setDraft(layout);
     setCustomizing(true);
     setShowAddPanel(false);
+    setDockPos(null);   // dock starts inline by the title each session
+  }
+
+  // Default grid width (cols) for a widget based on its registry size.
+  function widgetWidth(id: string) {
+    const def = WIDGET_MAP[id];
+    return def?.defaultSize === "full" ? 12 : def?.defaultSize === "wide" ? 8 : 4;
   }
 
   // Sync positions from RGL after drag/resize (only during customizing)
@@ -255,16 +331,30 @@ export default function DashboardPage() {
     setDraft(prev => prev.map(i => i.widgetId === id ? { ...i, visible: false } : i));
   }
 
+  // Click-to-add: drop the widget at the bottom of the current context.
   function addWidget(id: string) {
     const ctxVisible = draft.filter(i =>
       i.visible && (WIDGET_MAP[i.widgetId]?.allowedContexts.includes(contextLevel) ?? false)
     );
-    const y   = nextFreeY(ctxVisible);
-    const def = WIDGET_MAP[id];
-    const w   = def.defaultSize === "full" ? 12 : def.defaultSize === "wide" ? 8 : 4;
+    const y = nextFreeY(ctxVisible);
     setDraft(prev => prev.map(i =>
-      i.widgetId === id ? { ...i, visible: true, x: 0, y, w, h: i.h } : i
+      i.widgetId === id ? { ...i, visible: true, x: 0, y, w: widgetWidth(id), h: i.h } : i
     ));
+  }
+
+  // Drag-to-add: place the widget at the exact grid cell it was dropped on.
+  function handleDropWidget(x: number, y: number) {
+    if (!dragWidget) return;
+    const { id, w } = dragWidget;
+    setDraft(prev => prev.map(i =>
+      i.widgetId === id ? { ...i, visible: true, x, y, w } : i
+    ));
+    setDragWidget(null);
+  }
+
+  function handleDragStartWidget(id: string) {
+    const item = draft.find(i => i.widgetId === id);
+    setDragWidget({ id, w: widgetWidth(id), h: item?.h ?? 6 });
   }
 
   function handleSave() {
@@ -306,35 +396,26 @@ export default function DashboardPage() {
             )}
           </div>
         </div>
-        {!customizing && (
+        {!customizing ? (
           <button onClick={startCustomize}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm transition-colors hover:bg-[var(--bg-surface-2)]"
             style={{ border: "1px solid var(--border)", color: "var(--text-secondary)", backgroundColor: "var(--bg-surface)" }}>
             <Settings2 className="w-3.5 h-3.5" /> Customize
           </button>
+        ) : (
+          /* Docks inline here by default; pops to free-floating when dragged. */
+          <EditDock
+            contextLevel={contextLevel}
+            showAddPanel={showAddPanel}
+            pos={dockPos}
+            onPosChange={setDockPos}
+            onToggleAdd={() => setShowAddPanel(v => !v)}
+            onSave={handleSave}
+            onCancel={handleCancel}
+            onReset={handleReset}
+          />
         )}
       </div>
-
-      {/* ── Sticky customize toolbar ────────────────────── */}
-      {customizing && (
-        <CustomizeToolbar
-          contextLevel={contextLevel}
-          showAddPanel={showAddPanel}
-          onToggleAdd={() => setShowAddPanel(v => !v)}
-          onSave={handleSave}
-          onCancel={handleCancel}
-          onReset={handleReset}
-        />
-      )}
-
-      {/* ── Add widgets panel (collapsible, right below toolbar) ── */}
-      {customizing && showAddPanel && (
-        <AddWidgetsPanel
-          hiddenIds={hiddenIds}
-          contextLevel={contextLevel}
-          onAdd={addWidget}
-        />
-      )}
 
       {/* ── Widget grid ─────────────────────────────────── */}
       {contextVisible.length === 0 ? (
@@ -360,7 +441,29 @@ export default function DashboardPage() {
           customizing={customizing}
           onLayoutChange={handleLayoutChange}
           onHideWidget={hideWidget}
+          dragSize={dragWidget ? { w: dragWidget.w, h: dragWidget.h } : null}
+          onDropWidget={handleDropWidget}
         />
+      )}
+
+      {/* ── Customize ("edit mode") chrome — all overlays, no layout shift ── */}
+      {customizing && (
+        <>
+          {/* Ambient frame signalling edit mode */}
+          <div className="dashboard-edit-frame" aria-hidden="true" />
+
+          {/* Add-widgets slide-over (right) */}
+          {showAddPanel && (
+            <AddWidgetsDrawer
+              hiddenIds={hiddenIds}
+              contextLevel={contextLevel}
+              onAdd={addWidget}
+              onClose={() => setShowAddPanel(false)}
+              onDragStartWidget={handleDragStartWidget}
+              onDragEndWidget={() => setDragWidget(null)}
+            />
+          )}
+        </>
       )}
     </div>
   );

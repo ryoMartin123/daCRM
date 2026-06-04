@@ -64,10 +64,20 @@ export interface DashboardGridProps {
   customizing: boolean;
   onLayoutChange: (layout: readonly RGLItem[]) => void;
   onHideWidget: (id: string) => void;
+  /** Size (in grid units) of the widget currently being dragged from the
+   *  Add-Widgets drawer — drives the drop placeholder. Null when nothing is
+   *  being dragged. */
+  dragSize: { w: number; h: number } | null;
+  /** Fired when a widget is dropped onto the grid; receives the grid cell. */
+  onDropWidget: (x: number, y: number) => void;
 }
+
+// Id the grid uses internally for the external-drop placeholder.
+const DROP_ID = "__dropping-elem__";
 
 export default function DashboardGrid({
   contextVisible, customizing, onLayoutChange, onHideWidget,
+  dragSize, onDropWidget,
 }: DashboardGridProps) {
   // Convert to react-grid-layout format
   const rglLayout: RGLItem[] = useMemo(() =>
@@ -116,6 +126,11 @@ export default function DashboardGrid({
           enabled: customizing,
           handles: ["se"],
         }}
+        dropConfig={{ enabled: customizing }}
+        droppingItem={dragSize
+          ? { i: DROP_ID, x: 0, y: 0, w: dragSize.w, h: dragSize.h }
+          : undefined}
+        onDrop={(_layout, item) => { if (item) onDropWidget(item.x, item.y); }}
         compactor={verticalCompactor}  // auto-fill gaps for cleaner layouts
         onLayoutChange={onLayoutChange}
         autoSize

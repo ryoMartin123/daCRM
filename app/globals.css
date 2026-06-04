@@ -204,6 +204,51 @@ body {
   box-shadow: 0 0 0 3px rgba(99,102,241,0.08);
 }
 
+/* ── Customize ("edit mode") chrome ──────────────────────────────────
+   A premium mode-switch experience: an ambient inset frame signals the
+   mode, a floating dock holds the actions, and the Add-Widgets drawer
+   slides in from the right. None of these are in document flow, so
+   entering customize mode never shifts the widget grid. ────────────── */
+@keyframes dash-frame-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes dash-dock-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+@keyframes dash-drawer-in {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Ambient inset frame — overlays the whole viewport, ignores pointer
+   events, and glows in the accent color so the mode is unmistakable. */
+.dashboard-edit-frame {
+  position: fixed;
+  inset: 0;
+  z-index: 35;
+  pointer-events: none;
+  border-radius: 6px;
+  box-shadow:
+    inset 0 0 0 2px var(--accent-soft-border),
+    inset 0 0 36px rgba(99, 102, 241, 0.07);
+  animation: dash-frame-in 0.25s ease both;
+}
+
+.dashboard-edit-dock {
+  animation: dash-dock-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.dashboard-edit-drawer {
+  animation: dash-drawer-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-edit-frame,
+  .dashboard-edit-dock,
+  .dashboard-edit-drawer { animation: none; }
+}
+
 /* ── Widget body — thin themed scrollbar when content overflows ──────
    Every widget fills its grid cell (root is h-full); the scrolling body
    carries this class so a scrollbar only appears once content exceeds the

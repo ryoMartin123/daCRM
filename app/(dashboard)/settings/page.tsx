@@ -35,6 +35,7 @@ const TermsConditionsSection    = dynamic(() => import("@/components/settings/Te
 const TaxesFeesSection          = dynamic(() => import("@/components/settings/TaxesFeesSection"),          { loading: SectionLoading, ssr: false });
 const AgreementsSettingsSection = dynamic(() => import("@/components/settings/AgreementsSettingsSection"), { loading: SectionLoading, ssr: false });
 const ProposalBuilderSection    = dynamic(() => import("@/components/settings/ProposalBuilderSection"),    { loading: SectionLoading, ssr: false });
+const MarketingSettingsSection  = dynamic(() => import("@/components/settings/MarketingSettingsSection"),  { loading: SectionLoading, ssr: false });
 import { companies, locations, serviceAreas } from "@/lib/hierarchy/data";
 import type { HierarchyMode } from "@/lib/hierarchy/types";
 
@@ -145,7 +146,7 @@ const CATEGORIES: Category[] = [
     description: "Email, SMS, and messaging integrations",
     icon: MessageSquare,
     items: [
-      { key: "marketing",     label: "Marketing Templates", description: "Email and SMS campaign templates",          icon: Megaphone,     phase: "Phase 5" },
+      { key: "marketing",     label: "Marketing",           description: "Campaign types, audiences, templates, and sender branding", icon: Megaphone },
       { key: "communication", label: "Communication",       description: "Email, SMS, and phone provider connections", icon: MessageSquare, phase: "Phase 6" },
     ],
   },
@@ -768,8 +769,7 @@ export default function SettingsPage() {
         features={["Invite team members","Role-based access","Access grants per company/location","User profile management"]} />;
       case "security":       return <ComingSoon label="Security" phase="Phase 1"
         features={["Two-factor authentication","Session management","Audit log","Password policies"]} />;
-      case "marketing":      return <ComingSoon label="Marketing Templates" phase="Phase 5"
-        features={["Email and SMS templates","Campaign sequences","Audience filters","Follow-up automations"]} />;
+      case "marketing":      return <MarketingSettingsSection />;
       case "communication":  return <ComingSoon label="Communication" phase="Phase 6"
         features={["Email provider connection","SMS provider connection","Phone system integration","Conversation inbox"]} />;
       case "integrations":   return <ComingSoon label="Integrations" phase="Phase 6"
