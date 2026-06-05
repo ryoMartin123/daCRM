@@ -1,6 +1,7 @@
-import { Search, Bell, ChevronUp } from "lucide-react";
+import { Bell, ChevronUp } from "lucide-react";
 import HierarchySelector from "@/components/layout/HierarchySelector";
 import GlobalCreateMenu from "@/components/layout/GlobalCreateMenu";
+import GlobalSearch from "@/components/layout/GlobalSearch";
 import ViewAsMenu from "@/components/layout/ViewAsMenu";
 
 export default function TopBar({ onHide }: { onHide?: () => void }) {
@@ -12,37 +13,21 @@ export default function TopBar({ onHide }: { onHide?: () => void }) {
         borderBottom: "1px solid var(--topbar-border)",
       }}
     >
-      <HierarchySelector />
-
-      <div className="flex-1 max-w-xl">
-        <div
-          className="flex items-center gap-2 rounded-lg px-3 py-2"
-          style={{ backgroundColor: "var(--bg-input)" }}
-        >
-          <Search className="w-4 h-4 shrink-0" style={{ color: "var(--text-muted)" }} />
-          <input
-            type="text"
-            placeholder="Search customers, jobs, addresses..."
-            className="bg-transparent text-sm outline-none flex-1 min-w-0"
-            style={{ color: "var(--text-primary)" }}
-          />
-          <span
-            className="text-xs shrink-0 border rounded px-1.5 py-0.5 font-mono"
-            style={{
-              color: "var(--text-muted)",
-              backgroundColor: "var(--bg-surface)",
-              borderColor: "var(--border)",
-            }}
-          >
-            ⌘K
-          </span>
-        </div>
+      {/* Left */}
+      <div className="flex-1 min-w-0 flex items-center">
+        <HierarchySelector />
       </div>
 
-      <div className="flex items-center gap-2 shrink-0">
+      {/* Center — search pinned to the middle of the bar */}
+      <div className="w-full max-w-md shrink-0">
+        <GlobalSearch />
+      </div>
+
+      {/* Right — actions */}
+      <div className="flex-1 flex items-center justify-end gap-2">
         <ViewAsMenu />
         <button
-          className="relative p-2 rounded-lg transition-colors"
+          className="relative p-2 rounded-lg transition-colors hover:bg-[var(--bg-surface-2)]"
           style={{ color: "var(--text-secondary)" }}
         >
           <Bell className="w-5 h-5" />
