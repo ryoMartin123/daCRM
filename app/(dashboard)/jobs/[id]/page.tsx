@@ -9,6 +9,7 @@ import { getJob, updateJob, deleteJob, getWorkOrder, getJobNotes, resolveJobStat
 import WorkOrderWizard from "@/components/jobs/WorkOrderWizard";
 import { getJobStatuses } from "@/lib/job-config/data";
 import StatusBadge from "@/components/shared/StatusBadge";
+import ActionsMenu from "@/components/shared/ActionsMenu";
 import {
   suggestTemplateForJobType, getChecklist, getPhotos, getInstructions,
   CHECKLIST_TYPE_LABELS, type ChecklistItem as TemplateChecklistItem,
@@ -668,44 +669,32 @@ function JobDetailContent({ params }: { params: Promise<{ id: string }> }) {
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {/* Status is read-only here (shown as the badge above). Only
-                office-level actions live on this page. */}
-            {job.status === "canceled" ? (
-              <button onClick={reactivateJob}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors">
-                <RotateCcw className="w-3.5 h-3.5" /> Reactivate
-              </button>
-            ) : !["completed", "invoiced", "closed", "no_show"].includes(job.status) ? (
-              <>
-                <button onClick={rescheduleJob} title="Send back to the dispatch board to re-book"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-                  style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
-                  <Calendar className="w-3.5 h-3.5" /> Reschedule
-                </button>
-                <button onClick={cancelJob}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-                  style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
-                  <Ban className="w-3.5 h-3.5" /> Cancel
-                </button>
-              </>
-            ) : null}
-            <button onClick={() => setConfirmDelete(true)} title="Delete job permanently"
-              className="p-2 rounded-lg transition-colors hover:bg-red-50"
-              style={{ color: "#dc2626", border: "1px solid var(--border)" }}>
-              <Trash2 className="w-4 h-4" />
-            </button>
+            {/* Every action for this job lives in the ⋮ menu, consistent with the
+                other detail pages. Status itself is shown as the badge above. */}
+            <ActionsMenu actions={[
+              job.status !== "canceled" && !["completed", "invoiced", "closed", "no_show"].includes(job.status) &&
+                { label: "Reschedule", icon: Calendar, onClick: rescheduleJob },
+              job.status === "canceled"
+                ? { label: "Reactivate", icon: RotateCcw, onClick: reactivateJob }
+                : (!["completed", "invoiced", "closed", "no_show"].includes(job.status) &&
+                    { label: "Cancel job", icon: Ban, onClick: cancelJob }),
+              { label: "Delete job", icon: Trash2, onClick: () => setConfirmDelete(true), danger: true, separated: true },
+            ]} />
           </div>
         </div>
-        {/* Tabs */}
-        <div className="flex items-center gap-0.5 px-6 overflow-x-auto">
+        {/* Tabs — rectangle translucent style, consistent with section + customer tabs */}
+        <div className="flex items-center gap-0.5 px-6 py-2 overflow-x-auto">
           {TABS.map(t => {
             const active = tab === t;
             return (
               <button key={t} onClick={() => setTab(t)}
-                className="relative px-3 py-2.5 text-sm font-medium transition-colors whitespace-nowrap shrink-0"
-                style={{ color: active ? "#4f46e5" : "var(--text-muted)" }}>
+                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0"
+                style={{
+                  backgroundColor: active ? "var(--accent-soft-bg)" : "transparent",
+                  color: active ? "var(--accent-text)" : "var(--text-muted)",
+                  border: `1px solid ${active ? "var(--accent-soft-border)" : "transparent"}`,
+                }}>
                 {t}
-                {active && <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t bg-indigo-600" />}
               </button>
             );
           })}

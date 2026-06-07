@@ -9,9 +9,10 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  ALL_LEADS, LEAD_STAGE_CONFIG, LEAD_SOURCE_LABELS, leadAgeDays, getLeadTasks,
+  getAllLeads, LEAD_STAGE_CONFIG, LEAD_SOURCE_LABELS, leadAgeDays, getLeadTasks,
   type Lead, type LeadStage, type LeadSource,
 } from "@/lib/leads/data";
+import LeadWizard from "@/components/leads/LeadWizard";
 import { getStages, type PipelineStage, type StageCategory } from "@/lib/pipelines/data";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
 import Select from "@/components/ui/Select";
@@ -225,6 +226,9 @@ export default function LeadsPage() {
 
   const [view, setView]       = useState<"overview" | "pipeline" | "table" | "calendar">("table");
   const [stageEdits, setStageEdits] = useState<Record<string, string>>({});
+  const [wizardOpen, setWizardOpen] = useState(false);
+  // Bumped after a lead is created so the list re-reads the store.
+  const [refreshKey, setRefreshKey] = useState(0);
   const [tab, setTab]         = useState<string>("active");
   const [search, setSearch]   = useState("");
   const [sortField, setSort]  = useState<SortField>("createdAt");
@@ -294,8 +298,12 @@ export default function LeadsPage() {
     return tabs;
   }, [activeStages, resolve]);
 
+  // Source list — re-read after a lead is created (refreshKey).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const allLeads = useMemo(() => getAllLeads(), [refreshKey]);
+
   // Context filter
-  const contextFiltered = ALL_LEADS
+  const contextFiltered = allLeads
     .filter(l => !effectiveCompanyId     || l.companyId     === effectiveCompanyId)
     .filter(l => !effectiveLocationId    || l.locationId    === effectiveLocationId)
     .filter(l => !effectiveServiceAreaId || l.serviceAreaId === effectiveServiceAreaId)
@@ -441,7 +449,8 @@ export default function LeadsPage() {
               </div>
             );
           })()}
-          <button className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors">
+          <button onClick={() => setWizardOpen(true)}
+            className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors">
             <Plus className="w-4 h-4" /> New Lead
           </button>
         </div>
@@ -587,11 +596,14 @@ export default function LeadsPage() {
                     </div>
                   </div>
 
-                  {/* Stage */}
-                  <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                    style={{ backgroundColor: s.bg, color: s.color }}>
-                    {s.label}
-                  </span>
+                  {/* Stage — wrapped so the pill hugs its content (grid items
+                      otherwise stretch to fill the column) */}
+                  <div>
+                    <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                      style={{ backgroundColor: s.bg, color: s.color }}>
+                      {s.label}
+                    </span>
+                  </div>
 
                   {/* Source */}
                   <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
@@ -614,8 +626,8 @@ export default function LeadsPage() {
                   {/* Branch */}
                   <span className="text-sm truncate" style={{ color: "var(--text-secondary)" }}>{lead.locationName}</span>
 
-                  {/* Age */}
-                  <AgeChip createdAt={lead.createdAt} />
+                  {/* Age — wrapped so the chip hugs its content */}
+                  <div><AgeChip createdAt={lead.createdAt} /></div>
                 </Link>
               );
             })}
@@ -631,6 +643,13 @@ export default function LeadsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {wizardOpen && (
+        <LeadWizard
+          onClose={() => setWizardOpen(false)}
+          onCreated={() => { setWizardOpen(false); setRefreshKey(k => k + 1); }}
+        />
       )}
     </div>
   );

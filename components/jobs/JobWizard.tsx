@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { X, Briefcase, Plus } from "lucide-react";
 import UiSelect from "@/components/ui/Select";
+import AccountCombobox from "@/components/customers/AccountCombobox";
 import DatePicker from "@/components/ui/DatePicker";
 import TimePicker from "@/components/ui/TimePicker";
 import { getAllCustomers, getProperties, updateCustomer } from "@/lib/customers/data";
@@ -66,8 +67,11 @@ export default function JobWizard({ preset, onClose, onCreated }: {
     [customer?.companyId, customer?.locationId],
   );
   const properties = useMemo(() => (customerId ? getProperties(customerId) : []), [customerId]);
-  // One property → just use it. Multiple → let the user pick which.
-  const selectedProperty = properties.find(p => p.id === propertyId) ?? properties[0];
+  // One property → just use it. Multiple → let the user pick which (default to
+  // the account's primary property).
+  const selectedProperty = properties.find(p => p.id === propertyId)
+    ?? properties.find(p => p.isPrimary)
+    ?? properties[0];
   const multiProperty = properties.length > 1;
 
   // The account's on-file address for the selected property (read-only).
@@ -141,8 +145,8 @@ export default function JobWizard({ preset, onClose, onCreated }: {
           <div className={multiProperty ? "grid grid-cols-2 gap-3" : ""}>
             <div>
               <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Customer / Account *</label>
-              <UiSelect value={customerId} onChange={v => { setCustomerId(v); setPropertyId(""); }}
-                disabled={Boolean(preset?.lockCustomer)} options={customers.map(c => ({ value: c.id, label: c.name }))} />
+              <AccountCombobox value={customerId} onChange={v => { setCustomerId(v); setPropertyId(""); }}
+                disabled={Boolean(preset?.lockCustomer)} />
             </div>
             {multiProperty && (
               <div>

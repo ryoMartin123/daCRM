@@ -82,9 +82,9 @@ export default function ItemFormDrawer({ item, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onClose}>
-      <div className="w-full max-w-md h-full flex flex-col" onClick={e => e.stopPropagation()}
-        style={{ backgroundColor: "var(--bg-surface)", boxShadow: "-12px 0 40px rgba(0,0,0,0.2)" }}>
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="w-full max-w-lg max-h-[92vh] flex flex-col rounded-2xl overflow-hidden" onClick={e => e.stopPropagation()}
+        style={{ backgroundColor: "var(--bg-surface)", boxShadow: "0 16px 48px rgba(0,0,0,0.24)" }}>
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 shrink-0" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
           <p className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>{editing ? "Edit Item" : "New Item"}</p>

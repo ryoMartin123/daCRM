@@ -22,6 +22,7 @@ export interface Project {
   scope?: string;
   type: ProjectType;
   status: ProjectStatus;
+  stage?: string;          // custom pipeline stage key (Kanban grouping)
   priority: ProjectPriority;
   startDate?: string;
   targetDate?: string;
@@ -88,6 +89,7 @@ export interface NewProjectInput {
   companyId: string; locationId: string; serviceAreaId?: string;
   accountId: string; customerName: string; customerInitials: string; locationName: string;
   name: string; description?: string; type?: ProjectType; priority?: ProjectPriority;
+  stage?: string;
   estimatedValue?: string; propertyAddress?: string;
   assignedTo?: string; assignedToInitials?: string;
 }
@@ -99,7 +101,8 @@ export function createProject(input: NewProjectInput): Project {
     companyId: input.companyId, locationId: input.locationId, serviceAreaId: input.serviceAreaId,
     accountId: input.accountId, propertyAddress: input.propertyAddress,
     name: input.name, description: input.description ?? "",
-    type: input.type ?? "installation", status: "draft", priority: input.priority ?? "normal",
+    type: input.type ?? "installation", status: "draft", stage: input.stage ?? "planning",
+    priority: input.priority ?? "normal",
     assignedTo: input.assignedTo ?? "", assignedToInitials: input.assignedToInitials ?? "",
     estimatedValue: input.estimatedValue, jobIds: [],
     customerName: input.customerName, customerInitials: input.customerInitials, locationName: input.locationName,
@@ -107,6 +110,19 @@ export function createProject(input: NewProjectInput): Project {
   _extraProjects = [project, ...extraProjects()];
   try { localStorage.setItem(PROJECTS_KEY, JSON.stringify(_extraProjects)); } catch { /* ignore */ }
   return project;
+}
+
+// Patch a session project (e.g. Kanban stage move, status change). Seed projects
+// (ALL_PROJECTS) aren't patched — the prototype's seed is empty.
+export function updateProject(id: string, patch: Partial<Project>): Project | undefined {
+  let updated: Project | undefined;
+  _extraProjects = extraProjects().map(p => {
+    if (p.id !== id) return p;
+    updated = { ...p, ...patch };
+    return updated;
+  });
+  if (updated) { try { localStorage.setItem(PROJECTS_KEY, JSON.stringify(_extraProjects)); } catch { /* ignore */ } }
+  return updated;
 }
 
 // Delete a session project; delete every project under a company (cascade).

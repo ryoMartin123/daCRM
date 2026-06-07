@@ -13,23 +13,25 @@ import {
 } from "lucide-react";
 import NewCustomerModal from "@/components/customers/NewCustomerModal";
 import JobWizard from "@/components/jobs/JobWizard";
+import LeadWizard from "@/components/leads/LeadWizard";
+import ProjectWizard from "@/components/projects/ProjectWizard";
 import QuickCreateQuoteModal from "@/components/quotes/QuickCreateQuoteModal";
 import InvoiceWizard from "@/components/quotes/InvoiceWizard";
 import AgreementBuilder from "@/components/agreements/AgreementBuilder";
 
-type ModalKind = "customer" | "job" | "quote" | "invoice" | "agreement";
+type ModalKind = "customer" | "lead" | "job" | "project" | "quote" | "invoice" | "agreement";
 
 const MODAL_ITEMS: { kind: ModalKind; label: string; sublabel: string; icon: typeof UserPlus }[] = [
   { kind: "customer",  label: "Customer",         sublabel: "Account or prospect",  icon: UserPlus },
+  { kind: "lead",      label: "Lead",             sublabel: "Sales pipeline",       icon: TrendingUp },
   { kind: "job",       label: "Job",              sublabel: "Schedule or dispatch", icon: Briefcase },
+  { kind: "project",   label: "Project",          sublabel: "Multi-job work",       icon: FolderKanban },
   { kind: "quote",     label: "Quote / Estimate", sublabel: "Build a proposal",     icon: FileText },
   { kind: "invoice",   label: "Invoice",          sublabel: "Bill a customer",      icon: Receipt },
   { kind: "agreement", label: "Agreement",        sublabel: "Maintenance plan",     icon: FileCheck },
 ];
 
 const NAV_ITEMS: { label: string; sublabel: string; href: string; icon: typeof UserPlus }[] = [
-  { label: "Lead",    sublabel: "Sales pipeline",    href: "/leads",    icon: TrendingUp },
-  { label: "Project", sublabel: "Multi-job work",    href: "/projects", icon: FolderKanban },
   { label: "Task",    sublabel: "Follow-up / to-do", href: "/tasks",    icon: ListChecks },
 ];
 
@@ -96,8 +98,14 @@ export default function GlobalCreateMenu() {
       {/* Hosted create modals */}
       <NewCustomerModal open={active === "customer"} onClose={() => setActive(null)} />
 
+      {active === "lead" && (
+        <LeadWizard onClose={() => setActive(null)} onCreated={(id) => { setActive(null); router.push(`/leads/${id}`); }} />
+      )}
       {active === "job" && (
         <JobWizard onClose={() => setActive(null)} onCreated={(id) => { setActive(null); router.push(`/jobs/${id}`); }} />
+      )}
+      {active === "project" && (
+        <ProjectWizard onClose={() => setActive(null)} onCreated={(id) => { setActive(null); router.push(`/projects/${id}`); }} />
       )}
       {active === "quote" && (
         <QuickCreateQuoteModal onClose={() => setActive(null)} onContinue={(id) => { setActive(null); router.push(`/quotes/${id}/builder`); }} />

@@ -75,15 +75,25 @@ export function AddressAutocomplete({ value, onChange, placeholder, required, er
 
   const [validating, setValidating] = useState(false);
   const [picked, setPicked]         = useState<boolean>(() => Boolean(value.city));
+  // Set when the legacy Places Autocomplete widget can't be created (e.g. it's
+  // not enabled for newer Google Cloud projects). We fall back to manual entry +
+  // server-side validation instead of letting the error crash the form.
+  const [widgetFailed, setWidgetFailed] = useState(false);
   const [dialog, setDialog]         = useState<{
     original:  ParsedAddress;
     suggested: ParsedAddress;
   } | null>(null);
 
+  // Synchronous guard so a place pick + blur don't fire two validations at once.
+  const inFlight = useRef(false);
+
   const triggerValidation = useCallback(async (addr: ParsedAddress) => {
+    if (inFlight.current || !addr.addressLine1.trim()) return;
+    inFlight.current = true;
     setValidating(true);
     const result = await callValidationApi(addr);
     setValidating(false);
+    inFlight.current = false;
 
     if (result.hasCorrection && result.suggestedAddress) {
       setDialog({ original: addr, suggested: result.suggestedAddress });
@@ -101,11 +111,19 @@ export function AddressAutocomplete({ value, onChange, placeholder, required, er
     // Defensive: the Places library must actually be attached to the global.
     if (typeof google === "undefined" || !google.maps?.places?.Autocomplete) return;
 
-    autocompleteRef.current = new google.maps.places.Autocomplete(inputRef.current, {
-      types:                ["address"],
-      componentRestrictions: { country: ["us"] },
-      fields:               ["address_components", "formatted_address", "geometry", "place_id"],
-    });
+    try {
+      autocompleteRef.current = new google.maps.places.Autocomplete(inputRef.current, {
+        types:                ["address"],
+        componentRestrictions: { country: ["us"] },
+        fields:               ["address_components", "formatted_address", "geometry", "place_id"],
+      });
+    } catch {
+      // The legacy Autocomplete class isn't available for this API project
+      // (Google restricts it on newer Cloud projects). Degrade to manual entry
+      // — the address still gets validated server-side via the Validation API.
+      setWidgetFailed(true);
+      return;
+    }
 
     listenerRef.current = autocompleteRef.current.addListener(
       "place_changed",
@@ -144,6 +162,14 @@ export function AddressAutocomplete({ value, onChange, placeholder, required, er
     });
   }
 
+  // Validate a typed (non-Google-picked) address once the user leaves a field, so
+  // manually-entered addresses still get checked + corrected by Google.
+  function validateOnBlur() {
+    if (value.addressLine1.trim() && value.validationStatus === "unvalidated") {
+      triggerValidation(value);
+    }
+  }
+
   // Status icon next to the input
   const StatusIcon = () => {
     if (validating) return <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: "var(--text-muted)" }} />;
@@ -159,13 +185,17 @@ export function AddressAutocomplete({ value, onChange, placeholder, required, er
     return null;
   };
 
+  // Manual mode = no usable Google autocomplete widget (no key / load failure /
+  // the legacy widget being unavailable for this project).
+  const manualMode = unavailable || widgetFailed;
+
   const inputPlaceholder = mapsLoading
     ? "Loading address search..."
-    : unavailable
+    : manualMode
     ? "Enter address manually"
     : (placeholder ?? "Start typing an address…");
 
-  const showBreakdown = picked || unavailable || Boolean(value.city);
+  const showBreakdown = picked || manualMode || Boolean(value.addressLine1);
 
   return (
     <div>
@@ -180,6 +210,7 @@ export function AddressAutocomplete({ value, onChange, placeholder, required, er
           type="text"
           defaultValue={value.formattedAddress || value.addressLine1}
           onChange={handleManualInput}
+          onBlur={validateOnBlur}
           placeholder={inputPlaceholder}
           disabled={mapsLoading}
           autoComplete="off"
@@ -213,6 +244,7 @@ export function AddressAutocomplete({ value, onChange, placeholder, required, er
             <input
               value={value.addressLine1}
               onChange={e => onChange({ ...value, addressLine1: e.target.value, validationStatus: "unvalidated" })}
+              onBlur={validateOnBlur}
               className="w-full rounded-lg px-3 py-1.5 text-sm outline-none"
               style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface-2)", color: "var(--text-primary)" }}
             />
@@ -232,6 +264,7 @@ export function AddressAutocomplete({ value, onChange, placeholder, required, er
             <input
               value={value.city}
               onChange={e => onChange({ ...value, city: e.target.value, validationStatus: "unvalidated" })}
+              onBlur={validateOnBlur}
               className="w-full rounded-lg px-3 py-1.5 text-sm outline-none"
               style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface-2)", color: "var(--text-primary)" }}
             />
@@ -242,6 +275,7 @@ export function AddressAutocomplete({ value, onChange, placeholder, required, er
               value={value.state}
               maxLength={2}
               onChange={e => onChange({ ...value, state: e.target.value.toUpperCase().slice(0, 2), validationStatus: "unvalidated" })}
+              onBlur={validateOnBlur}
               className="w-full rounded-lg px-3 py-1.5 text-sm outline-none uppercase"
               style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface-2)", color: "var(--text-primary)" }}
             />
@@ -251,6 +285,7 @@ export function AddressAutocomplete({ value, onChange, placeholder, required, er
             <input
               value={value.postalCode}
               onChange={e => onChange({ ...value, postalCode: e.target.value, validationStatus: "unvalidated" })}
+              onBlur={validateOnBlur}
               className="w-full rounded-lg px-3 py-1.5 text-sm outline-none"
               style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface-2)", color: "var(--text-primary)" }}
             />
@@ -264,6 +299,12 @@ export function AddressAutocomplete({ value, onChange, placeholder, required, er
         <p className="mt-1 text-[10px]" style={{ color: "var(--text-muted)" }}>
           Address autocomplete unavailable — add{" "}
           <code className="font-mono">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code> to enable.
+        </p>
+      )}
+      {widgetFailed && !unavailable && (
+        <p className="mt-1 text-[10px]" style={{ color: "var(--text-muted)" }}>
+          Address suggestions are unavailable for this Google project — enter the
+          address manually; it&apos;ll still be verified on save.
         </p>
       )}
 

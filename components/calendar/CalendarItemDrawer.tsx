@@ -87,6 +87,16 @@ export default function CalendarItemDrawer({
             {unscheduled?.value && <Row icon={FileText} label="Value" value={unscheduled.value} />}
           </div>
 
+          {/* Description */}
+          {(scheduled?.description ?? unscheduled?.description) && (
+            <div className="pt-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: "var(--text-muted)" }}>Description</p>
+              <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "var(--text-primary)" }}>
+                {scheduled?.description ?? unscheduled?.description}
+              </p>
+            </div>
+          )}
+
           {/* Reassign (scheduled jobs) */}
           {isScheduled && scheduled!.type === "job" && onReassign && (
             <div className="pt-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>

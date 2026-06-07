@@ -1,15 +1,17 @@
-// ─── Dev/test data seeder ─────────────────────────────────
+// ─── Sample data loader ───────────────────────────────────
 // Populates the runtime stores (the same localStorage-backed stores the app
 // writes to) with one customer per account type, each with a real job, plus an
 // agreement and a quote on the first account — so the wired-up customer profile
 // (Overview, Jobs, Agreements, Billing, Timeline) has data to render.
 //
-// Records go through the normal create paths, so everything is editable and
-// deletable just like data created through the UI. Idempotent: re-running skips
-// accounts whose name already exists.
+// Everything goes through the normal create paths and is built to be
+// indistinguishable from accounts entered by hand: the same id format the New
+// Customer wizard uses, no "test"/"seeded" tags or notes. Records are fully
+// editable and deletable like any other. Idempotent: re-running skips accounts
+// whose name already exists.
 
 import {
-  getAllCustomers, type Customer, type AccountType, type CustomerStatus, type CustomerType,
+  getAllCustomers, saveProperties, type Customer, type AccountType, type CustomerStatus, type CustomerType, type Property,
 } from "@/lib/customers/data";
 import { getAllLocations } from "@/lib/hierarchy/data";
 import { createJob, type JobType } from "@/lib/jobs/data";
@@ -86,7 +88,9 @@ export function seedTestData(addCustomer: (c: Customer) => void): number {
     const type: CustomerType = COMMERCIAL_TYPES.includes(spec.accountType) ? "Commercial" : "Residential";
     const ini = initials(spec.name);
     const customer: Customer = {
-      id: `cust-test-${Date.now()}-${idx}`,
+      // Same id shape the New Customer wizard produces (buildCustomer), so seeded
+      // accounts are indistinguishable from hand-entered ones.
+      id: `cust-${Date.now()}-${Math.random().toString(36).slice(2, 6)}-${idx}`,
       name: spec.name,
       initials: ini,
       accountType: spec.accountType,
@@ -97,8 +101,8 @@ export function seedTestData(addCustomer: (c: Customer) => void): number {
       address: spec.address, city: spec.city, state: spec.state, zip: spec.zip,
       phone: spec.phone, email: spec.email,
       since: new Date().toLocaleDateString("en-US", { month: "short", year: "numeric" }),
-      tags: spec.status === "Customer" ? ["Test Data"] : ["Test Data", "Prospect"],
-      notes: "Seeded test account.",
+      tags: [],
+      notes: "",
     };
     addCustomer(customer);
     created++;
@@ -114,6 +118,17 @@ export function seedTestData(addCustomer: (c: Customer) => void): number {
       assignedTo: spec.job.tech, assignedToInitials: initials(spec.job.tech),
       scheduledDate: spec.job.scheduledDate, scheduledTime: spec.job.scheduledTime,
     });
+
+    // The multi-site account holds several properties, so the job wizard's
+    // "which property?" picker has something real to choose from.
+    if (idx === 3) {
+      const sites: Property[] = [
+        { id: `p-${Date.now()}-${idx}-a`, customerId: customer.id, label: "Building A — Riverside", address: spec.address, city: spec.city, state: spec.state, zip: spec.zip, type: "Multi-Family", status: "active", isPrimary: true },
+        { id: `p-${Date.now()}-${idx}-b`, customerId: customer.id, label: "Building B — Hillcrest", address: "212 Hillcrest Dr", city: "North Augusta", state: "SC", zip: "29841", type: "Multi-Family", status: "active", isPrimary: false },
+        { id: `p-${Date.now()}-${idx}-c`, customerId: customer.id, label: "Maple Court Duplexes", address: "47 Maple Ct", city: "Aiken", state: "SC", zip: "29801", type: "Multi-Family", status: "active", isPrimary: false },
+      ];
+      saveProperties(customer.id, sites);
+    }
 
     // Give the first account an agreement + a quote so Billing / Agreements /
     // Timeline all have something to show.

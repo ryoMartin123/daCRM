@@ -111,15 +111,110 @@ export const LEAD_NOTES: Record<string, LeadNote[]> = {};
 // ─── Lead tasks ───────────────────────────────────────────
 export const LEAD_TASKS: Record<string, LeadTask[]> = {};
 
-// ─── Lookup helpers ───────────────────────────────────────
-const LEADS_MAP: Record<string, Lead> = Object.fromEntries(ALL_LEADS.map(l => [l.id, l]));
+// ─── Runtime store (pre-Supabase) ─────────────────────────
+// Leads created in the app persist to localStorage, mirroring the customers and
+// jobs stores. Loaded lazily on first client-side access.
+const LEADS_KEY = "crm-extra-leads";
+let _extra: Lead[] | null = null;
 
+function extraLeads(): Lead[] {
+  if (_extra) return _extra;
+  if (typeof window === "undefined") return [];
+  try { const raw = localStorage.getItem(LEADS_KEY); _extra = raw ? (JSON.parse(raw) as Lead[]) : []; }
+  catch { _extra = []; }
+  return _extra!;
+}
+function persistLeads(): void {
+  if (typeof window === "undefined" || !_extra) return;
+  try { localStorage.setItem(LEADS_KEY, JSON.stringify(_extra)); } catch { /* ignore */ }
+}
+
+function initialsOf(name: string): string {
+  const p = name.replace(/\(.*\)/, "").trim().split(/\s+/);
+  return (p.length >= 2 ? p[0][0] + p[p.length - 1][0] : name.slice(0, 2)).toUpperCase();
+}
+
+// ─── Lookup helpers ───────────────────────────────────────
 export function getLead(id: string): Lead | undefined {
-  return LEADS_MAP[id];
+  return ALL_LEADS.find(l => l.id === id) ?? extraLeads().find(l => l.id === id);
 }
 
 export function getAllLeads(): Lead[] {
-  return ALL_LEADS;
+  return [...ALL_LEADS, ...extraLeads()];
+}
+
+// ─── Create ───────────────────────────────────────────────
+export interface NewLeadInput {
+  companyId: string;
+  locationId: string;
+  locationName: string;
+  serviceAreaId?: string;
+  accountId?: string;            // set when the lead is tied to an existing/just-created account
+
+  title: string;
+  source: LeadSource;
+  stage?: LeadStage;             // defaults to "new_lead"
+  estimatedValue?: string;
+  assignedTo?: string;           // defaults to "Unassigned"
+
+  customerName: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  customerAddress?: string;
+
+  notes?: string;
+}
+
+// Patch a lead in the runtime store (e.g. marking it converted to a project/job).
+// Seed leads (ALL_LEADS) aren't patched — the prototype's seed is empty.
+export function updateLead(id: string, patch: Partial<Lead>): Lead | undefined {
+  let updated: Lead | undefined;
+  _extra = extraLeads().map(l => {
+    if (l.id !== id) return l;
+    updated = { ...l, ...patch };
+    return updated;
+  });
+  if (updated) persistLeads();
+  return updated;
+}
+
+// Remove a runtime lead. Seed leads (ALL_LEADS) aren't removable here.
+export function deleteLead(id: string): boolean {
+  const before = extraLeads().length;
+  _extra = extraLeads().filter(l => l.id !== id);
+  const removed = _extra.length < before;
+  if (removed) persistLeads();
+  return removed;
+}
+
+export function createLead(input: NewLeadInput): Lead {
+  const now = new Date();
+  const assignedTo = input.assignedTo?.trim() || "Unassigned";
+  const lead: Lead = {
+    id: `lead-${now.getTime()}-${Math.random().toString(36).slice(2, 6)}`,
+    companyId: input.companyId,
+    locationId: input.locationId,
+    serviceAreaId: input.serviceAreaId,
+    accountId: input.accountId,
+    title: input.title.trim(),
+    stage: input.stage ?? "new_lead",
+    source: input.source,
+    estimatedValue: input.estimatedValue?.trim() || undefined,
+    assignedTo,
+    assignedToInitials: assignedTo === "Unassigned" ? "—" : initialsOf(assignedTo),
+    customerName: input.customerName,
+    customerInitials: initialsOf(input.customerName),
+    customerPhone: input.customerPhone,
+    customerEmail: input.customerEmail,
+    customerAddress: input.customerAddress,
+    notes: input.notes?.trim() || undefined,
+    createdAt: now.toISOString(),
+    displayDate: now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+    locationName: input.locationName,
+  };
+  _extra = [lead, ...extraLeads()];
+  persistLeads();
+  return lead;
 }
 
 export function getLeadNotes(leadId: string): LeadNote[] {

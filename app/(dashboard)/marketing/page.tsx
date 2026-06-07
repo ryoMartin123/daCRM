@@ -27,7 +27,7 @@ const AUDIENCE_ICON: Record<string, LucideIcon> = {
 };
 
 export default function MarketingPage() {
-  const [tab, setTab] = useState<"campaigns" | "audiences" | "templates">("campaigns");
+  const [tab, setTab] = useState<"overview" | "campaigns" | "audiences" | "templates">("overview");
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [templates, setTemplates] = useState<MarketingTemplate[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
@@ -69,14 +69,18 @@ export default function MarketingPage() {
         </button>
       </div>
 
-      <ModuleSummaryCards moduleKey="marketing" cards={cards} />
-
       <StatusTabs active={tab} onChange={k => setTab(k as typeof tab)}
         tabs={[
+          { key: "overview",  label: "Overview" },
           { key: "campaigns", label: "Campaigns", count: campaigns.length },
           { key: "audiences", label: "Audiences", count: auds.length },
           { key: "templates", label: "Templates", count: templates.length },
         ]} />
+
+      {/* ── Overview ── */}
+      {tab === "overview" && (
+        <ModuleSummaryCards moduleKey="marketing" cards={cards} />
+      )}
 
       {/* ── Campaigns ── */}
       {tab === "campaigns" && (

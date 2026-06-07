@@ -40,15 +40,10 @@ export function CustomerProvider({ children }: { children: React.ReactNode }) {
   // On mount, load any customers created in previous sessions.
   useEffect(() => {
     _loadFromStorage();
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const extra = JSON.parse(raw) as Customer[];
-        if (extra.length > 0) {
-          setCustomers([...ALL_CUSTOMERS, ...extra]);
-        }
-      }
-    } catch { /* ignore */ }
+    // Mirror the data layer (which already drops malformed/legacy records) rather
+    // than re-parsing raw storage, so a bad entry can't crash the list page.
+    const extra = getAllCustomers().filter(c => !ALL_CUSTOMERS.some(b => b.id === c.id));
+    if (extra.length > 0) setCustomers([...ALL_CUSTOMERS, ...extra]);
   }, []);
 
   function addCustomer(customer: Customer) {

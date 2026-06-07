@@ -15,7 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 import StatusBadge from "@/components/shared/StatusBadge";
 import {
-  getCustomer, getContacts, getProperties, getEquipment, getJobs, getLeads, getNotes, getTasks, addNote,
+  getCustomer, getContacts, getProperties, saveProperties, getEquipment, getJobs, getLeads, getNotes, getTasks, addNote,
   type Contact, type Property, type CustomerType, type CustomerStatus,
   type JobStatus, type LeadStatus, type NoteType, type EquipmentStatus, type PropertyType,
   type CustomerNote,
@@ -28,6 +28,7 @@ import { getQuotesForCustomer, getInvoicesForCustomer, fmt as fmtCurrency } from
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCustomers } from "@/components/providers/CustomerProvider";
 import EditCustomerModal from "@/components/customers/EditCustomerModal";
+import LeadWizard from "@/components/leads/LeadWizard";
 import QuickCreateQuoteModal from "@/components/quotes/QuickCreateQuoteModal";
 import { AddressAutocomplete, EMPTY_ADDRESS, type ParsedAddress } from "@/components/address/AddressAutocomplete";
 import UiSelect from "@/components/ui/Select";
@@ -759,7 +760,9 @@ function AddPropertyForm({
             style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
             Cancel
           </button>
-          <button onClick={onSave} disabled={!form.parsedAddress.addressLine1.trim()}
+          <button onClick={onSave}
+            disabled={!form.parsedAddress.addressLine1.trim() || form.parsedAddress.validationStatus === "unvalidated"}
+            title={form.parsedAddress.validationStatus === "unvalidated" ? "Confirm the address before saving" : undefined}
             className="px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-40 transition-colors">
             {isEditing ? "Save Changes" : "Save Property"}
           </button>
@@ -780,7 +783,12 @@ function PropertiesTab({ id }: { id: string }) {
 
   function changeForm(k: keyof PropertyFormData, v: PropertyFormData[keyof PropertyFormData]) {
     setForm(f => ({ ...f, [k]: v }));
-    setFormErrors(e => { const n = { ...e }; delete n[k as string]; return n; });
+    setFormErrors(e => {
+      const n = { ...e }; delete n[k as string];
+      // The address field surfaces its error under the "address" key.
+      if (k === "parsedAddress") delete n.address;
+      return n;
+    });
   }
 
   function closeForm() { setShowAdd(false); setEditingId(null); setForm({ ...EMPTY_PROPERTY_FORM }); setFormErrors({}); }
@@ -794,6 +802,9 @@ function PropertiesTab({ id }: { id: string }) {
         ...EMPTY_ADDRESS,
         addressLine1: p.address, city: p.city, state: p.state || "GA", postalCode: p.zip,
         formattedAddress: [p.address, p.city, p.state].filter(Boolean).join(", "),
+        // Already-saved address — treat as confirmed so the user isn't forced to
+        // re-validate it unless they actually change a field.
+        validationStatus: "user_confirmed",
       },
       type: p.type,
       notes: p.accessNotes ?? "",
@@ -804,6 +815,12 @@ function PropertiesTab({ id }: { id: string }) {
 
   function handleSave() {
     if (!form.parsedAddress.addressLine1.trim()) { setFormErrors({ address: "Address is required" }); return; }
+    // Require the address to have been checked by Google before saving. Leaving a
+    // field triggers validation; "unvalidated" means it hasn't run/finished yet.
+    if (form.parsedAddress.validationStatus === "unvalidated") {
+      setFormErrors({ address: "Verifying address… confirm the address before saving." });
+      return;
+    }
 
     const fields = {
       label:       form.label.trim() || undefined,
@@ -815,19 +832,24 @@ function PropertiesTab({ id }: { id: string }) {
       accessNotes: form.notes.trim() || undefined,
     };
 
+    let next: Property[];
     if (editingId) {
-      setProperties(prev => prev.map(p => {
+      next = properties.map(p => {
         if (p.id === editingId) return { ...p, ...fields, isPrimary: form.isPrimary };
         return form.isPrimary ? { ...p, isPrimary: false } : p;
-      }));
+      });
     } else {
       const hasPrimary = properties.some(p => p.isPrimary);
       const newProp: Property = {
         id: `p-${Date.now()}`, customerId: id, ...fields, status: "active",
         isPrimary: form.isPrimary || !hasPrimary,
       };
-      setProperties(prev => newProp.isPrimary ? [newProp, ...prev.map(p => ({ ...p, isPrimary: false }))] : [...prev, newProp]);
+      next = newProp.isPrimary ? [newProp, ...properties.map(p => ({ ...p, isPrimary: false }))] : [...properties, newProp];
     }
+    // Persist so the account truly holds multiple properties (job wizard picker,
+    // profile, etc. all read the same store).
+    saveProperties(id, next);
+    setProperties(next);
     closeForm();
   }
 
@@ -911,14 +933,24 @@ function JobsTab({ id }: { id: string }) {
 
 // ─── Leads tab ────────────────────────────────────────────
 function LeadsTab({ id }: { id: string }) {
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [, setRefresh] = useState(0);
   const leads = getLeads(id);
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <button className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg transition-colors">
+        <button onClick={() => setWizardOpen(true)}
+          className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg transition-colors">
           <Plus className="w-3.5 h-3.5" /> New Lead
         </button>
       </div>
+      {wizardOpen && (
+        <LeadWizard
+          preset={{ accountId: id, lockAccount: true }}
+          onClose={() => setWizardOpen(false)}
+          onCreated={() => { setWizardOpen(false); setRefresh(r => r + 1); }}
+        />
+      )}
       {leads.length === 0 ? <StubContent label="No leads yet" /> : (
         <TableCard cols="2fr 1fr 1fr 1fr 1fr">
           <TableHead cols={["Title", "Status", "Date", "Source", "Value"]} />

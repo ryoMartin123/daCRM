@@ -199,7 +199,11 @@ function SuccessState({ name, onClose }: { name: string; onClose: () => void }) 
 }
 
 // ─── Quick Add ────────────────────────────────────────────
-function QuickAddContent({ onClose }: { onClose: () => void }) {
+function QuickAddContent({ onClose, onCreated, forceStatus }: {
+  onClose: () => void;
+  onCreated?: (customer: Customer) => void;
+  forceStatus?: CustomerStatus;
+}) {
   const { locationOptions, effectiveLocationId, showCompanySelector, allCompanies } = useHierarchy();
   const { addCustomer } = useCustomers();
 
@@ -233,10 +237,11 @@ function QuickAddContent({ onClose }: { onClose: () => void }) {
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
 
     const customer = buildCustomer(
-      data.name, data.phone, data.accountType, status,
+      data.name, data.phone, data.accountType, forceStatus ?? status,
       data.locationId, "", { ...EMPTY_ADDRESS }, "",
     );
     addCustomer(customer);
+    if (onCreated) { onCreated(customer); return; }   // hand back to the caller
     setSubmitted(true);
   }
 
@@ -321,7 +326,7 @@ function Step1({ data, set }: { data: WizardData; set: <K extends keyof WizardDa
   );
 }
 
-function Step2({ data, set, errors }: { data: WizardData; set: <K extends keyof WizardData>(k: K, v: WizardData[K]) => void; errors: Record<string, string> }) {
+function Step2({ data, set, errors, lockStatus }: { data: WizardData; set: <K extends keyof WizardData>(k: K, v: WizardData[K]) => void; errors: Record<string, string>; lockStatus?: boolean }) {
   const { locationOptions, serviceAreaOptions, showLocationSelector, showServiceAreaSelector, effectiveLocationId, showCompanySelector, allCompanies } = useHierarchy();
   const needsLocationChoice = !effectiveLocationId && locationOptions.length > 1;
   const locLabel = (companyId: string, name: string) =>
@@ -332,17 +337,19 @@ function Step2({ data, set, errors }: { data: WizardData; set: <K extends keyof 
         <Input value={data.name} onChange={v => set("name", v)}
           placeholder={data.accountType === "residential" ? "e.g. John Smith" : data.accountType === "commercial" ? "e.g. ABC Company LLC" : "e.g. ABC Property Management"} />
       </Field>
-      <Field label="Status">
-        <div className="flex gap-2">
-          {(["Prospect", "Customer"] as const).map(s => (
-            <button key={s} onClick={() => set("status", s)}
-              className="flex-1 py-2 rounded-lg text-sm font-medium transition-all"
-              style={{ border: `1.5px solid ${data.status === s ? "#4f46e5" : "var(--border)"}`, backgroundColor: data.status === s ? "#e0e7ff" : "var(--bg-surface-2)", color: data.status === s ? "#4f46e5" : "var(--text-secondary)" }}>
-              {s}
-            </button>
-          ))}
-        </div>
-      </Field>
+      {!lockStatus && (
+        <Field label="Status">
+          <div className="flex gap-2">
+            {(["Prospect", "Customer"] as const).map(s => (
+              <button key={s} onClick={() => set("status", s)}
+                className="flex-1 py-2 rounded-lg text-sm font-medium transition-all"
+                style={{ border: `1.5px solid ${data.status === s ? "#4f46e5" : "var(--border)"}`, backgroundColor: data.status === s ? "#e0e7ff" : "var(--bg-surface-2)", color: data.status === s ? "#4f46e5" : "var(--text-secondary)" }}>
+                {s}
+              </button>
+            ))}
+          </div>
+        </Field>
+      )}
       {showLocationSelector && (
         <Field label={showCompanySelector ? "Company & Branch" : "Branch"} required={needsLocationChoice}>
           <Select value={data.locationId} onChange={v => set("locationId", v)}
@@ -457,7 +464,11 @@ function Step4({ data, set }: { data: WizardData; set: <K extends keyof WizardDa
 }
 
 // ─── Wizard wrapper ───────────────────────────────────────
-function WizardContent({ onClose }: { onClose: () => void }) {
+function WizardContent({ onClose, onCreated, forceStatus }: {
+  onClose: () => void;
+  onCreated?: (customer: Customer) => void;
+  forceStatus?: CustomerStatus;
+}) {
   const { locationOptions, effectiveLocationId } = useHierarchy();
   const { addCustomer } = useCustomers();
 
@@ -465,7 +476,7 @@ function WizardContent({ onClose }: { onClose: () => void }) {
   const needsLocationChoice = !effectiveLocationId && locationOptions.length > 1;
 
   const [step, setStep]   = useState(1);
-  const [data, setData]   = useState<WizardData>({ ...DEFAULT_WIZARD, locationId: effectiveLocationId ?? (locationOptions.length === 1 ? locationOptions[0]!.id : "") });
+  const [data, setData]   = useState<WizardData>({ ...DEFAULT_WIZARD, status: forceStatus ?? DEFAULT_WIZARD.status, locationId: effectiveLocationId ?? (locationOptions.length === 1 ? locationOptions[0]!.id : "") });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitted, setSubmitted] = useState(false);
 
@@ -505,12 +516,13 @@ function WizardContent({ onClose }: { onClose: () => void }) {
 
     // Step 4 confirmed — create the customer
     const customer = buildCustomer(
-      data.name, data.contactPhone, data.accountType, data.status,
+      data.name, data.contactPhone, data.accountType, forceStatus ?? data.status,
       data.locationId, data.serviceAreaId,
       data.propertyParsedAddress,
       data.contactEmail,
     );
     addCustomer(customer);
+    if (onCreated) { onCreated(customer); return; }   // hand back to the caller
     setSubmitted(true);
   }
 
@@ -527,7 +539,7 @@ function WizardContent({ onClose }: { onClose: () => void }) {
       <StepProgress current={step} />
       <div className="flex-1 overflow-y-auto px-6 py-5">
         {step === 1 && <Step1 data={data} set={set} />}
-        {step === 2 && <Step2 data={data} set={set} errors={errors} />}
+        {step === 2 && <Step2 data={data} set={set} errors={errors} lockStatus={!!forceStatus} />}
         {step === 3 && <Step3 data={data} set={set} errors={errors} clearError={clearError} />}
         {step === 4 && <Step4 data={data} set={set} />}
       </div>
@@ -555,11 +567,21 @@ function WizardContent({ onClose }: { onClose: () => void }) {
 }
 
 // ─── Modal root ───────────────────────────────────────────
-export default function NewCustomerModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export default function NewCustomerModal({ open, onClose, onCreated, forceStatus, forceFullWizard }: {
+  open: boolean;
+  onClose: () => void;
+  // When provided, the modal hands back the created account instead of showing
+  // its success screen — lets another flow (e.g. the lead wizard) continue.
+  onCreated?: (customer: Customer) => void;
+  // Lock the new account to a status (e.g. "Prospect" from the lead flow).
+  forceStatus?: CustomerStatus;
+  // Force the full wizard even if Quick Add is enabled for the org.
+  forceFullWizard?: boolean;
+}) {
   // The full wizard is the standard flow. Businesses can opt into the fast
   // name+phone path via Settings → Business Structure → Customer Quick Add.
   const { orgSettings } = useHierarchy();
-  const quickAddEnabled = orgSettings.customerQuickAdd;
+  const quickAddEnabled = orgSettings.customerQuickAdd && !forceFullWizard;
 
   const [mode, setMode] = useState<"quick" | "full">("full");
   useEffect(() => { if (open) setMode(quickAddEnabled ? "quick" : "full"); }, [open, quickAddEnabled]);
@@ -597,7 +619,9 @@ export default function NewCustomerModal({ open, onClose }: { open: boolean; onC
             ))}
           </div>
         )}
-        {showQuick ? <QuickAddContent onClose={onClose} /> : <WizardContent onClose={onClose} />}
+        {showQuick
+          ? <QuickAddContent onClose={onClose} onCreated={onCreated} forceStatus={forceStatus} />
+          : <WizardContent onClose={onClose} onCreated={onCreated} forceStatus={forceStatus} />}
       </div>
     </div>
   );

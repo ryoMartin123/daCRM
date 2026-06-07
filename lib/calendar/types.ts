@@ -86,6 +86,7 @@ export interface CalendarItem {
   jobType?: string;
   priority?: ItemPriority;
   contact?: string;
+  description?: string;
 }
 
 // An item awaiting a slot (no start time yet).
@@ -115,6 +116,7 @@ export interface UnscheduledItem {
   dueDate?: string;          // due/target date used by date-range queue filters
   jobType?: string;
   dispatchBoardId?: string;  // optional board affinity for board-specific views
+  description?: string;
 }
 
 // ─── Priority config ──────────────────────────────────────

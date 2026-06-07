@@ -27,12 +27,16 @@ export default function RootLayout({
             __html: `try{var t=localStorage.getItem('crm-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}`,
           }}
         />
-        {/* One-time purge of seeded demo records from localStorage so the app
-            starts empty after the demo-data clear. Guarded by a version flag —
-            anything created after this runs is kept. Bump the flag to re-purge. */}
+        {/* One-time wipe of business RECORDS from localStorage (customers, leads,
+            jobs, quotes, agreements, projects, campaigns, photos, work orders,
+            notes, availability) so the app starts from a clean slate. Runs before any
+            module initializes, so in-memory caches start empty too. Guarded by a
+            version flag — bump it to wipe again. Configuration is intentionally
+            preserved: dispatch boards, hierarchy, roles, users, settings, price
+            book, templates, custom fields, dashboards, etc. are NOT touched. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{if(!localStorage.getItem('crm-demo-purged-v2')){['crm-extra-customers','crm-extra-jobs','crm-job-overrides','crm-extra-projects','crm-extra-quotes','crm-extra-invoices','crm-quote-overrides','crm-invoice-overrides','crm-agreements-extra','crm-extra-campaigns','crm-photos-files-v2','crm-dispatch-settings'].forEach(function(k){localStorage.removeItem(k)});localStorage.setItem('crm-demo-purged-v2','1')}}catch(e){}`,
+            __html: `try{if(!localStorage.getItem('crm-records-reset-v3')){['crm-extra-customers','crm-customer-notes','crm-customer-properties','crm-extra-leads','crm-extra-jobs','crm-job-overrides','crm-work-orders','crm-dispatch-converted','crm-availability','crm-extra-projects','crm-project-phases','crm-extra-quotes','crm-extra-invoices','crm-quote-overrides','crm-invoice-overrides','crm-agreements-extra','crm-extra-campaigns','crm-extra-templates','crm-template-overrides','crm-photos-files-v2'].forEach(function(k){localStorage.removeItem(k)});localStorage.setItem('crm-records-reset-v3','1')}}catch(e){}`,
           }}
         />
       </head>

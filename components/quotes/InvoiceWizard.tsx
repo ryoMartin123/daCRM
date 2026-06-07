@@ -165,6 +165,9 @@ export default function InvoiceWizard({ preset, editInvoice, onClose, onCreated 
       title: title.trim() || "Invoice", lineItems, taxRate: (parseFloat(taxRate) || 0) / 100,
       dueDate: dueDate || defaultDueDate(),
       propertyId: propertyId || undefined, propertyLabel,
+      // Link back to the originating record (e.g. a project) so it appears on that
+      // record's Invoices tab and feeds its billing status.
+      projectId: preset?.projectId, jobId: preset?.jobId,
       customerNotes: customerNotes || undefined, internalNotes: internalNotes || undefined,
     });
     if (markSent) updateInvoice(inv.id, { status: "sent" });

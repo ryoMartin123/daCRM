@@ -189,11 +189,23 @@ export function _addToStore(customer: Customer): void {
   _extra = [..._extra, customer];
 }
 
+// A persisted record is only usable if it has the string fields the list/detail
+// pages read directly (name, address, etc. are called with .toLowerCase()/sort).
+// Dropping malformed/legacy records here keeps one bad entry from white-screening
+// the whole Customers page.
+function isValidCustomer(c: unknown): c is Customer {
+  return !!c && typeof c === "object"
+    && typeof (c as Customer).id === "string"
+    && typeof (c as Customer).name === "string";
+}
+
 export function _loadFromStorage(): void {
   try {
     const raw = localStorage.getItem("crm-extra-customers");
-    if (raw) _extra = JSON.parse(raw) as Customer[];
-  } catch { /* ignore */ }
+    if (!raw) { _extra = []; return; }
+    const parsed = JSON.parse(raw);
+    _extra = Array.isArray(parsed) ? parsed.filter(isValidCustomer) : [];
+  } catch { _extra = []; }
 }
 
 // Patch a runtime customer (e.g. saving a service address captured at job time).
@@ -257,7 +269,28 @@ export function getContacts(customerId: string): Contact[] {
   }];
 }
 
+// ─── Customer properties runtime store ────────────────────
+// Properties added/edited on the customer profile persist here (localStorage)
+// so an account can genuinely hold more than one — which is what lets callers
+// like the job wizard offer a "which property?" picker.
+const PROPERTIES_KEY = "crm-customer-properties";
+let _properties: Record<string, Property[]> | null = null;
+function propertiesStore(): Record<string, Property[]> {
+  if (_properties) return _properties;
+  if (typeof window === "undefined") return {};
+  try { const raw = localStorage.getItem(PROPERTIES_KEY); _properties = raw ? JSON.parse(raw) : {}; }
+  catch { _properties = {}; }
+  return _properties!;
+}
+function persistProperties(): void {
+  if (typeof window === "undefined" || !_properties) return;
+  try { localStorage.setItem(PROPERTIES_KEY, JSON.stringify(_properties)); } catch { /* ignore */ }
+}
+
 export function getProperties(customerId: string): Property[] {
+  // Persisted (user-managed) properties win when present.
+  const stored = propertiesStore()[customerId];
+  if (stored && stored.length) return stored;
   if (PROPERTIES[customerId]) return PROPERTIES[customerId];
   const c = getCustomer(customerId);
   if (!c) return [];
@@ -269,6 +302,14 @@ export function getProperties(customerId: string): Property[] {
     type: c.type === "Commercial" ? "Commercial" : "Residential",
     isPrimary: true,
   }];
+}
+
+// Replace the full property set for a customer (the profile's Properties tab
+// owns the array and saves it whole). Exactly one stays primary.
+export function saveProperties(customerId: string, properties: Property[]): void {
+  const store = propertiesStore();
+  store[customerId] = properties.map(p => ({ ...p, customerId }));
+  persistProperties();
 }
 
 export function getEquipment(customerId: string): Equipment[] {

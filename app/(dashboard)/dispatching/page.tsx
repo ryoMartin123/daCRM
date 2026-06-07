@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   Inbox, Search, SlidersHorizontal, Eye, EyeOff,
   ChevronLeft, ChevronRight, ChevronUp, ChevronDown, LayoutGrid, LayoutList, CalendarDays, CalendarRange, CalendarClock,
-  Plus, Briefcase, X, Users,
+  Plus, Briefcase, X, Users, MapPin, Building2,
 } from "lucide-react";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
 import CalendarItemDrawer from "@/components/calendar/CalendarItemDrawer";
@@ -69,7 +69,7 @@ const SOURCE_TO_JOB: Record<string, SourceJobMap> = {
 const SOURCE_TO_JOB_DEFAULT: SourceJobMap = { dispatchType: "job", jobType: "repair" };
 
 export default function CalendarPage() {
-  const { effectiveCompanyId, effectiveLocationId, effectiveServiceAreaId } = useHierarchy();
+  const { effectiveCompanyId, effectiveLocationId, effectiveServiceAreaId, allCompanies, allLocations } = useHierarchy();
   const scope: CalendarScope = { companyId: effectiveCompanyId, locationId: effectiveLocationId, serviceAreaId: effectiveServiceAreaId };
   // The same module serves two routes: /dispatching (board) and /calendar
   // (month calendar). The route decides the default landing view.
@@ -196,6 +196,22 @@ export default function CalendarPage() {
   // rows, scheduled items, and the unscheduled queue to that board.
   const boardOptions = [{ value: "all", label: "All Boards" }, ...boards.map(b => ({ value: b.id, label: b.name }))];
   const activeBoardDef = boards.find(b => b.id === boardId);
+  // When the chosen board is narrower than the current viewing scope (e.g. org-wide
+  // viewer picks Augusta's board), surface a quiet reminder that they're looking at
+  // a location/company-specific board even though their global scope is broader.
+  // Shows the most specific level that the scope doesn't already pin.
+  const boardScopeNotice = (() => {
+    if (!activeBoardDef) return null;
+    if (activeBoardDef.locationId && !effectiveLocationId) {
+      const loc = allLocations.find(l => l.id === activeBoardDef.locationId);
+      if (loc) return { level: "location" as const, name: loc.name };
+    }
+    if (activeBoardDef.companyId && !effectiveCompanyId) {
+      const co = allCompanies.find(c => c.id === activeBoardDef.companyId);
+      if (co) return { level: "company" as const, name: co.name };
+    }
+    return null;
+  })();
   // Board rows are the board's EXPLICIT members only — people added by name plus
   // holders of the board's assigned roles (within that board's scope). There's no
   // implicit "everyone", so e.g. dispatchers don't show unless they're members.
@@ -362,6 +378,16 @@ export default function CalendarPage() {
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-semibold" style={{ color: "var(--text-primary)" }}>Dispatching</h1>
           <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>Dispatch command center — schedule and assign jobs</p>
+          {boardScopeNotice && (
+            <button onClick={() => selectBoard("all")}
+              title="Viewing a scoped board — click to return to all boards"
+              className="group inline-flex items-center gap-1.5 mt-1.5 pl-2 pr-1.5 py-0.5 rounded-full text-[11px] font-medium transition-colors"
+              style={{ backgroundColor: "var(--accent-soft-bg)", color: "var(--accent-text)", border: "1px solid var(--accent-soft-border)" }}>
+              {boardScopeNotice.level === "location" ? <MapPin className="w-3 h-3 shrink-0" /> : <Building2 className="w-3 h-3 shrink-0" />}
+              <span>Viewing {boardScopeNotice.level} board · {boardScopeNotice.name}</span>
+              <X className="w-3 h-3 shrink-0 opacity-50 group-hover:opacity-100 transition-opacity" />
+            </button>
+          )}
         </div>
 
         {/* Center: date label above the arrows, centered */}

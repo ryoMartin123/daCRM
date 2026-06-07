@@ -5,7 +5,7 @@ import {
   Sun, Moon, Building2, MapPin, Map, Check,
   Globe, Users, Shield, ShieldCheck, Megaphone, MessageSquare,
   Puzzle, Factory, Sliders, CreditCard, ArrowUpDown,
-  TrendingUp, Briefcase, ClipboardList, Image as ImageIcon,
+  TrendingUp, Briefcase, FolderKanban, ClipboardList, Image as ImageIcon,
   FileText, ChevronRight, Plus, Pencil, LayoutDashboard,
   Settings2, ArrowLeft, CalendarClock,
   Package, Tag, Percent, FileStack, FilePen, Lock,
@@ -24,6 +24,7 @@ const CustomFieldsSection       = dynamic(() => import("@/components/settings/Cu
 const DashboardsSettingsSection = dynamic(() => import("@/components/settings/DashboardsSettingsSection"), { loading: SectionLoading, ssr: false });
 const PipelinesSection          = dynamic(() => import("@/components/settings/PipelinesSection"),          { loading: SectionLoading, ssr: false });
 const JobConfigSection          = dynamic(() => import("@/components/settings/JobConfigSection"),          { loading: SectionLoading, ssr: false });
+const ProjectsSection           = dynamic(() => import("@/components/settings/ProjectsSection"),           { loading: SectionLoading, ssr: false });
 const WorkOrderTemplatesSection = dynamic(() => import("@/components/settings/WorkOrderTemplatesSection"), { loading: SectionLoading, ssr: false });
 const PhotoCategoriesSection    = dynamic(() => import("@/components/settings/PhotoCategoriesSection"),    { loading: SectionLoading, ssr: false });
 const IndustryDefaultsSection   = dynamic(() => import("@/components/settings/IndustryDefaultsSection"),   { loading: SectionLoading, ssr: false });
@@ -55,7 +56,7 @@ import HoverInfo, { Pill } from "@/components/shared/HoverInfo";
 type SectionKey =
   | "appearance" | "business_structure"
   | "organization" | "companies" | "locations" | "service_areas"
-  | "pipelines" | "job_types" | "work_orders" | "photo_categories" | "calendar_dispatch" | "agreements"
+  | "pipelines" | "job_types" | "projects" | "work_orders" | "photo_categories" | "calendar_dispatch" | "agreements"
   | "items_categories" | "quote_settings" | "quote_templates" | "proposal_builder" | "terms_conditions" | "taxes_fees"
   | "users" | "roles" | "security"
   | "marketing" | "communication"
@@ -115,6 +116,7 @@ const CATEGORIES: Category[] = [
     items: [
       { key: "pipelines",        label: "Pipelines",            description: "Lead pipeline stages and order",                 icon: TrendingUp },
       { key: "job_types",        label: "Job Types & Statuses", description: "Job categories and status labels",               icon: Briefcase },
+      { key: "projects",         label: "Projects",             description: "Project pipeline stages, types, templates, and defaults", icon: FolderKanban },
       { key: "work_orders",      label: "Work Orders",          description: "Checklist templates and field instructions",     icon: ClipboardList },
       { key: "photo_categories", label: "Photo Categories",     description: "Categories for job and property photos",         icon: ImageIcon },
       { key: "calendar_dispatch",label: "Calendar / Dispatch",  description: "Default view, hours, service blocks, and boards", icon: CalendarClock },
@@ -187,6 +189,7 @@ const SECTION_LAYERS: Record<SectionKey, SectionLayers> = {
   service_areas:      ["org"],
   pipelines:          ["org", "company", "location"],
   job_types:          ["org", "company", "location"],
+  projects:           ["org", "company", "location"],
   work_orders:        ["org", "company"],
   photo_categories:   ["org", "company"],
   calendar_dispatch:  ["org", "company", "location"],
@@ -880,6 +883,7 @@ export default function SettingsPage() {
       case "service_areas":      return <ServiceAreasSection />;
       case "pipelines":          return <PipelinesSection />;
       case "job_types":          return <JobConfigSection />;
+      case "projects":           return <ProjectsSection />;
       case "photo_categories":   return <PhotoCategoriesSection />;
       case "calendar_dispatch":  return <CalendarDispatchSection />;
       case "items_categories":   return <ItemsCategoriesSection />;

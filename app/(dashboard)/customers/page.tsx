@@ -88,17 +88,12 @@ export default function CustomersPage() {
     .filter((c) => {
       if (!search) return true;
       const q = search.toLowerCase();
-      return (
-        c.name.toLowerCase().includes(q) ||
-        c.address.toLowerCase().includes(q) ||
-        c.city.toLowerCase().includes(q) ||
-        c.phone.includes(q) ||
-        (c.email ?? "").toLowerCase().includes(q)
-      );
+      const has = (v?: string) => (v ?? "").toLowerCase().includes(q);
+      return has(c.name) || has(c.address) || has(c.city) || has(c.phone) || has(c.email);
     })
     .sort((a, b) => {
-      const av = a[sortField] ?? "";
-      const bv = b[sortField] ?? "";
+      const av = String(a[sortField] ?? "");
+      const bv = String(b[sortField] ?? "");
       return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
     });
 
@@ -138,12 +133,12 @@ export default function CustomersPage() {
         <div className="flex-1 flex justify-end gap-2">
           <button
             onClick={() => seedTestData(addCustomer)}
-            title="Create one test account per type (with jobs, an agreement, and a quote) to exercise the profile wiring"
+            title="Add one sample account per type (each with a job, plus an agreement and a quote on the first) — real records, fully editable. Skips any that already exist."
             className="flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg transition-colors"
             style={{ border: "1px solid var(--border)", color: "var(--text-secondary)", backgroundColor: "var(--bg-surface)" }}
           >
             <FlaskConical className="w-4 h-4" />
-            Load Test Data
+            Load Sample Data
           </button>
           <button
             onClick={() => setModalOpen(true)}

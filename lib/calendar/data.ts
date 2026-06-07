@@ -77,6 +77,7 @@ function jobToItem(job: Job): CalendarItem | null {
     city: cityFromAddress(job.propertyAddress),
     jobType: job.type.charAt(0).toUpperCase() + job.type.slice(1),
     priority: job.priority,
+    description: job.description,
   };
 }
 
@@ -289,6 +290,7 @@ export function getUnscheduledJobs(scope: CalendarScope): UnscheduledItem[] {
       priority: job.priority, durationMinutes: job.durationMinutes,
       jobType: job.type.charAt(0).toUpperCase() + job.type.slice(1),
       value: job.estimatedAmount,
+      description: job.description,
     });
   }
   return out;

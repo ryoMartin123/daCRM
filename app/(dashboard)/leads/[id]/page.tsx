@@ -3,14 +3,16 @@
 import React, { use, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowLeft, Pencil, Plus,
+  ArrowLeft, Pencil, Plus, Trash2,
   Phone, Mail, MapPin, User, Calendar, DollarSign,
   MessageSquare, CheckSquare, Briefcase, FolderKanban,
   TrendingUp, AlertCircle,
 } from "lucide-react";
 import StatusBadge from "@/components/shared/StatusBadge";
+import HoverInfo, { Pill } from "@/components/shared/HoverInfo";
+import ActionsMenu from "@/components/shared/ActionsMenu";
 import {
-  getLead, getLeadNotes, getLeadTasks,
+  getLead, getLeadNotes, getLeadTasks, deleteLead,
   LEAD_STAGE_CONFIG, LEAD_SOURCE_LABELS,
   type LeadStage, type LeadNoteType,
 } from "@/lib/leads/data";
@@ -231,9 +233,17 @@ function OverviewTab({ id }: { id: string }) {
             <CheckSquare className="w-4 h-4 shrink-0 text-emerald-600" />
             <div>
               <p className="text-sm font-semibold text-emerald-800">Lead converted</p>
-              <p className="text-xs text-emerald-700">
-                {lead.convertedToJobId ? `Converted to Job #${lead.convertedToJobId}` : `Converted to Project`}
-              </p>
+              {lead.convertedToJobId ? (
+                <Link href={`/jobs/${lead.convertedToJobId}`} className="text-xs font-medium text-emerald-700 hover:text-emerald-800">
+                  Converted to Job · View →
+                </Link>
+              ) : lead.convertedToProjectId ? (
+                <Link href={`/projects/${lead.convertedToProjectId}`} className="text-xs font-medium text-emerald-700 hover:text-emerald-800">
+                  Converted to Project · View →
+                </Link>
+              ) : (
+                <p className="text-xs text-emerald-700">Converted</p>
+              )}
             </div>
           </div>
         )}
@@ -365,6 +375,12 @@ function ConvertTab({ id }: { id: string }) {
             <Link href={`/jobs/${lead.convertedToJobId}`}
               className="mt-2 inline-block text-sm font-medium text-emerald-700 hover:text-emerald-800">
               View Job →
+            </Link>
+          )}
+          {lead.convertedToProjectId && (
+            <Link href={`/projects/${lead.convertedToProjectId}`}
+              className="mt-2 inline-block text-sm font-medium text-emerald-700 hover:text-emerald-800">
+              View Project →
             </Link>
           )}
         </div>
@@ -622,7 +638,9 @@ function StubTab({ label, phase }: { label: string; phase: string }) {
 // ─── Page ─────────────────────────────────────────────────
 export default function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const router = useRouter();
   const [tab, setTab] = useState("Overview");
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const lead = getLead(id);
 
@@ -654,21 +672,15 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                 {lead.customerInitials}
               </div>
               <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h1 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>{lead.customerName}</h1>
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                    style={{ backgroundColor: stageConfig.bg, color: stageConfig.color }}>
-                    {stageConfig.label}
-                  </span>
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                    style={{ backgroundColor: "var(--bg-input)", color: "var(--text-secondary)" }}>
-                    {LEAD_SOURCE_LABELS[lead.source]}
-                  </span>
-                  {lead.estimatedValue && (
-                    <span className="text-[10px] font-semibold" style={{ color: "var(--text-primary)" }}>
-                      {lead.estimatedValue}
-                    </span>
-                  )}
+                <div className="flex items-center gap-2">
+                  <h1 className="text-base font-semibold truncate" style={{ color: "var(--text-primary)" }}>{lead.customerName}</h1>
+                  <HoverInfo rows={[
+                    { label: "Stage",  node: <Pill text={stageConfig.label} style={{ backgroundColor: stageConfig.bg, color: stageConfig.color }} /> },
+                    { label: "Source", node: <Pill text={LEAD_SOURCE_LABELS[lead.source]} style={{ backgroundColor: "var(--bg-input)", color: "var(--text-secondary)" }} /> },
+                    ...(lead.estimatedValue
+                      ? [{ label: "Value", node: <span className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>{lead.estimatedValue}</span> }]
+                      : []),
+                  ]} />
                 </div>
                 <p className="text-xs mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>
                   {lead.title} · {lead.locationName}
@@ -678,27 +690,30 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm"
-              style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
-              <Pencil className="w-3.5 h-3.5" /> Edit
-            </button>
             <button onClick={() => setTab("Convert")}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors">
               <TrendingUp className="w-3.5 h-3.5" /> Convert
             </button>
+            <ActionsMenu actions={[
+              { label: "Convert lead", icon: TrendingUp, onClick: () => setTab("Convert") },
+              { label: "Delete lead", icon: Trash2, onClick: () => setConfirmDelete(true), danger: true, separated: true },
+            ]} />
           </div>
         </div>
 
-        {/* Tab bar */}
-        <div className="flex items-center gap-0.5 px-6 overflow-x-auto">
+        {/* Tab bar — rectangle translucent style, consistent with section + detail tabs */}
+        <div className="flex items-center gap-0.5 px-6 py-2 overflow-x-auto">
           {TABS.map(t => {
             const active = tab === t;
             return (
               <button key={t} onClick={() => setTab(t)}
-                className="relative px-3 py-2.5 text-sm font-medium transition-colors whitespace-nowrap shrink-0"
-                style={{ color: active ? "#4f46e5" : "var(--text-muted)" }}>
+                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0"
+                style={{
+                  backgroundColor: active ? "var(--accent-soft-bg)" : "transparent",
+                  color: active ? "var(--accent-text)" : "var(--text-muted)",
+                  border: `1px solid ${active ? "var(--accent-soft-border)" : "transparent"}`,
+                }}>
                 {t}
-                {active && <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t bg-indigo-600" />}
               </button>
             );
           })}
@@ -716,6 +731,29 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
         {tab === "Communication"  && <StubTab label="Communication" phase="Phase 2" />}
         {tab === "Convert"        && <ConvertTab id={id} />}
       </div>
+
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setConfirmDelete(false)}>
+          <div className="w-full max-w-md rounded-2xl overflow-hidden" onClick={e => e.stopPropagation()}
+            style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "0 16px 48px rgba(0,0,0,0.24)" }}>
+            <div className="px-6 py-5 flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: "#fee2e2" }}>
+                <AlertCircle className="w-5 h-5" style={{ color: "#dc2626" }} />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>Delete lead?</h2>
+                <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
+                  This permanently removes the lead <span className="font-medium" style={{ color: "var(--text-primary)" }}>{lead.title}</span> for {lead.customerName}. The customer account is not affected. This can&apos;t be undone.
+                </p>
+              </div>
+            </div>
+            <div className="px-6 py-4 flex justify-end gap-2" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+              <button onClick={() => setConfirmDelete(false)} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}>Cancel</button>
+              <button onClick={() => { deleteLead(id); router.push("/leads"); }} className="px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ backgroundColor: "#dc2626" }}>Delete Lead</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
