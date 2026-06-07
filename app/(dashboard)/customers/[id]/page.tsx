@@ -147,60 +147,34 @@ function OverviewTab({ id }: { id: string }) {
     : null;
 
   return (
-    <div className="grid grid-cols-3 gap-6">
+    <div className="space-y-6">
+      {/* ── At-a-glance ─────────────────────────────── */}
+      <div className="grid grid-cols-5 gap-3">
+        {([
+          { label: "Open Jobs",  value: openJobs.length,   icon: Briefcase,   color: "#4f46e5", tint: "#eef2ff" },
+          { label: "Open Leads", value: openLeads.length,  icon: TrendingUp,  color: "#0891b2", tint: "#ecfeff" },
+          { label: "Agreements", value: agreements.length, icon: FileText,    color: "#059669", tint: "#ecfdf5" },
+          { label: "Open Tasks", value: openTasks.length,  icon: CheckSquare, color: "#d97706", tint: "#fffbeb" },
+          { label: "Properties", value: properties.length, icon: MapPin,      color: "#7c3aed", tint: "#f5f3ff" },
+        ]).map(k => (
+          <div key={k.label} className="rounded-xl p-3 flex items-center gap-3"
+            style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: k.tint }}>
+              <k.icon className="w-4 h-4" style={{ color: k.color }} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xl font-semibold leading-none" style={{ color: "var(--text-primary)" }}>{k.value}</p>
+              <p className="text-[11px] mt-1 truncate" style={{ color: "var(--text-muted)" }}>{k.label}</p>
+            </div>
+          </div>
+        ))}
+      </div>
 
-      {/* ── Left column ───────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-6">
+
+      {/* ── Left column — account snapshot ──────────── */}
       <div className="space-y-4">
 
-        {/* Account info */}
-        <Card title="Account">
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs" style={{ color: "var(--text-muted)" }}>Type</span>
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={typePill(customer.type)}>{customer.type}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs" style={{ color: "var(--text-muted)" }}>Structure</span>
-              <span className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>
-                {STRUCTURE_LABEL[customer.accountType] ?? customer.accountType}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs" style={{ color: "var(--text-muted)" }}>Status</span>
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={statusPill(customer.status)}>{customer.status}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs" style={{ color: "var(--text-muted)" }}>Since</span>
-              <span className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>{customer.since}</span>
-            </div>
-          </div>
-        </Card>
-
-        {/* Assignment */}
-        <Card title="Assignment">
-          <div className="space-y-2.5">
-            {company && (
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-xs shrink-0" style={{ color: "var(--text-muted)" }}>Company</span>
-                <span className="text-xs font-medium text-right truncate" style={{ color: "var(--text-primary)" }}>{company.name}</span>
-              </div>
-            )}
-            {location && (
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-xs shrink-0" style={{ color: "var(--text-muted)" }}>Location</span>
-                <span className="text-xs font-medium text-right truncate" style={{ color: "var(--text-primary)" }}>{location.name}</span>
-              </div>
-            )}
-            {serviceArea && (
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-xs shrink-0" style={{ color: "var(--text-muted)" }}>Service Area</span>
-                <span className="text-xs font-medium text-right truncate" style={{ color: "var(--text-primary)" }}>{serviceArea.name}</span>
-              </div>
-            )}
-          </div>
-        </Card>
-
-        {/* Primary contact */}
         {primary && (
           <Card title="Primary Contact">
             <div className="space-y-2.5">
@@ -219,14 +193,13 @@ function OverviewTab({ id }: { id: string }) {
           </Card>
         )}
 
-        {/* Primary property */}
         {primaryProp && (
           <Card title="Primary Property">
             <div className="space-y-2">
               {primaryProp.label && (
                 <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{primaryProp.label}</p>
               )}
-              <InfoRow icon={MapPin} value={`${primaryProp.address}, ${primaryProp.city}, ${primaryProp.state} ${primaryProp.zip}`} />
+              <InfoRow icon={MapPin} value={primaryProp.address + ", " + primaryProp.city + ", " + primaryProp.state + " " + primaryProp.zip} />
               {(primaryProp.sqft || primaryProp.yearBuilt) && (
                 <div className="flex gap-4 pt-1">
                   {primaryProp.sqft && (
@@ -247,29 +220,60 @@ function OverviewTab({ id }: { id: string }) {
           </Card>
         )}
 
-        {/* Tags */}
-        {customer.tags.length > 0 && (
-          <Card title="Tags">
-            <div className="flex flex-wrap gap-1.5">
-              {customer.tags.map(t => (
-                <span key={t} className="text-[10px] font-semibold px-2 py-1 rounded-full" style={{ backgroundColor: "var(--bg-input)", color: "var(--text-secondary)" }}>
-                  {t}
-                </span>
-              ))}
-            </div>
-          </Card>
-        )}
+        <Card title="Account & Location">
+          <div className="space-y-2.5">
+            <Meta label="Type"><span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={typePill(customer.type)}>{customer.type}</span></Meta>
+            <Meta label="Status"><span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={statusPill(customer.status)}>{customer.status}</span></Meta>
+            <Meta label="Structure"><Val>{STRUCTURE_LABEL[customer.accountType] ?? customer.accountType}</Val></Meta>
+            <Meta label="Since"><Val>{customer.since}</Val></Meta>
+            {(company || location || serviceArea) && <div className="h-px my-1" style={{ backgroundColor: "var(--border-subtle)" }} />}
+            {company && <Meta label="Company"><Val>{company.name}</Val></Meta>}
+            {location && <Meta label="Location"><Val>{location.name}</Val></Meta>}
+            {serviceArea && <Meta label="Service Area"><Val>{serviceArea.name}</Val></Meta>}
+            {customer.tags.length > 0 && (
+              <>
+                <div className="h-px my-1" style={{ backgroundColor: "var(--border-subtle)" }} />
+                <div className="flex flex-wrap gap-1.5">
+                  {customer.tags.map(t => (
+                    <span key={t} className="text-[10px] font-semibold px-2 py-1 rounded-full" style={{ backgroundColor: "var(--bg-input)", color: "var(--text-secondary)" }}>{t}</span>
+                  ))}
+                </div>
+              </>
+            )}
+            {customer.notes && (
+              <>
+                <div className="h-px my-1" style={{ backgroundColor: "var(--border-subtle)" }} />
+                <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>{customer.notes}</p>
+              </>
+            )}
+          </div>
+        </Card>
 
-        {/* Account notes */}
-        {customer.notes && (
-          <Card title="Notes">
-            <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>{customer.notes}</p>
-          </Card>
-        )}
+        {/* Agreements (account-level) */}
+        <SectionCard title="Agreements" count={agreements.length} action={{ label: "View all", onClick: () => {} }}>
+          {agreements.length === 0 ? (
+            <Empty text="No active agreements">
+              <button className="mt-2 text-xs font-medium text-indigo-600 hover:text-indigo-700">Create agreement →</button>
+            </Empty>
+          ) : agreements.map((a, i) => (
+            <Row key={a.id} last={i === agreements.length - 1}>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{a.type}</p>
+                <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>Renews {a.renewalDate} · {a.visitFrequency}</p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 ml-3">
+                <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                  {a.annualValue.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}/yr
+                </span>
+                <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: "#d1fae5", color: "#065f46" }}>Active</span>
+              </div>
+            </Row>
+          ))}
+        </SectionCard>
       </div>
 
       {/* ── Right column ──────────────────────────────── */}
-      <div className="col-span-2 space-y-4">
+      <div className="space-y-4">
 
         {/* Open jobs */}
         <SectionCard title="Open Jobs" count={openJobs.length} action={{ label: "View all", onClick: () => {} }}>
@@ -315,28 +319,6 @@ function OverviewTab({ id }: { id: string }) {
           })}
         </SectionCard>
 
-        {/* Active agreements */}
-        <SectionCard title="Agreements" count={agreements.length} action={{ label: "View all", onClick: () => {} }}>
-          {agreements.length === 0 ? (
-            <Empty text="No active agreements">
-              <button className="mt-2 text-xs font-medium text-indigo-600 hover:text-indigo-700">Create agreement →</button>
-            </Empty>
-          ) : agreements.map((a, i) => (
-            <Row key={a.id} last={i === agreements.length - 1}>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{a.type}</p>
-                <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>Renews {a.renewalDate} · {a.visitFrequency}</p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0 ml-3">
-                <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                  {a.annualValue.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}/yr
-                </span>
-                <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: "#d1fae5", color: "#065f46" }}>Active</span>
-              </div>
-            </Row>
-          ))}
-        </SectionCard>
-
         {/* Open leads */}
         {openLeads.length > 0 && (
           <SectionCard title="Open Leads" count={openLeads.length}>
@@ -378,6 +360,7 @@ function OverviewTab({ id }: { id: string }) {
           </SectionCard>
         )}
 
+      </div>
       </div>
     </div>
   );
@@ -1726,6 +1709,19 @@ export default function CustomerDetailPage(props: { params: Promise<{ id: string
 }
 
 // ─── Shared UI primitives ─────────────────────────────────
+function Meta({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-xs shrink-0" style={{ color: "var(--text-muted)" }}>{label}</span>
+      {children}
+    </div>
+  );
+}
+
+function Val({ children }: { children: React.ReactNode }) {
+  return <span className="text-xs font-medium text-right truncate" style={{ color: "var(--text-primary)" }}>{children}</span>;
+}
+
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-xl p-4" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
