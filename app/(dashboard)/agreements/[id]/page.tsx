@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import StatusBadge from "@/components/shared/StatusBadge";
+import DetailTabs from "@/components/shared/DetailTabs";
 import AgreementBuilder from "@/components/agreements/AgreementBuilder";
 import {
   AGREEMENTS, TEMPLATES, formatValue, getAgreement, deleteAgreement, updateAgreement,
@@ -557,22 +558,7 @@ export default function AgreementDetailPage({
         </div>
 
         {/* Tab bar */}
-        <div className="flex items-center gap-0.5 px-6">
-          {DETAIL_TABS.map((t) => {
-            const active = activeTab === t;
-            return (
-              <button
-                key={t}
-                onClick={() => setActiveTab(t)}
-                className="relative px-3 py-2.5 text-sm font-medium transition-colors whitespace-nowrap"
-                style={{ color: active ? "#4f46e5" : "var(--text-muted)" }}
-              >
-                {t}
-                {active && <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t bg-indigo-600" />}
-              </button>
-            );
-          })}
-        </div>
+        <DetailTabs tabs={DETAIL_TABS} active={activeTab} onChange={setActiveTab} className="px-6 py-2" />
       </div>
 
       {/* Tab content */}

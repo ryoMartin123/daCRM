@@ -34,10 +34,12 @@ export default function MainArea({ children }: { children: React.ReactNode }) {
           <ChevronDown className="w-3.5 h-3.5" /> Show search &amp; location bar
         </button>
       )}
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto flex flex-col">
         {/* Positioned wrapper so comment pins can anchor to page coordinates and
-            scroll with the content. */}
-        <div className="relative min-h-full" data-comment-region>
+            scroll with the content. flex-1 gives it a definite height (so full-
+            height pages like the inbox fill correctly) while still growing taller
+            than the viewport when a page's content overflows. */}
+        <div className="relative flex-1" data-comment-region>
           {children}
           <Suspense fallback={null}><CommentPinsLayer /></Suspense>
         </div>

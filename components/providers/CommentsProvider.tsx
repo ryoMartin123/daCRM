@@ -16,6 +16,7 @@ interface DrawerState {
   pathScope?:     string;                // when set, the drawer lists ALL threads on this route + tab
   tabScope?:      string;                // the sub-tab (`?tab=`) the scope is pinned to
   focusThreadId?: string;
+  soloThreadId?:  string;                // when set, show ONLY this thread (a single pin's comments)
 }
 
 interface CommentsContextValue {
@@ -28,6 +29,11 @@ interface CommentsContextValue {
   openThread:   (scope: CommentAnchor, threadId: string) => void;
   // Open the drawer showing every comment on a route + sub-tab (optionally focused).
   openPath:     (path: string, label?: string, focusThreadId?: string, tab?: string) => void;
+  // Open the drawer focused on a single pin's thread (its comments only); the
+  // drawer offers a toggle back to all comments on the page.
+  openPinThread: (anchor: CommentAnchor, threadId: string) => void;
+  // Switch the open drawer between a single pin (threadId) and all-on-page (undefined).
+  setSolo:      (threadId?: string) => void;
   closeDrawer:  () => void;
 }
 
@@ -69,10 +75,16 @@ export function CommentsProvider({ children }: { children: React.ReactNode }) {
       tabScope: tab,
       focusThreadId,
     }), []);
+  // The scope is the pin's own anchor, so the composer replies onto that pin;
+  // soloThreadId restricts the list to just this pin's thread.
+  const openPinThread = useCallback((anchor: CommentAnchor, threadId: string) =>
+    setDrawer({ open: true, scope: anchor, pathScope: anchor.path, tabScope: anchor.section ?? "", focusThreadId: threadId, soloThreadId: threadId }), []);
+  const setSolo      = useCallback((threadId?: string) =>
+    setDrawer(d => ({ ...d, soloThreadId: threadId, focusThreadId: threadId ?? d.focusThreadId })), []);
   const closeDrawer  = useCallback(() => setDrawer(d => ({ ...d, open: false })), []);
 
   return (
-    <CommentsContext.Provider value={{ enabled, setEnabled, version, bump, drawer, openComposer, openThread, openPath, closeDrawer }}>
+    <CommentsContext.Provider value={{ enabled, setEnabled, version, bump, drawer, openComposer, openThread, openPath, openPinThread, setSolo, closeDrawer }}>
       {children}
     </CommentsContext.Provider>
   );

@@ -20,6 +20,7 @@ import { QUOTE_STATUS_STYLE, type QuoteStatus } from "@/lib/quotes/types";
 import { getCustomer } from "@/lib/customers/data";
 import ProposalDocument from "@/components/quotes/ProposalDocument";
 import Commentable from "@/components/comments/Commentable";
+import DetailTabs from "@/components/shared/DetailTabs";
 
 const TABS = ["Details", "Notes", "Activity"];
 
@@ -437,19 +438,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
           </div>
         </div>
 
-        <div className="flex items-center gap-0.5 px-6">
-          {TABS.map(t => {
-            const active = tab === t;
-            return (
-              <button key={t} onClick={() => setTab(t)}
-                className="relative px-3 py-2.5 text-sm font-medium transition-colors whitespace-nowrap"
-                style={{ color: active ? "#4f46e5" : "var(--text-muted)" }}>
-                {t}
-                {active && <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t bg-indigo-600" />}
-              </button>
-            );
-          })}
-        </div>
+        <DetailTabs tabs={TABS} active={tab} onChange={setTab} className="px-6 py-2" />
       </div>
 
       <div className="flex-1 overflow-y-auto p-6" style={{ backgroundColor: "var(--bg-page)" }}>

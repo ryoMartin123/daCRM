@@ -170,9 +170,35 @@ export function getThreadsForPath(path: string, tab = ""): CommentThread[] {
   return toThreads(scoped).sort((a, b) => lastActivity(b).localeCompare(lastActivity(a)));
 }
 
-// Pin threads only (for rendering positioned markers on the page).
+// Pin threads only (positioned markers), in stable drop order (oldest first) so
+// each pin keeps a consistent number regardless of later comment activity.
 export function getPinThreadsForPath(path: string, tab = ""): CommentThread[] {
-  return getThreadsForPath(path, tab).filter(t => t.root.anchor.kind === "pin");
+  return getThreadsForPath(path, tab)
+    .filter(t => t.root.anchor.kind === "pin")
+    .sort((a, b) => a.root.createdAt.localeCompare(b.root.createdAt));
+}
+
+// Pin identity label from drop order: 0 → "A", 25 → "Z", 26 → "AA" …
+// Letters (not numbers) so the marker reads as an identity, leaving the number
+// free to mean "comment count".
+export function pinLabel(index: number): string {
+  let n = index, s = "";
+  do { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; } while (n >= 0);
+  return s;
+}
+
+// Stable pin letters (drop order) for a page — shared by the pins layer and the
+// drawer so a pin's label matches in both. Includes resolved pins so the
+// lettering doesn't shift when one is resolved.
+export function getPinLabelMap(path: string, tab = ""): Record<string, string> {
+  const map: Record<string, string> = {};
+  getPinThreadsForPath(path, tab).forEach((t, i) => { map[t.root.id] = pinLabel(i); });
+  return map;
+}
+
+// Total comments in a thread (root + replies) — drives the count badge.
+export function threadCommentCount(t: CommentThread): number {
+  return 1 + t.replies.length;
 }
 
 // Open thread count for the current route + tab — drives the page indicator.

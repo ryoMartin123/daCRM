@@ -20,6 +20,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Commentable from "@/components/comments/Commentable";
 import QuickCreateQuoteModal from "@/components/quotes/QuickCreateQuoteModal";
 import PhotoGallery from "@/components/files/PhotoGallery";
+import DetailTabs from "@/components/shared/DetailTabs";
 
 const TABS = ["Overview", "Phases", "Jobs", "Tasks", "Photos & Files", "Scope", "Estimates", "Invoices", "Notes", "Timeline"];
 
@@ -425,23 +426,8 @@ function ProjectDetailContent({ params }: { params: Promise<{ id: string }> }) {
             ]} />
           </div>
         </div>
-        {/* Tabs — rectangle translucent style, consistent with section + customer tabs */}
-        <div className="flex items-center gap-0.5 px-6 py-2 overflow-x-auto">
-          {TABS.map(t => {
-            const active = tab === t;
-            return (
-              <button key={t} onClick={() => setTab(t)}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0"
-                style={{
-                  backgroundColor: active ? "var(--accent-soft-bg)" : "transparent",
-                  color: active ? "var(--accent-text)" : "var(--text-muted)",
-                  border: `1px solid ${active ? "var(--accent-soft-border)" : "transparent"}`,
-                }}>
-                {t}
-              </button>
-            );
-          })}
-        </div>
+        {/* Sub-tabs — glossy light-amber (comment-mode accent) */}
+        <DetailTabs tabs={TABS} active={tab} onChange={setTab} className="px-6 py-2" />
       </div>
 
       <div className="flex-1 overflow-y-auto p-6" style={{ backgroundColor: "var(--bg-page)" }}>

@@ -36,6 +36,7 @@ import PhotoGallery from "@/components/files/PhotoGallery";
 import { getActivityEvents } from "@/lib/activity/data";
 import { type ActivityEvent, type EventType, type FilterCategory, EVENT_FILTER_MAP } from "@/lib/activity/types";
 import Commentable from "@/components/comments/Commentable";
+import DetailTabs from "@/components/shared/DetailTabs";
 
 // ─── Badge helpers ────────────────────────────────────────
 function typePill(type: CustomerType) {
@@ -1630,26 +1631,8 @@ function CustomerDetailContent({ params }: { params: Promise<{ id: string }> }) 
           </div>
         </div>
 
-        {/* Tab bar — pill style, matching StatusTabs used across the CRM */}
-        <div className="flex items-center gap-0.5 px-6 py-2 overflow-x-auto">
-          {TABS.map((t) => {
-            const active = tab === t;
-            return (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0"
-                style={{
-                  backgroundColor: active ? "var(--accent-soft-bg)" : "transparent",
-                  color: active ? "var(--accent-text)" : "var(--text-muted)",
-                  border: `1px solid ${active ? "var(--accent-soft-border)" : "transparent"}`,
-                }}
-              >
-                {t}
-              </button>
-            );
-          })}
-        </div>
+        {/* Sub-tabs — glossy light-amber (comment-mode accent) */}
+        <DetailTabs tabs={TABS} active={tab} onChange={setTab} className="px-6 py-2" />
       </div>
 
       {/* Tab content — keyed on refreshKey so tabs re-read after an edit.

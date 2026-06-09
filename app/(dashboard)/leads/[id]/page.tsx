@@ -27,6 +27,7 @@ import { QUOTE_STATUS_STYLE } from "@/lib/quotes/types";
 import { useRouter, useSearchParams } from "next/navigation";
 import QuickCreateQuoteModal from "@/components/quotes/QuickCreateQuoteModal";
 import Commentable from "@/components/comments/Commentable";
+import DetailTabs from "@/components/shared/DetailTabs";
 
 const TABS = ["Overview", "Activity", "Quotes", "Tasks", "Notes", "Photos & Files", "Communication", "Convert"];
 
@@ -710,23 +711,8 @@ function LeadDetailContent({ params }: { params: Promise<{ id: string }> }) {
           </div>
         </div>
 
-        {/* Tab bar — rectangle translucent style, consistent with section + detail tabs */}
-        <div className="flex items-center gap-0.5 px-6 py-2 overflow-x-auto">
-          {TABS.map(t => {
-            const active = tab === t;
-            return (
-              <button key={t} onClick={() => setTab(t)}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0"
-                style={{
-                  backgroundColor: active ? "var(--accent-soft-bg)" : "transparent",
-                  color: active ? "var(--accent-text)" : "var(--text-muted)",
-                  border: `1px solid ${active ? "var(--accent-soft-border)" : "transparent"}`,
-                }}>
-                {t}
-              </button>
-            );
-          })}
-        </div>
+        {/* Sub-tabs — glossy light-amber (comment-mode accent) */}
+        <DetailTabs tabs={TABS} active={tab} onChange={setTab} className="px-6 py-2" />
       </div>
 
       {/* Tab content */}

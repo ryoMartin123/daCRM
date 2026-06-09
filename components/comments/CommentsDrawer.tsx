@@ -13,7 +13,7 @@ import { useComments } from "@/components/providers/CommentsProvider";
 import { usePermissionContext } from "@/components/providers/PermissionProvider";
 import { getStaffedUsers } from "@/lib/users/data";
 import {
-  getThreadsForRecord, getThreadsForPath, addComment, addReply, resolveThread, deleteComment,
+  getThreadsForRecord, getThreadsForPath, getPinLabelMap, threadCommentCount, addComment, addReply, resolveThread, deleteComment,
   anchorHref, anchorLabel, anchorKey,
   type CommentAnchor, type CommentThread, type Comment,
 } from "@/lib/comments/data";
@@ -176,7 +176,7 @@ function CommentRow({ c, users, reply }: { c: Comment; users: MentionUser[]; rep
 }
 
 export default function CommentsDrawer() {
-  const { drawer, closeDrawer, version, bump } = useComments();
+  const { drawer, closeDrawer, version, bump, setSolo } = useComments();
   const { actingUser } = usePermissionContext();
   const users = useMentionUsers();
   const [taskFor, setTaskFor] = useState<CommentThread | null>(null);
@@ -194,6 +194,17 @@ export default function CommentsDrawer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [drawer.pathScope, drawer.tabScope, scope?.recordType, scope?.recordId, version],
   );
+
+  // Stable pin letters for this page, matching the on-page markers.
+  const pinLabels = useMemo(
+    () => (drawer.pathScope ? getPinLabelMap(drawer.pathScope, drawer.tabScope ?? "") : {} as Record<string, string>),
+    [drawer.pathScope, drawer.tabScope, version],
+  );
+
+  // Soloing a pin narrows the list to that one thread; otherwise show all.
+  const soloId = drawer.soloThreadId;
+  const soloPinLabel = soloId ? pinLabels[soloId] : undefined;
+  const visibleThreads = soloId ? threads.filter(t => t.root.id === soloId) : threads;
 
   // Scroll to / highlight a thread opened from a deep-link.
   useEffect(() => {
@@ -232,8 +243,15 @@ export default function CommentsDrawer() {
 
   function postRoot(body: string, mentions: string[]) {
     if (!scope) return;
-    const c = addComment({ anchor: scope, body, mentions, ...author });
-    notifyForMentions(mentions, body, c.threadId);
+    // When focused on a single pin, the composer adds to THAT pin's thread (a
+    // reply) instead of starting a new, separate thread on the page.
+    if (drawer.soloThreadId) {
+      addReply(drawer.soloThreadId, { anchor: scope, body, mentions, ...author });
+      notifyForMentions(mentions, body, drawer.soloThreadId);
+    } else {
+      const c = addComment({ anchor: scope, body, mentions, ...author });
+      notifyForMentions(mentions, body, c.threadId);
+    }
     bump();
   }
 
@@ -248,8 +266,8 @@ export default function CommentsDrawer() {
   function onResolve(threadId: string, resolved: boolean) { resolveThread(threadId, resolved); bump(); }
   function onDelete(id: string) { deleteComment(id); bump(); }
 
-  const openThreads = threads.filter(t => !t.root.resolved);
-  const resolvedThreads = threads.filter(t => t.root.resolved);
+  const openThreads = visibleThreads.filter(t => !t.root.resolved);
+  const resolvedThreads = visibleThreads.filter(t => t.root.resolved);
 
   return (
     <>
@@ -265,16 +283,33 @@ export default function CommentsDrawer() {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <MessageSquare className="w-4 h-4" style={{ color: "var(--warning-icon)" }} />
-              <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Comments</h2>
+              <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                {soloPinLabel ? `Pin ${soloPinLabel}` : "Comments"}
+              </h2>
             </div>
             <p className="text-xs mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>{anchorLabel(scope)}</p>
+            {/* Toggle between this single pin and every comment on the page. */}
+            {drawer.pathScope && threads.length > 0 && (
+              soloId ? (
+                <button onClick={() => setSolo(undefined)}
+                  className="mt-1.5 text-[11px] font-medium transition-colors hover:underline" style={{ color: "var(--warning-icon)" }}>
+                  ← View all {threads.length} comment{threads.length === 1 ? "" : "s"} on this page
+                </button>
+              ) : (
+                <p className="mt-1.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
+                  Showing all {threads.length} on this page · click a pin to focus it
+                </p>
+              )
+            )}
           </div>
           <button onClick={closeDrawer} className="p-1.5 rounded-lg" style={{ color: "var(--text-muted)" }}><X className="w-4 h-4" /></button>
         </div>
 
         {/* Composer for the targeted anchor */}
         <div className="px-5 py-4 shrink-0" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-          <Composer users={users} autoFocus placeholder={`Comment on ${scope.subLabel ?? scope.section ?? scope.recordLabel}…`} onSubmit={postRoot} />
+          <Composer users={users} autoFocus
+            placeholder={soloPinLabel ? `Reply to pin ${soloPinLabel}…` : `Comment on ${scope.subLabel ?? scope.section ?? scope.recordLabel}…`}
+            onSubmit={postRoot} />
         </div>
 
         {/* Threads */}
@@ -291,7 +326,8 @@ export default function CommentsDrawer() {
             <ThreadCard key={t.root.id} t={t} users={users}
               replyTo={replyTo} setReplyTo={setReplyTo}
               onReply={postReply} onResolve={onResolve} onDelete={onDelete}
-              onTask={() => setTaskFor(t)} scope={scope} />
+              onTask={() => setTaskFor(t)} scope={scope}
+              pinLabel={pinLabels[t.root.id]} solo={!!soloId} onFocusPin={() => setSolo(t.root.id)} />
           ))}
 
           {resolvedThreads.length > 0 && (
@@ -302,7 +338,8 @@ export default function CommentsDrawer() {
                   <ThreadCard key={t.root.id} t={t} users={users}
                     replyTo={replyTo} setReplyTo={setReplyTo}
                     onReply={postReply} onResolve={onResolve} onDelete={onDelete}
-                    onTask={() => setTaskFor(t)} scope={scope} />
+                    onTask={() => setTaskFor(t)} scope={scope}
+                    pinLabel={pinLabels[t.root.id]} solo={!!soloId} onFocusPin={() => setSolo(t.root.id)} />
                 ))}
               </div>
             </div>
@@ -330,7 +367,7 @@ export default function CommentsDrawer() {
   );
 }
 
-function ThreadCard({ t, users, replyTo, setReplyTo, onReply, onResolve, onDelete, onTask }: {
+function ThreadCard({ t, users, replyTo, setReplyTo, onReply, onResolve, onDelete, onTask, pinLabel, solo, onFocusPin }: {
   t: CommentThread; users: MentionUser[];
   replyTo: string | null; setReplyTo: (v: string | null) => void;
   onReply: (threadId: string, body: string, mentions: string[]) => void;
@@ -338,11 +375,29 @@ function ThreadCard({ t, users, replyTo, setReplyTo, onReply, onResolve, onDelet
   onDelete: (id: string) => void;
   onTask: () => void;
   scope: CommentAnchor;
+  pinLabel?: string;
+  solo?: boolean;
+  onFocusPin?: () => void;
 }) {
   const isReplying = replyTo === t.root.id;
+  const count = threadCommentCount(t);
   return (
     <div data-thread={t.root.id} className="rounded-xl p-3.5 space-y-3"
       style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border-subtle)" }}>
+      {/* Pin badge — the letter identifies which marker this thread belongs to,
+          the number is its comment count; in the all-on-page view, clicking it
+          focuses just that pin. */}
+      {pinLabel !== undefined && (
+        <button
+          onClick={() => { if (!solo) onFocusPin?.(); }}
+          disabled={solo}
+          className="flex items-center gap-1.5 text-[11px] font-semibold rounded-full pl-1.5 pr-2.5 py-0.5 transition-colors disabled:cursor-default"
+          style={{ backgroundColor: "var(--warning-soft-bg)", color: "var(--warning-text)", border: "1px solid var(--warning-soft-border)" }}>
+          <span className="flex items-center justify-center w-4 h-4 rounded-full text-[9px]" style={{ backgroundColor: "#2a2415", color: "#d8b566" }}>{pinLabel}</span>
+          Pin {pinLabel}
+          <span style={{ color: "var(--text-muted)" }}>· {count} comment{count === 1 ? "" : "s"}</span>
+        </button>
+      )}
       <CommentRow c={t.root} users={users} />
       {t.replies.map(r => <CommentRow key={r.id} c={r} users={users} reply />)}
 
