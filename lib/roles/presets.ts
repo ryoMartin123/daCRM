@@ -25,7 +25,7 @@ export const ROLE_PRESETS: Record<RoleKey, RoleDefinition> = {
     allAccess: true,
     capabilities: { billing: { ...FULL } },
     masks: ["finance_cost_margin", "finance_totals", "finance_payroll", "comms_internal_notes", "sales_other_commissions"],
-    flags: ["hierarchy_manage", "users_manage", "roles_manage", "billing_manage", "reports_cross_scope", "records_deactivate", "automation_manage"],
+    flags: ["hierarchy_manage", "users_manage", "roles_manage", "billing_manage", "reports_cross_scope", "records_deactivate", "automation_manage", "jobs_status_override"],
   },
 
   // ── Org Admin ────────────────────────────────────────────
@@ -35,7 +35,7 @@ export const ROLE_PRESETS: Record<RoleKey, RoleDefinition> = {
     allAccess: true,
     capabilities: {},
     masks: ["finance_cost_margin", "finance_totals", "finance_payroll", "comms_internal_notes", "sales_other_commissions"],
-    flags: ["hierarchy_manage", "users_manage", "roles_manage", "reports_cross_scope", "records_deactivate", "automation_manage"],
+    flags: ["hierarchy_manage", "users_manage", "roles_manage", "reports_cross_scope", "records_deactivate", "automation_manage", "jobs_status_override"],
   },
 
   // ── Branch Manager (over a company / brand and its locations) ──
@@ -45,7 +45,7 @@ export const ROLE_PRESETS: Record<RoleKey, RoleDefinition> = {
     allAccess: true,
     capabilities: {},
     masks: ["finance_cost_margin", "finance_totals", "comms_internal_notes", "sales_other_commissions"],
-    flags: ["users_manage", "reports_cross_scope", "records_deactivate", "automation_manage"],
+    flags: ["users_manage", "reports_cross_scope", "records_deactivate", "automation_manage", "jobs_status_override"],
   },
 
   // ── Location Manager (a single branch) ───────────────────
@@ -62,7 +62,7 @@ export const ROLE_PRESETS: Record<RoleKey, RoleDefinition> = {
       reports: { view: A, export: A }, items: VIEW, settings: VIEW, users: VIEW,
     },
     masks: ["finance_cost_margin", "finance_totals", "comms_internal_notes", "sales_other_commissions"],
-    flags: ["records_deactivate"],
+    flags: ["records_deactivate", "jobs_status_override"],
   },
 
   // ── Dispatcher (can own multiple locations via grants) ───
@@ -77,7 +77,7 @@ export const ROLE_PRESETS: Record<RoleKey, RoleDefinition> = {
       communications: { view: A, create: A }, reports: VIEW,
     },
     masks: ["comms_internal_notes"],
-    flags: [],
+    flags: ["jobs_status_override"],
   },
 
   // ── Field Technician (service) ───────────────────────────
@@ -115,7 +115,7 @@ export const ROLE_PRESETS: Record<RoleKey, RoleDefinition> = {
       leads: { view: A, create: A, edit: O, assign: O }, deals: { view: A, create: A, edit: O },
       quotes: { view: A, create: A, edit: A, approve: A },
       customers: { view: A, create: A, edit: A }, contacts: { ...FULL },
-      agreements: { view: A, create: A }, jobs: { view: O }, tasks: { view: O, create: O, edit: O },
+      agreements: { view: A, create: A }, jobs: { view: O, edit: O }, tasks: { view: O, create: O, edit: O },
       calendar: { view: O, create: O }, files: { view: A, create: A },
       communications: { view: A, create: A }, reports: { view: O },
     },

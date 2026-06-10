@@ -113,6 +113,13 @@ export const WIDGET_REGISTRY: WidgetDef[] = [
     allowedRoles: [],
   },
   {
+    id: "visits_to_schedule", title: "Visits to Schedule",
+    description: "Planned agreement visits that are due to be turned into scheduled jobs.",
+    category: "operations", defaultSize: "narrow",
+    allowedContexts: ["company", "location", "service_area"],
+    allowedRoles: ["org_admin", "branch_manager", "location_manager", "dispatcher"],
+  },
+  {
     id: "invoices_due", title: "Invoices Due",
     description: "Unpaid invoices sorted by due date, highlighting overdue balances.",
     category: "financial", defaultSize: "wide",

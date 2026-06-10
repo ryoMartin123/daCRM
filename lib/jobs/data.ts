@@ -45,6 +45,28 @@ export interface Job {
   dispatchType?: "job" | "sales_appointment" | "agreement_visit" | "task";
   sourceModule?: "quotes" | "agreements" | "tasks" | "projects";
   sourceRefId?: string;
+
+  // ─── Lifecycle (see lib/jobs/lifecycle.ts) ───
+  // Stamped automatically as the job moves through the status graph; the
+  // history is the audit trail of every status change (who, when, override).
+  dispatchedAt?: string;
+  enRouteAt?:    string;
+  startedAt?:    string;
+  completedAt?:  string;
+  statusHistory?: JobStatusEvent[];
+}
+
+// One entry in a job's status audit trail.
+export interface JobStatusEvent {
+  id:       string;
+  from:     string;       // status key before
+  to:       string;       // status key after
+  at:       string;       // ISO timestamp
+  byName:   string;       // who made the change
+  byUserId?: string;
+  byRole?:  string;       // their role label at the time
+  override: boolean;      // true = dispatch override that bypassed the graph
+  reason?:  string;       // required-ish on overrides
 }
 
 export interface ChecklistItem {
@@ -53,6 +75,7 @@ export interface ChecklistItem {
   isComplete: boolean;
   completedBy?: string;
   sortOrder: number;
+  required?: boolean;     // blocks job completion until done (unless overridden)
 }
 
 export interface WorkOrder {

@@ -16,7 +16,8 @@ import Select from "@/components/ui/Select";
 import {
   getCalendarItems, getUnscheduledItems, getUnscheduledJobs, getSessionCalendarItems, getTechnicians, getStaffRoster, markSourceScheduled, type CalendarScope, type TechRosterEntry,
 } from "@/lib/calendar/data";
-import { createJob, updateJob, type JobType } from "@/lib/jobs/data";
+import { createJob, updateJob, getJob, JOB_TYPE_CONFIG, type JobType } from "@/lib/jobs/data";
+import JobStageControl from "@/components/jobs/JobStageControl";
 import { getCustomer } from "@/lib/customers/data";
 import { getUsersByRoles, getBoardCandidates } from "@/lib/users/data";
 import {
@@ -182,10 +183,11 @@ export default function CalendarPage() {
     return () => document.removeEventListener("mousedown", onDown);
   }, [filtersOpen]);
 
+  // refreshKey re-derives after writes (status changes from the drawer, scheduling, etc.).
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const rawItems    = useMemo(() => getCalendarItems(scope), [effectiveCompanyId, effectiveLocationId, effectiveServiceAreaId]);
+  const rawItems    = useMemo(() => getCalendarItems(scope), [effectiveCompanyId, effectiveLocationId, effectiveServiceAreaId, refreshKey]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const allUnscheduled = useMemo(() => getUnscheduledItems(scope), [effectiveCompanyId, effectiveLocationId, effectiveServiceAreaId]);
+  const allUnscheduled = useMemo(() => getUnscheduledItems(scope), [effectiveCompanyId, effectiveLocationId, effectiveServiceAreaId, refreshKey]);
   // Technician filter mirrors the viewing scope (down-inclusion), plus anyone
   // already assigned to an in-scope item.
   const technicians = useMemo(
@@ -542,7 +544,7 @@ export default function CalendarPage() {
       )}
 
       {/* Board */}
-      {view === "dispatch" && <DispatchBoard focus={focus} mode={dispatchMode} items={boardItems} roster={boardRoster} availability={availability} dayStart={hourly.startHour} dayEnd={hourly.endHour} increment={hourly.increment} blocks={activeBlocks} onSelect={setSelScheduled} onMoveResize={applyMoveResize} onRemoveAvailability={handleRemoveTimeOff} onDropItem={(uid, tech, hour, minute) => { const u = unscheduled.find(x => x.id === uid); if (u) openConfirm(u, tech, focus, hour, minute); }} />}
+      {view === "dispatch" && <DispatchBoard focus={focus} mode={dispatchMode} items={boardItems} roster={boardRoster} availability={availability} dayStart={hourly.startHour} dayEnd={hourly.endHour} increment={hourly.increment} blocks={activeBlocks} onSelect={setSelScheduled} onMoveResize={applyMoveResize} onRemoveAvailability={handleRemoveTimeOff} onDropItem={(uid, tech, hour, minute) => { const u = unscheduled.find(x => x.id === uid); if (u) openConfirm(u, tech, focus, hour, minute); }} onItemChanged={() => setRefreshKey(k => k + 1)} />}
       {view === "week"     && <WeekView  focus={focus} items={boardItems} onSelect={setSelScheduled} />}
       {view === "day"      && <DayView   focus={focus} items={boardItems} dayStart={hourly.startHour} dayEnd={hourly.endHour} onSelect={setSelScheduled} />}
       {view === "month"    && <MonthView focus={focus} items={boardItems} onSelect={setSelScheduled} />}
@@ -554,7 +556,7 @@ export default function CalendarPage() {
       />
 
       {/* Drawer */}
-      {selScheduled && <CalendarItemDrawer scheduled={selScheduled} technicians={technicians} onClose={() => setSelScheduled(null)} onReassign={reassign} />}
+      {selScheduled && <CalendarItemDrawer scheduled={selScheduled} technicians={technicians} onClose={() => setSelScheduled(null)} onReassign={reassign} onStatusChanged={() => setRefreshKey(k => k + 1)} />}
       {selUnscheduled && <CalendarItemDrawer unscheduled={selUnscheduled} technicians={technicians} onClose={() => setSelUnscheduled(null)} onSchedule={() => scheduleFromDrawer(selUnscheduled)} />}
 
       {/* Confirm modal */}
@@ -578,7 +580,7 @@ function initials(name: string): string {
 const ROW_H = 64;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
-function DispatchBoard({ focus, mode, items, roster, availability, dayStart, dayEnd, increment, blocks, onSelect, onMoveResize, onRemoveAvailability, onDropItem }: {
+function DispatchBoard({ focus, mode, items, roster, availability, dayStart, dayEnd, increment, blocks, onSelect, onMoveResize, onRemoveAvailability, onDropItem, onItemChanged }: {
   focus: Date; mode: DispatchMode; items: CalendarItem[];
   roster: TechRosterEntry[];
   availability: AvailabilityEvent[];
@@ -587,6 +589,7 @@ function DispatchBoard({ focus, mode, items, roster, availability, dayStart, day
   onMoveResize: (id: string, start: Date, durationMinutes: number, tech?: string) => void;
   onRemoveAvailability: (id: string) => void;
   onDropItem: (uid: string, tech: string, hour: number, minute: number) => void;
+  onItemChanged: () => void;   // refresh after an in-card status change
 }) {
   const dayItems = items.filter(i => isSameDay(i.start, focus) && !i.allDay);
 
@@ -816,34 +819,34 @@ function DispatchBoard({ focus, mode, items, roster, availability, dayStart, day
                 const width = Math.max(3, (Math.min(dur, totalMin - sm) / totalMin) * 100);
                 const prio = i.priority && i.priority !== "normal" ? PRIORITY_CONFIG[i.priority] : null;
                 const movingAway = p && p.tech !== (i.assignedTo ?? "");  // dragging to another tech
-                // Lane = where the job is in its lifecycle → visual treatment.
-                // Color still tells you what it is; the lane tells you its state.
-                const lane = i.lane ?? "scheduled";
-                const accent = lane === "blocked" ? "#f59e0b" : i.color;
-                const laneBg = lane === "blocked"
-                  ? "repeating-linear-gradient(45deg, rgba(245,158,11,0.20) 0, rgba(245,158,11,0.20) 6px, transparent 6px, transparent 12px)"
-                  : undefined;
-                const laneShadow = lane === "active" ? `0 0 0 2px ${i.color}, 0 2px 10px ${i.color}66` : undefined;
-                const laneOpacity = lane === "done" ? 0.5 : lane === "fell_through" ? 0.45 : 1;
+                // Card body shade = the JOB TYPE (JOB_TYPE_CONFIG); the full-height
+                // left section is colored by the job's STATUS (its stage). No lane
+                // effects.
+                const job = i.sourceModule === "jobs" ? getJob(i.sourceId) : undefined;
+                const typeColor = (job && JOB_TYPE_CONFIG[job.type]) || i.color;
                 return (
                   <div key={i.id} data-block
                     onMouseDown={e => beginDrag(e, i, "move")}
                     title="Drag to move (across techs) · drag right edge to resize"
-                    className="absolute top-1.5 bottom-1.5 rounded-lg px-2 overflow-hidden select-none"
-                    style={{ left: `${left}%`, width: `${width}%`, backgroundColor: i.color + "26", backgroundImage: laneBg, borderLeft: `3px solid ${accent}`, cursor: p ? "grabbing" : "grab", boxShadow: p ? "0 4px 14px rgba(0,0,0,0.25)" : laneShadow, opacity: movingAway ? 0.55 : laneOpacity, zIndex: p ? 20 : 1 }}>
-                    <div className="flex items-center gap-1">
-                      <p className="text-[10px] font-semibold truncate leading-tight pt-0.5" style={{ color: "var(--text-primary)", textDecoration: lane === "fell_through" ? "line-through" : "none" }}>{lane === "done" ? "✓ " : ""}{i.customerName ?? i.title}</p>
-                      {movingAway && <span className="text-[8px] font-bold px-1 rounded shrink-0" style={{ backgroundColor: "var(--accent-soft-2-bg)", color: "var(--accent-text)" }}>→ {p!.tech}</span>}
-                      {!movingAway && lane === "blocked" && <span className="text-[8px] font-bold px-1 rounded shrink-0" style={{ backgroundColor: "#fef3c7", color: "#92400e" }}>BLOCKED</span>}
-                      {!movingAway && lane !== "blocked" && prio && <span className="text-[8px] font-bold px-1 rounded shrink-0" style={{ backgroundColor: prio.bg, color: prio.color }}>{prio.label}</span>}
+                    className="absolute top-1.5 bottom-1.5 rounded-lg overflow-hidden select-none flex"
+                    style={{ left: `${left}%`, width: `${width}%`, backgroundColor: typeColor + "26", cursor: p ? "grabbing" : "grab", boxShadow: p ? "0 4px 14px rgba(0,0,0,0.25)" : undefined, opacity: movingAway ? 0.55 : 1, zIndex: p ? 20 : 1 }}>
+                    {/* Stage icon as the full-height left section, colored by status —
+                        click it to change status. */}
+                    <JobStageControl variant="bar" jobId={i.sourceId} statusKey={i.status} onChanged={onItemChanged} size={16} />
+                    <div className="flex-1 min-w-0 px-1.5 py-1 flex flex-col justify-center">
+                      <div className="flex items-center gap-1">
+                        <p className="text-[10px] font-semibold truncate leading-tight" style={{ color: "var(--text-primary)" }}>{i.customerName ?? i.title}</p>
+                        {movingAway && <span className="text-[8px] font-bold px-1 rounded shrink-0" style={{ backgroundColor: "var(--accent-soft-2-bg)", color: "var(--accent-text)" }}>→ {p!.tech}</span>}
+                        {!movingAway && prio && <span className="text-[8px] font-bold px-1 rounded shrink-0" style={{ backgroundColor: prio.bg, color: prio.color }}>{prio.label}</span>}
+                      </div>
+                      <p className="text-[9px] truncate leading-tight" style={{ color: "var(--text-muted)" }}>
+                        {p ? `${minToTime(sm)} · ${dur}m` : `${fmtTime(i.start)} · ${i.jobType ?? ""}${i.city ? ` · ${i.city}` : ""}`}
+                      </p>
                     </div>
-                    <p className="text-[9px] truncate" style={{ color: "var(--text-muted)" }}>
-                      {p ? `${minToTime(sm)} · ${dur}m` : `${fmtTime(i.start)} · ${i.jobType ?? ""}${i.city ? ` · ${i.city}` : ""}`}
-                    </p>
                     {/* Resize handle (right edge) */}
                     <div onMouseDown={e => beginDrag(e, i, "resize")}
                       className="absolute top-0 bottom-0 right-0 w-2 cursor-ew-resize"
-                      style={{ borderRight: `2px solid ${i.color}` }} />
+                      style={{ borderRight: `2px solid ${typeColor}` }} />
                   </div>
                 );
               })}

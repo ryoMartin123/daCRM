@@ -33,6 +33,7 @@ import LeadsInTerritory     from "@/components/dashboard/LeadsInTerritory";
 import JobsInTerritory      from "@/components/dashboard/JobsInTerritory";
 import AgreementRenewals    from "@/components/dashboard/AgreementRenewals";
 import MissingPhotos        from "@/components/dashboard/MissingPhotos";
+import VisitsToSchedule     from "@/components/dashboard/VisitsToSchedule";
 
 import { WIDGET_MAP } from "@/lib/dashboard/registry";
 import { type LayoutItem as DashItem } from "@/lib/dashboard/layouts";
@@ -48,6 +49,7 @@ function renderWidget(id: string) {
     case "revenue_snapshot":        return <RevenueSnapshot />;
     case "recent_activity":         return <RecentActivity />;
     case "open_work_orders":        return <OpenWorkOrders />;
+    case "visits_to_schedule":      return <VisitsToSchedule />;
     case "invoices_due":            return <InvoicesDue />;
     case "location_performance":    return <LocationPerformance />;
     case "company_performance":     return <CompanyPerformance />;

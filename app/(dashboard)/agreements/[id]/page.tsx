@@ -13,9 +13,10 @@ import StatusBadge from "@/components/shared/StatusBadge";
 import DetailTabs from "@/components/shared/DetailTabs";
 import AgreementBuilder from "@/components/agreements/AgreementBuilder";
 import {
-  AGREEMENTS, TEMPLATES, formatValue, getAgreement, deleteAgreement, updateAgreement,
+  AGREEMENTS, TEMPLATES, formatValue, getAgreement, deleteAgreement, updateAgreement, materializeVisitJob,
   type AgreementStatus, type VisitStatus, type CustomerAgreement,
 } from "@/lib/agreements/data";
+import { useHierarchy } from "@/components/providers/HierarchyProvider";
 
 // ─── Status configs ───────────────────────────────────────
 const AGREEMENT_STATUS: Record<AgreementStatus, { label: string; bg: string; color: string }> = {
@@ -27,6 +28,7 @@ const AGREEMENT_STATUS: Record<AgreementStatus, { label: string; bg: string; col
 };
 
 const VISIT_STATUS: Record<VisitStatus, { label: string; icon: typeof Circle; color: string }> = {
+  planned:    { label: "Planned",    icon: Clock,         color: "#6b7280" },
   scheduled:  { label: "Scheduled",  icon: Circle,        color: "#6366f1" },
   completed:  { label: "Completed",  icon: CheckCircle,   color: "#10b981" },
   missed:     { label: "Missed",     icon: AlertCircle,   color: "#ef4444" },
@@ -250,6 +252,23 @@ function OverviewTab({ agreement }: { agreement: ReturnType<typeof AGREEMENTS[0]
 
 // ─── Visits tab ───────────────────────────────────────────
 function VisitsTab({ agreement }: { agreement: typeof AGREEMENTS[0] }) {
+  const router = useRouter();
+  const { effectiveCompanyId, effectiveLocationId, effectiveServiceAreaId } = useHierarchy();
+  const [err, setErr] = useState<string | null>(null);
+
+  // A visit becomes a dispatchable job only when scheduled (lazy materialization);
+  // we then route to that job, where time/tech are finalized and it rides the
+  // standard job lifecycle. Completing the job writes back to this visit.
+  function scheduleVisit(visitId: string) {
+    const res = materializeVisitJob(agreement.id, visitId, {
+      companyId: effectiveCompanyId ?? "co_hvac",
+      locationId: effectiveLocationId ?? "loc_augusta",
+      serviceAreaId: effectiveServiceAreaId ?? undefined,
+    });
+    if (res.error || !res.job) { setErr(res.error ?? "Could not schedule visit."); return; }
+    router.push(`/jobs/${res.job.id}`);
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -261,6 +280,8 @@ function VisitsTab({ agreement }: { agreement: typeof AGREEMENTS[0] }) {
           Add Visit
         </button>
       </div>
+
+      {err && <p className="text-xs" style={{ color: "#dc2626" }}>{err}</p>}
 
       <div
         className="rounded-xl overflow-hidden"
@@ -313,20 +334,18 @@ function VisitsTab({ agreement }: { agreement: typeof AGREEMENTS[0] }) {
                 <span className="text-sm" style={{ color: "var(--text-secondary)" }}>{v.tech}</span>
                 <span className="text-sm truncate" style={{ color: "var(--text-muted)" }}>{v.notes ?? "—"}</span>
                 <div>
-                  {v.status === "scheduled" && (
-                    <button
-                      className="text-xs px-2 py-1 rounded-lg transition-colors"
-                      style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}
-                    >
-                      Complete
-                    </button>
-                  )}
-                  {v.status === "missed" && (
-                    <button
-                      className="text-xs px-2 py-1 rounded-lg transition-colors text-indigo-600"
-                      style={{ border: "1px solid #c7d2fe" }}
-                    >
-                      Reschedule
+                  {v.jobId ? (
+                    <Link href={`/jobs/${v.jobId}`}
+                      className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-colors text-indigo-600"
+                      style={{ border: "1px solid #c7d2fe" }}>
+                      Open job <ChevronRight className="w-3 h-3" />
+                    </Link>
+                  ) : v.status === "completed" ? (
+                    <span className="text-xs" style={{ color: "var(--text-muted)" }}>—</span>
+                  ) : (
+                    <button onClick={() => scheduleVisit(v.id)}
+                      className="text-xs px-2 py-1 rounded-lg transition-colors text-white bg-indigo-600 hover:bg-indigo-700">
+                      {v.status === "missed" ? "Reschedule" : "Schedule"}
                     </button>
                   )}
                 </div>

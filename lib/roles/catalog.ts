@@ -68,4 +68,5 @@ export const FLAG_LABELS: Record<SensitiveFlag, { label: string; description: st
   reports_cross_scope: { label: "Cross-scope reports", description: "View reporting across companies/locations." },
   records_deactivate:  { label: "Deactivate records", description: "Deactivate/archive business records." },
   automation_manage:   { label: "Manage automation",  description: "Configure marketing and automation rules." },
+  jobs_status_override: { label: "Override job status", description: "Force a job to any status, bypassing the normal transition flow (dispatch authority)." },
 };

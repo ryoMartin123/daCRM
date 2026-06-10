@@ -6,6 +6,8 @@
 //   agreement_templates, customer_agreements,
 //   agreement_visits, agreement_billing_events
 
+import { createJob, updateJob, getJob, type Job } from "@/lib/jobs/data";
+
 export type AgreementStatus =
   | "active"
   | "due_soon"
@@ -26,7 +28,9 @@ export type VisitFrequency =
   | "1x per year"
   | "As needed";
 
-export type VisitStatus = "scheduled" | "completed" | "missed";
+// "planned" = part of the agreement plan but not yet a job; "scheduled" = a real
+// job has been materialized for it (visit.jobId set) and rides the job lifecycle.
+export type VisitStatus = "planned" | "scheduled" | "completed" | "missed";
 
 export type Industry =
   | "HVAC"
@@ -45,6 +49,7 @@ export interface AgreementVisit {
   tech: string;
   completedDate?: string;
   notes?: string;
+  jobId?: string;        // set once the visit is materialized into a dispatchable job
 }
 
 // ─── Customer Agreement ───────────────────────────────────
@@ -297,7 +302,7 @@ export interface NewAgreementInput {
 // Create a customer agreement from builder output (snapshots template data).
 export function createAgreement(input: NewAgreementInput): CustomerAgreement {
   const visits = input.visits ?? [];
-  const nextVisit = visits.find(v => v.status === "scheduled")?.scheduled ?? null;
+  const nextVisit = nextPlannedDate(visits);
   const agreement: CustomerAgreement = {
     id: `agr-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
     number: nextAgreementNumber(),
@@ -326,4 +331,85 @@ export function createAgreement(input: NewAgreementInput): CustomerAgreement {
   _extra = [agreement, ...extraAgreements()];
   persistExtra();
   return agreement;
+}
+
+// ─── Visit → job materialization (lazy scheduling) ────────
+// An agreement holds the visit PLAN; a visit becomes a real, dispatchable job
+// only when it's scheduled. The job then rides the standard job lifecycle, and
+// on completion writes back to the visit (completeAgreementVisitForJob, called
+// from lib/jobs/lifecycle). NOTE: write-backs persist for session-created
+// agreements (the seed array isn't patched — see updateAgreement).
+
+function visitInitials(name: string): string {
+  const p = name.replace(/\(.*\)/, "").trim().split(/\s+/);
+  return (p.length >= 2 ? p[0][0] + p[p.length - 1][0] : name.slice(0, 2)).toUpperCase();
+}
+
+function nextPlannedDate(visits: AgreementVisit[]): string | null {
+  return visits.find(v => v.status === "planned" || v.status === "scheduled")?.scheduled ?? null;
+}
+
+export interface MaterializeVisitCtx {
+  companyId: string; locationId: string; serviceAreaId?: string;
+  scheduledDate?: string; scheduledTime?: string; assignedTo?: string;
+}
+
+// Turn a planned visit into a dispatchable job and link the two.
+export function materializeVisitJob(agreementId: string, visitId: string, ctx: MaterializeVisitCtx): { job?: Job; error?: string } {
+  const agreement = getAgreement(agreementId);
+  if (!agreement) return { error: "Agreement not found." };
+  const visit = agreement.visits.find(v => v.id === visitId);
+  if (!visit) return { error: "Visit not found." };
+  if (visit.jobId && getJob(visit.jobId)) return { error: "This visit already has a job." };
+
+  const tech = (ctx.assignedTo ?? (agreement.assignedTo && agreement.assignedTo !== "Unassigned" ? agreement.assignedTo : "")) || "";
+  const date = ctx.scheduledDate ?? visit.scheduled ?? "";
+
+  const job = createJob({
+    companyId: ctx.companyId, locationId: ctx.locationId, serviceAreaId: ctx.serviceAreaId,
+    accountId: agreement.customerId ?? "",
+    customerName: agreement.customer, customerInitials: agreement.customerInitials,
+    locationName: agreement.location,
+    title: `${agreement.type} — ${visit.label}`,
+    type: "maintenance",
+    scheduledDate: date, scheduledTime: ctx.scheduledTime,
+    assignedTo: tech, assignedToInitials: tech ? visitInitials(tech) : "",
+    dispatchType: "agreement_visit", sourceModule: "agreements", sourceRefId: visitId,
+  });
+  // createJob doesn't carry agreementId — link it so completion can write back.
+  updateJob(job.id, { agreementId });
+
+  const visits = agreement.visits.map(v =>
+    v.id === visitId
+      ? { ...v, status: "scheduled" as VisitStatus, jobId: job.id, scheduled: date || v.scheduled, tech: tech || v.tech }
+      : v,
+  );
+  updateAgreement(agreementId, { visits, nextVisit: nextPlannedDate(visits) });
+  return { job };
+}
+
+// Called by the job lifecycle when an agreement-sourced job completes: flips the
+// linked visit to completed and advances the agreement's nextVisit.
+export function completeAgreementVisitForJob(job: { agreementId?: string; sourceRefId?: string; completedDate?: string }): void {
+  if (!job.agreementId || !job.sourceRefId) return;
+  const agreement = getAgreement(job.agreementId);
+  if (!agreement) return;
+  const done = job.completedDate ?? new Date().toISOString().slice(0, 10);
+  const visits = agreement.visits.map(v =>
+    v.id === job.sourceRefId ? { ...v, status: "completed" as VisitStatus, completedDate: done } : v,
+  );
+  updateAgreement(job.agreementId, { visits, nextVisit: nextPlannedDate(visits) });
+}
+
+// Planned visits still needing a job — the dispatcher's "Visits to schedule"
+// queue. Skips canceled agreements and already-materialized visits.
+export function getVisitsToSchedule(): { agreement: CustomerAgreement; visit: AgreementVisit }[] {
+  const out: { agreement: CustomerAgreement; visit: AgreementVisit }[] = [];
+  for (const a of getAllAgreements()) {
+    if (a.status === "canceled") continue;
+    for (const v of a.visits) {
+      if (v.status === "planned" && !v.jobId) out.push({ agreement: a, visit: v });
+    }
+  }
+  return out;
 }

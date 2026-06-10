@@ -31,6 +31,7 @@ export const DEFAULT_LAYOUT: LayoutItem[] = [
   { widgetId: "revenue_snapshot",  visible: true,  order: 6,  x: 8,  y: 10, w: 4,  h: 6,  minW: 3,  minH: 4  },
   { widgetId: "recent_activity",   visible: true,  order: 7,  x: 0,  y: 16, w: 8,  h: 8,  minW: 4,  minH: 4  },
   { widgetId: "open_work_orders",  visible: true,  order: 8,  x: 8,  y: 16, w: 4,  h: 6,  minW: 3,  minH: 4  },
+  { widgetId: "visits_to_schedule",visible: true,  order: 9,  x: 8,  y: 22, w: 4,  h: 6,  minW: 3,  minH: 3  },
   // ── Off by default — added via customize panel ─────────
   { widgetId: "invoices_due",              visible: false, order: 9,  x: 0, y: 24, w: 8,  h: 7, minW: 4, minH: 4 },
   { widgetId: "location_performance",      visible: false, order: 10, x: 0, y: 24, w: 8,  h: 5, minW: 6, minH: 4 },

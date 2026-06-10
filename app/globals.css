@@ -213,15 +213,18 @@ body {
   box-shadow: inset 0 0 0 4px rgba(79,70,229,0.06) !important;
 }
 
-/* Item transitions — smooth repositioning; off while actively dragging */
+/* Item transitions — smooth repositioning only in customize mode; off while
+   actively dragging. In normal view there is NO transform transition, so on
+   load the grid snaps straight to its measured width instead of animating
+   ("filling") into place when the container width is first measured. */
 .react-grid-item {
   transition: none !important;
 }
-.react-grid-item.cssTransforms {
+.dashboard-grid-editing .react-grid-item.cssTransforms {
   transition: transform 180ms ease, box-shadow 180ms ease !important;
 }
-.react-grid-item.resizing,
-.react-grid-item.react-draggable-dragging {
+.dashboard-grid-editing .react-grid-item.resizing,
+.dashboard-grid-editing .react-grid-item.react-draggable-dragging {
   transition: none !important;
   z-index: 100 !important;
   opacity: 0.85 !important;

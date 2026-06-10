@@ -3,30 +3,16 @@
 import Link from "next/link";
 import {
   X, Clock, MapPin, CheckCircle, Circle, ChevronRight, Briefcase,
-  CalendarClock, User, Tag, AlertTriangle, FileText, MessageSquare,
+  CalendarClock, User, Tag, AlertTriangle, FileText,
 } from "lucide-react";
+import { useState } from "react";
 import Select from "@/components/ui/Select";
 import StatusBadge from "@/components/shared/StatusBadge";
-import { getWorkOrder } from "@/lib/jobs/data";
+import { getWorkOrder, getJob } from "@/lib/jobs/data";
+import { JobStatusBar } from "@/components/jobs/JobStatusControl";
 import {
   LAYER_CONFIG, PRIORITY_CONFIG, type CalendarItem, type UnscheduledItem,
 } from "@/lib/calendar/types";
-import { useComments } from "@/components/providers/CommentsProvider";
-import { commentCountForAnchorKey, anchorKey, type CommentAnchor, type AnchorRecordType } from "@/lib/comments/data";
-
-// Map a dispatch item's source to a comment anchor. Jobs/quotes/agreements/
-// projects pin to their record (so the thread also shows on that record's page);
-// anything else stays dispatch-scoped.
-const MOD_TO_TYPE: Record<string, AnchorRecordType> = {
-  jobs: "job", quotes: "quote", agreements: "agreement", projects: "project",
-};
-function itemAnchor(item: CalendarItem | UnscheduledItem): CommentAnchor {
-  return {
-    recordType: MOD_TO_TYPE[item.sourceModule] ?? "dispatch",
-    recordId:   item.sourceId,
-    recordLabel: item.customerName ?? item.title,
-  };
-}
 
 function fmtTime(d: Date): string { return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }); }
 function fmtDate(d: Date): string { return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }); }
@@ -44,7 +30,7 @@ function recordHref(mod: string, id: string): string | null {
 }
 
 export default function CalendarItemDrawer({
-  scheduled, unscheduled, technicians, onClose, onReassign, onSchedule,
+  scheduled, unscheduled, technicians, onClose, onReassign, onSchedule, onStatusChanged,
 }: {
   scheduled?: CalendarItem;
   unscheduled?: UnscheduledItem;
@@ -52,17 +38,18 @@ export default function CalendarItemDrawer({
   onClose: () => void;
   onReassign?: (tech: string) => void;
   onSchedule?: () => void;
+  onStatusChanged?: () => void;   // refresh the board after an in-drawer status change
 }) {
   const item = scheduled ?? unscheduled!;
   const cfg = LAYER_CONFIG[item.type];
   const isScheduled = !!scheduled;
   const href = recordHref(item.sourceModule, item.sourceId);
 
-  const { openComposer } = useComments();
-  const anchor = itemAnchor(item);
-  const commentCount = commentCountForAnchorKey(anchorKey(anchor));
-  // Close this drawer and open the comments drawer for the item's anchor.
-  function openComments() { onClose(); openComposer(anchor); }
+  // Live job behind a scheduled job item — drives the in-drawer status control.
+  const [jobV, setJobV] = useState(0);
+  const job = isScheduled && scheduled!.sourceModule === "jobs" && scheduled!.type === "job"
+    ? getJob(scheduled!.sourceId) : undefined;
+  void jobV; // re-read job after a status change
 
   // Work order summary (scheduled jobs only)
   const wo = isScheduled && scheduled!.sourceModule === "jobs" && scheduled!.type === "job"
@@ -103,11 +90,19 @@ export default function CalendarItemDrawer({
             {(scheduled?.address ?? unscheduled?.address ?? scheduled?.city ?? unscheduled?.city) &&
               <Row icon={MapPin} label="Location" value={scheduled?.address ?? unscheduled?.address ?? scheduled?.city ?? unscheduled?.city ?? ""} />}
             {scheduled?.contact && <Row icon={User} label="Contact" value={scheduled.contact} />}
-            {scheduled?.status && <Row icon={Tag} label="Status" value={scheduled.status} />}
+            {/* Non-job items show a static status; jobs get the interactive control below. */}
+            {scheduled?.status && !job && <Row icon={Tag} label="Status" value={scheduled.status} />}
             {!isScheduled && <Row icon={Clock} label="Est. duration" value={fmtDuration(unscheduled!.durationMinutes)} />}
             {!isScheduled && <Row icon={AlertTriangle} label="Reason" value={unscheduled!.reason} />}
             {unscheduled?.value && <Row icon={FileText} label="Value" value={unscheduled.value} />}
           </div>
+
+          {/* Interactive status — role-driven next steps + dispatch override */}
+          {job && (
+            <div className="pt-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+              <JobStatusBar job={job} className="" onChanged={() => { setJobV(v => v + 1); onStatusChanged?.(); }} />
+            </div>
+          )}
 
           {/* Description */}
           {(scheduled?.description ?? unscheduled?.description) && (
@@ -159,12 +154,6 @@ export default function CalendarItemDrawer({
               Schedule
             </button>
           )}
-          <button onClick={openComments}
-            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
-            style={{ border: "1px solid var(--border)", color: "var(--text-secondary)", backgroundColor: "var(--bg-surface)" }}>
-            <MessageSquare className="w-3.5 h-3.5" />
-            {commentCount > 0 ? `Comments · ${commentCount}` : "Comment"}
-          </button>
           <div className="flex items-center flex-wrap gap-2">
             {isScheduled && <ActionBtn label="Reschedule" />}
             {isScheduled && <ActionBtn label="Mark Confirmed" />}

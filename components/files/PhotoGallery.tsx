@@ -8,7 +8,7 @@ import {
 import Select from "@/components/ui/Select";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
 import {
-  getFiles, getUploaders, getFileAccounts, getFileLocations, addFile,
+  getFiles, getUploaders, getFileAccounts, getFileLocations, addFile, inferFileType,
   fileLinkKind, fileHasLink, LINK_BADGE,
 } from "@/lib/files/data";
 import type { PhotoFile, FileScope, FileType, FileLinkKind } from "@/lib/files/types";
@@ -210,9 +210,13 @@ export default function PhotoGallery({ recordLevel, scope = {}, accountName, upl
     setUploader("all"); setLoc("all"); setDateRange("all");
   }
 
-  function handleUpload(fileName: string, fileType: FileType, categoryKey: string, notes: string) {
+  // Upload a whole batch at once — each file keeps its own name + auto-detected
+  // type; the chosen category and notes apply to all of them.
+  function handleUpload(items: { fileName: string; fileType: FileType }[], categoryKey: string, notes: string) {
     const uploadScope: FileScope = isGlobal ? { accountId: scope.accountId } : scope;
-    addFile({ scope: uploadScope, fileName, fileType, categoryKey, uploadedBy: uploaderName, notes, accountName });
+    for (const it of items) {
+      addFile({ scope: uploadScope, fileName: it.fileName, fileType: it.fileType, categoryKey, uploadedBy: uploaderName, notes, accountName });
+    }
     setFiles(getFiles(activeScope));
     setShowUpload(false);
   }
@@ -646,58 +650,102 @@ function FilterField({ label, children }: { label: string; children: React.React
   );
 }
 
-// ─── Upload modal (styled dropdowns) ──────────────────────
+// ─── Upload modal — real multi-file drag & drop ───────────
+// Pick or drop as many files as you like; each file's type (image / document /
+// video / …) is detected automatically, so there's no manual type field.
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function UploadModal({ categories, onClose, onUpload }: {
   categories: { key: string; name: string }[];
   onClose: () => void;
-  onUpload: (fileName: string, fileType: FileType, categoryKey: string, notes: string) => void;
+  onUpload: (items: { fileName: string; fileType: FileType }[], categoryKey: string, notes: string) => void;
 }) {
-  const [fileName, setFileName] = useState("");
-  const [fileType, setFileType] = useState<FileType>("image");
+  const [picked, setPicked]       = useState<File[]>([]);
   const [categoryKey, setCategoryKey] = useState(categories[0]?.key ?? "");
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes]         = useState("");
+  const [dragOver, setDragOver]   = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function addFiles(list: FileList | null) {
+    if (!list || list.length === 0) return;
+    setPicked(prev => [...prev, ...Array.from(list)]);
+  }
+  function removeAt(i: number) { setPicked(prev => prev.filter((_, idx) => idx !== i)); }
+
+  function submit() {
+    if (!picked.length) return;
+    onUpload(picked.map(f => ({ fileName: f.name, fileType: inferFileType(f.name, f.type) })), categoryKey, notes.trim());
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
       <div className="w-full max-w-md rounded-2xl overflow-hidden" onClick={e => e.stopPropagation()}
         style={{ backgroundColor: "var(--bg-surface)", boxShadow: "0 16px 48px rgba(0,0,0,0.24)" }}>
         <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-          <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Upload File</p>
+          <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Upload Files</p>
           <button onClick={onClose} style={{ color: "var(--text-muted)" }}><X className="w-4 h-4" /></button>
         </div>
         <div className="p-5 space-y-3">
-          <div className="rounded-xl py-8 text-center" style={{ border: "2px dashed var(--border)", backgroundColor: "var(--bg-surface-2)" }}>
-            <Upload className="w-6 h-6 mx-auto mb-1.5" style={{ color: "var(--text-muted)" }} />
-            <p className="text-xs" style={{ color: "var(--text-muted)" }}>Drag &amp; drop or enter a file name below</p>
+          {/* Dropzone — click to browse or drop files anywhere on it */}
+          <div
+            onClick={() => inputRef.current?.click()}
+            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={e => { e.preventDefault(); setDragOver(false); addFiles(e.dataTransfer.files); }}
+            className="rounded-xl py-8 text-center cursor-pointer transition-colors"
+            style={{ border: `2px dashed ${dragOver ? "#4f46e5" : "var(--border)"}`, backgroundColor: dragOver ? "var(--accent-soft-bg)" : "var(--bg-surface-2)" }}>
+            <input ref={inputRef} type="file" multiple hidden
+              onChange={e => { addFiles(e.target.files); e.target.value = ""; }} />
+            <Upload className="w-6 h-6 mx-auto mb-1.5" style={{ color: dragOver ? "var(--accent-text)" : "var(--text-muted)" }} />
+            <p className="text-xs font-medium" style={{ color: dragOver ? "var(--accent-text)" : "var(--text-secondary)" }}>
+              Drag &amp; drop photos or files here, or click to browse
+            </p>
+            <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>Add as many as you like — type is detected automatically</p>
           </div>
+
+          {/* Selected files */}
+          {picked.length > 0 && (
+            <div className="space-y-1.5 max-h-52 overflow-y-auto thin-scroll-y">
+              {picked.map((f, i) => {
+                const ft = inferFileType(f.name, f.type);
+                const Icon = FILE_ICON[ft];
+                return (
+                  <div key={`${f.name}-${i}`} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2"
+                    style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border-subtle)" }}>
+                    <Icon className="w-4 h-4 shrink-0" style={{ color: ft === "image" ? "#4f46e5" : "var(--text-muted)" }} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium truncate" style={{ color: "var(--text-primary)" }}>{f.name}</p>
+                      <p className="text-[10px] capitalize" style={{ color: "var(--text-muted)" }}>{ft} · {formatSize(f.size)}</p>
+                    </div>
+                    <button onClick={() => removeAt(i)} className="shrink-0 p-0.5 rounded hover:bg-[var(--bg-surface)]" style={{ color: "var(--text-muted)" }} title="Remove">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           <div>
-            <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>File Name</label>
-            <input value={fileName} onChange={e => setFileName(e.target.value)} placeholder="e.g. unit-after.jpg"
-              className="w-full rounded-lg px-3 py-2 text-sm outline-none" style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Category</label>
-              <Select size="sm" value={categoryKey} onChange={setCategoryKey}
-                options={categories.map(c => ({ value: c.key, label: c.name }))} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>File Type</label>
-              <Select size="sm" value={fileType} onChange={v => setFileType(v as FileType)}
-                options={[{ value: "image", label: "Image" }, { value: "pdf", label: "PDF" }, { value: "document", label: "Document" }, { value: "video", label: "Video" }, { value: "other", label: "Other" }]} />
-            </div>
+            <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Category</label>
+            <Select size="sm" value={categoryKey} onChange={setCategoryKey}
+              options={categories.map(c => ({ value: c.key, label: c.name }))} />
           </div>
           <div>
             <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Notes</label>
-            <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional"
+            <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional — applied to all files"
               className="w-full rounded-lg px-3 py-2 text-sm outline-none" style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }} />
           </div>
         </div>
         <div className="px-5 py-4 flex justify-end gap-2" style={{ borderTop: "1px solid var(--border-subtle)" }}>
           <button onClick={onClose} className="px-3 py-1.5 rounded-lg text-sm" style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}>Cancel</button>
-          <button onClick={() => onUpload(fileName.trim() || "untitled", fileType, categoryKey, notes.trim())} disabled={!fileName.trim()}
+          <button onClick={submit} disabled={!picked.length}
             className="px-4 py-1.5 rounded-lg text-sm font-medium text-white disabled:opacity-40" style={{ backgroundColor: "#4f46e5" }}>
-            Upload
+            Upload{picked.length > 0 ? ` ${picked.length} file${picked.length === 1 ? "" : "s"}` : ""}
           </button>
         </div>
       </div>

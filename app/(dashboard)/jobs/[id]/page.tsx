@@ -21,6 +21,7 @@ import { QUOTE_STATUS_STYLE, INVOICE_STATUS_STYLE } from "@/lib/quotes/types";
 import PhotoGallery from "@/components/files/PhotoGallery";
 import QuickCreateQuoteModal from "@/components/quotes/QuickCreateQuoteModal";
 import DetailTabs from "@/components/shared/DetailTabs";
+import { JobStatusBar, JobHistoryList } from "@/components/jobs/JobStatusControl";
 
 const TABS = ["Overview", "Work Order", "Checklist", "Photos & Files", "Notes", "Customer", "Invoice / Estimate", "History"];
 
@@ -496,9 +497,6 @@ function StubContent({ label }: { label: string }) {
     </div>
   );
 }
-function StubTab({ label }: { label: string }) {
-  return <div className="rounded-xl p-10 text-center" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}><p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{label}</p><p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>Coming soon</p></div>;
-}
 
 // ─── Job financials tab ───────────────────────────────────
 function JobFinancialsTab({ jobId }: { jobId: string }) {
@@ -691,6 +689,9 @@ function JobDetailContent({ params }: { params: Promise<{ id: string }> }) {
             ]} />
           </div>
         </div>
+        {/* Interactive status — role-driven next steps + dispatch override */}
+        <JobStatusBar job={job} onChanged={refresh} />
+
         {/* Sub-tabs — glossy light-amber (comment-mode accent) */}
         <DetailTabs tabs={TABS} active={tab} onChange={setTab} className="px-6 py-2" />
       </div>
@@ -703,7 +704,7 @@ function JobDetailContent({ params }: { params: Promise<{ id: string }> }) {
         {tab === "Customer"          && <CustomerTab  jobId={id} />}
         {tab === "Photos & Files"    && <PhotoGallery recordLevel="job" scope={{ accountId: job.accountId, jobId: id, projectId: job.projectId }} accountName={job.customerName} />}
         {tab === "Invoice / Estimate"&& <JobFinancialsTab jobId={id} />}
-        {tab === "History"           && <StubTab label="History" />}
+        {tab === "History"           && <JobHistoryList job={job} />}
       </div>
 
       {/* Delete confirmation */}

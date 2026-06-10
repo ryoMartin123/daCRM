@@ -68,7 +68,8 @@ export type SensitiveFlag =
   | "billing_manage"           // change subscription / billing
   | "reports_cross_scope"      // cross-company / cross-location reporting
   | "records_deactivate"       // deactivate business records
-  | "automation_manage";        // marketing/automation rules
+  | "automation_manage"        // marketing/automation rules
+  | "jobs_status_override";     // force any job status, bypassing the transition graph
 
 // ─── Role keys ────────────────────────────────────────────
 // A role key is any string: built-in defaults (see DEFAULT_ROLE_KEYS) plus

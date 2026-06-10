@@ -10,7 +10,7 @@ import { createProject, type Project } from "@/lib/projects/data";
 import { createQuote, createInvoice, type LineItem } from "@/lib/quotes/data";
 import { createLead, type LeadSource } from "@/lib/leads/data";
 import { createTask } from "@/lib/tasks/data";
-import { createAgreement } from "@/lib/agreements/data";
+import { createAgreement, type AgreementVisit } from "@/lib/agreements/data";
 import { manifestKey } from "./manifest";
 import type { SampleEntry, SampleType } from "./types";
 
@@ -207,6 +207,15 @@ export function genInvoice(ctx: GenCtx, customer: Customer, job?: Job): { entry:
 }
 
 export function genAgreement(ctx: GenCtx, customer: Customer): { entry: SampleEntry } {
+  // Planned visits — not yet jobs. They surface in the "Visits to Schedule"
+  // widget / agreement Visits tab; scheduling one materializes a dispatchable job.
+  const visits: AgreementVisit[] = ["Spring Tune-Up", "Fall Tune-Up"].map((label, k) => ({
+    id: `av-${customer.id}-${k}-${Math.random().toString(36).slice(2, 5)}`,
+    label,
+    scheduled: dateOffset(30 + k * 150),
+    status: "planned",
+    tech: "Unassigned",
+  }));
   const ag = createAgreement({
     customerId: customer.id, customer: customer.name, customerInitials: customer.initials,
     location: ctx.locationName, assignedTo: pick(TECHS),
@@ -216,6 +225,7 @@ export function genAgreement(ctx: GenCtx, customer: Customer): { entry: SampleEn
     visitFrequency: "2x per year", billingFrequency: "Annual",
     annualValue: pick([198, 258, 318, 420]),
     status: "active",
+    visits,
   });
   return { entry: entry("agreement", ag.id, [customer.id]) };
 }

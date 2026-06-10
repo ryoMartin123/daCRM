@@ -163,7 +163,9 @@ export default function AgreementBuilder({ preset, editAgreement, onClose, onCre
       for (let k = 0; k < perVisit[pi]; k++) {
         const d = addMonths(start, Math.round(idx * stepMonths));
         const occ = perVisit[pi] > 1 ? ` ${k + 1}` : "";
-        out.push({ id: uid("av"), label: `${plan[pi].name}${occ}`, scheduled: fmtHuman(d), status: "scheduled", tech });
+        // Planned, not scheduled: a visit becomes a real job only when the
+        // dispatcher schedules it (lazy materialization).
+        out.push({ id: uid("av"), label: `${plan[pi].name}${occ}`, scheduled: fmtHuman(d), status: "planned", tech });
         idx++;
       }
     }

@@ -104,6 +104,17 @@ export function fileHasLink(f: PhotoFile, kind: FileLinkKind): boolean {
   }
 }
 
+// Infer the file kind from its MIME type (preferred) or extension, so uploads
+// never need a manual "image vs document" choice.
+export function inferFileType(name: string, mime = ""): FileType {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  if (mime.startsWith("image/") || ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "svg", "tiff", "avif"].includes(ext)) return "image";
+  if (mime.startsWith("video/") || ["mp4", "mov", "avi", "webm", "mkv", "m4v"].includes(ext)) return "video";
+  if (mime === "application/pdf" || ext === "pdf") return "pdf";
+  if (mime.startsWith("text/") || ["doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "rtf", "pages", "numbers", "key", "odt", "ods"].includes(ext)) return "document";
+  return "other";
+}
+
 // ─── Mock upload — auto-fills the scope chain ─────────────
 export function addFile(input: {
   scope: FileScope; fileName: string; fileType: FileType; categoryKey: string;
