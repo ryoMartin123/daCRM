@@ -161,6 +161,58 @@ export const AGREEMENT_STATS = {
 };
 
 // ─── Helpers ──────────────────────────────────────────────
+// ─── Hero-card helpers (customer profile breakdown) ───────
+// Status label + accent color, shared by the summary card and detail page.
+export const AGREEMENT_STATUS_META: Record<AgreementStatus, { label: string; color: string }> = {
+  active:      { label: "Active",      color: "#10b981" },
+  due_soon:    { label: "Due Soon",    color: "#f59e0b" },
+  overdue:     { label: "Overdue",     color: "#ef4444" },
+  renewal_due: { label: "Renewal Due", color: "#f97316" },
+  canceled:    { label: "Canceled",    color: "#6b7280" },
+};
+
+export function agreementVisitProgress(a: CustomerAgreement): { done: number; total: number } {
+  return { done: a.visits.filter(v => v.status === "completed").length, total: a.visits.length };
+}
+
+// Renew an agreement for another term: advance the renewal date by the term
+// (default 12 months) and set it back to Active. Renews from the later of today
+// or the current renewal date so an overdue renewal still lands in the future.
+export function renewAgreement(id: string): CustomerAgreement | undefined {
+  const a = getAgreement(id);
+  if (!a) return undefined;
+  const months = a.renewal?.termMonths ?? 12;
+  const current = new Date(a.renewalDate);
+  const from = !isNaN(current.getTime()) && current.getTime() > Date.now() ? current : new Date();
+  from.setMonth(from.getMonth() + months);
+  const renewalDate = from.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return updateAgreement(id, { renewalDate, status: "active" });
+}
+
+const BILLING_MONTHS: Record<BillingFrequency, number> = {
+  Monthly: 1, Quarterly: 3, "Semi-annual": 6, Annual: 12,
+};
+
+// Next charge date — stepped from the first bill (or start date) by the cadence
+// until it lands in the future. We track this for display; no invoices yet.
+export function nextBillingDate(a: CustomerAgreement): Date | null {
+  const anchor = new Date(a.firstBillingDate || a.startDate);
+  if (isNaN(anchor.getTime())) return null;
+  const step = BILLING_MONTHS[a.billingFrequency] ?? 12;
+  const now = new Date();
+  const d = new Date(anchor);
+  let guard = 0;
+  while (d.getTime() < now.getTime() && guard++ < 240) d.setMonth(d.getMonth() + step);
+  return d;
+}
+
+// Amount charged each billing period (explicit amount wins; else annualValue split).
+export function billingAmountPerPeriod(a: CustomerAgreement): number {
+  if (a.billingAmount != null) return a.billingAmount;
+  const step = BILLING_MONTHS[a.billingFrequency] ?? 12;
+  return Math.round(a.annualValue / (12 / step));
+}
+
 export function formatValue(a: CustomerAgreement): string {
   if (a.billingLabel) {
     const per = a.billingLabel.toLowerCase();

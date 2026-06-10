@@ -13,7 +13,7 @@ import StatusBadge from "@/components/shared/StatusBadge";
 import DetailTabs from "@/components/shared/DetailTabs";
 import AgreementBuilder from "@/components/agreements/AgreementBuilder";
 import {
-  AGREEMENTS, TEMPLATES, formatValue, getAgreement, deleteAgreement, updateAgreement, materializeVisitJob,
+  AGREEMENTS, TEMPLATES, formatValue, getAgreement, deleteAgreement, updateAgreement, materializeVisitJob, renewAgreement,
   type AgreementStatus, type VisitStatus, type CustomerAgreement,
 } from "@/lib/agreements/data";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
@@ -381,8 +381,9 @@ function ServicesTab({ agreement }: { agreement: typeof AGREEMENTS[0] }) {
 }
 
 // ─── Renewal tab ──────────────────────────────────────────
-function RenewalTab({ agreement }: { agreement: typeof AGREEMENTS[0] }) {
+function RenewalTab({ agreement, onRenew }: { agreement: typeof AGREEMENTS[0]; onRenew: () => void }) {
   const isRenewalDue = agreement.status === "renewal_due";
+  const termMonths = agreement.renewal?.termMonths ?? 12;
   return (
     <div className="space-y-4 max-w-xl">
       <div
@@ -406,6 +407,10 @@ function RenewalTab({ agreement }: { agreement: typeof AGREEMENTS[0] }) {
             Renewal is due soon — take action to retain this agreement.
           </p>
         )}
+        <button onClick={onRenew}
+          className="mt-4 flex items-center gap-1.5 text-sm font-medium px-3.5 py-2 rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 transition-colors">
+          <RefreshCw className="w-3.5 h-3.5" /> Renew for another {termMonths === 12 ? "year" : `${termMonths} months`}
+        </button>
       </div>
 
       <div
@@ -469,7 +474,7 @@ export default function AgreementDetailPage({
     }
   }
   function handleRenew() {
-    updateAgreement(id, { status: "active" });
+    renewAgreement(id);
     setAgreement(getAgreement(id));
     setActionsOpen(false);
   }
@@ -585,7 +590,7 @@ export default function AgreementDetailPage({
         {activeTab === "Overview"          && <OverviewTab agreement={agreement} />}
         {activeTab === "Visits"            && <VisitsTab agreement={agreement} />}
         {activeTab === "Included Services" && <ServicesTab agreement={agreement} />}
-        {activeTab === "Renewal"           && <RenewalTab agreement={agreement} />}
+        {activeTab === "Renewal"           && <RenewalTab agreement={agreement} onRenew={handleRenew} />}
         {activeTab === "Billing"           && <StubTab label="Billing" />}
         {activeTab === "Notes"             && <StubTab label="Notes" />}
         {activeTab === "Photos & Files"    && <StubTab label="Photos & Files" />}

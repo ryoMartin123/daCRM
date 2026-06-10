@@ -288,14 +288,16 @@ export default function CommentsDrawer() {
               </h2>
             </div>
             <p className="text-xs mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>{anchorLabel(scope)}</p>
-            {/* Toggle between this single pin and every comment on the page. */}
-            {drawer.pathScope && threads.length > 0 && (
-              soloId ? (
+            {/* Toggle between this single thread and all comments on the page/record. */}
+            {soloId ? (
+              threads.length > 1 && (
                 <button onClick={() => setSolo(undefined)}
                   className="mt-1.5 text-[11px] font-medium transition-colors hover:underline" style={{ color: "var(--warning-icon)" }}>
-                  ← View all {threads.length} comment{threads.length === 1 ? "" : "s"} on this page
+                  ← View all {threads.length} comment{threads.length === 1 ? "" : "s"} {drawer.pathScope ? "on this page" : "here"}
                 </button>
-              ) : (
+              )
+            ) : (
+              drawer.pathScope && threads.length > 0 && (
                 <p className="mt-1.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
                   Showing all {threads.length} on this page · click a pin to focus it
                 </p>

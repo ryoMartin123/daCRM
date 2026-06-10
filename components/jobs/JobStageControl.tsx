@@ -7,6 +7,7 @@
 // clipped by the card's overflow. Non-job items just show a static icon.
 
 import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   CircleDashed, Send, Truck, Wrench, Package, Hourglass, CheckCircle2, Receipt,
   CheckCheck, Ban, UserX, Briefcase, CalendarClock,
@@ -99,10 +100,12 @@ export default function JobStageControl({ jobId, statusKey, onChanged, size = 18
         <Icon style={{ width: size, height: size, color: iconColor }} />
       </button>
 
-      {menuPos && (
+      {menuPos && typeof document !== "undefined" && createPortal(
         <>
-          <div className="fixed inset-0 z-[60]" onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); setMenuPos(null); }} />
-          <div className="fixed z-[61] w-44 rounded-lg py-1 max-h-72 overflow-y-auto"
+          {/* Body-level portal so the menu can't be clipped by the card's overflow
+              or mis-positioned by a transformed ancestor. */}
+          <div className="fixed inset-0 z-[80]" onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); setMenuPos(null); }} />
+          <div className="fixed z-[81] w-44 rounded-lg py-1 max-h-72 overflow-y-auto"
             onMouseDown={e => e.stopPropagation()}
             style={{ left: menuPos.x, top: menuPos.y, backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "0 12px 32px rgba(0,0,0,0.22)" }}>
             <p className="text-[10px] font-semibold uppercase tracking-wider px-2.5 py-1" style={{ color: "var(--text-muted)" }}>Set status</p>
@@ -119,7 +122,8 @@ export default function JobStageControl({ jobId, statusKey, onChanged, size = 18
               );
             })}
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </span>
   );

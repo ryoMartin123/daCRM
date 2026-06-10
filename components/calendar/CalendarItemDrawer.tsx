@@ -5,11 +5,10 @@ import {
   X, Clock, MapPin, CheckCircle, Circle, ChevronRight, Briefcase,
   CalendarClock, User, Tag, AlertTriangle, FileText,
 } from "lucide-react";
-import { useState } from "react";
 import Select from "@/components/ui/Select";
 import StatusBadge from "@/components/shared/StatusBadge";
-import { getWorkOrder, getJob } from "@/lib/jobs/data";
-import { JobStatusBar } from "@/components/jobs/JobStatusControl";
+import { getWorkOrder, getJob, resolveJobStatus } from "@/lib/jobs/data";
+import { getJobStatuses } from "@/lib/job-config/data";
 import {
   LAYER_CONFIG, PRIORITY_CONFIG, type CalendarItem, type UnscheduledItem,
 } from "@/lib/calendar/types";
@@ -30,7 +29,7 @@ function recordHref(mod: string, id: string): string | null {
 }
 
 export default function CalendarItemDrawer({
-  scheduled, unscheduled, technicians, onClose, onReassign, onSchedule, onStatusChanged,
+  scheduled, unscheduled, technicians, onClose, onReassign, onSchedule,
 }: {
   scheduled?: CalendarItem;
   unscheduled?: UnscheduledItem;
@@ -38,18 +37,17 @@ export default function CalendarItemDrawer({
   onClose: () => void;
   onReassign?: (tech: string) => void;
   onSchedule?: () => void;
-  onStatusChanged?: () => void;   // refresh the board after an in-drawer status change
 }) {
   const item = scheduled ?? unscheduled!;
   const cfg = LAYER_CONFIG[item.type];
   const isScheduled = !!scheduled;
   const href = recordHref(item.sourceModule, item.sourceId);
 
-  // Live job behind a scheduled job item — drives the in-drawer status control.
-  const [jobV, setJobV] = useState(0);
+  // The job behind a scheduled job item — read-only status display here; status
+  // is changed only from the board stage icon (or the mobile app, later).
   const job = isScheduled && scheduled!.sourceModule === "jobs" && scheduled!.type === "job"
     ? getJob(scheduled!.sourceId) : undefined;
-  void jobV; // re-read job after a status change
+  const jobStatus = job ? resolveJobStatus(job.status, getJobStatuses().filter(s => s.active)) : null;
 
   // Work order summary (scheduled jobs only)
   const wo = isScheduled && scheduled!.sourceModule === "jobs" && scheduled!.type === "job"
@@ -90,19 +88,14 @@ export default function CalendarItemDrawer({
             {(scheduled?.address ?? unscheduled?.address ?? scheduled?.city ?? unscheduled?.city) &&
               <Row icon={MapPin} label="Location" value={scheduled?.address ?? unscheduled?.address ?? scheduled?.city ?? unscheduled?.city ?? ""} />}
             {scheduled?.contact && <Row icon={User} label="Contact" value={scheduled.contact} />}
-            {/* Non-job items show a static status; jobs get the interactive control below. */}
-            {scheduled?.status && !job && <Row icon={Tag} label="Status" value={scheduled.status} />}
+            {/* Status — read-only. Jobs show a colored badge; other items show the raw status. */}
+            {jobStatus
+              ? <StatusRow status={jobStatus} />
+              : scheduled?.status && <Row icon={Tag} label="Status" value={scheduled.status} />}
             {!isScheduled && <Row icon={Clock} label="Est. duration" value={fmtDuration(unscheduled!.durationMinutes)} />}
             {!isScheduled && <Row icon={AlertTriangle} label="Reason" value={unscheduled!.reason} />}
             {unscheduled?.value && <Row icon={FileText} label="Value" value={unscheduled.value} />}
           </div>
-
-          {/* Interactive status — role-driven next steps + dispatch override */}
-          {job && (
-            <div className="pt-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>
-              <JobStatusBar job={job} className="" onChanged={() => { setJobV(v => v + 1); onStatusChanged?.(); }} />
-            </div>
-          )}
 
           {/* Description */}
           {(scheduled?.description ?? unscheduled?.description) && (
@@ -178,6 +171,19 @@ function Row({ icon: Icon, label, value }: { icon: typeof Clock; label: string; 
       <div className="min-w-0">
         <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>{label}</p>
         <p className="text-sm" style={{ color: "var(--text-primary)" }}>{value}</p>
+      </div>
+    </div>
+  );
+}
+
+// Read-only job status — change it from the board stage icon, not here.
+function StatusRow({ status }: { status: { label: string; color: string } }) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <Tag className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "var(--text-muted)" }} />
+      <div className="min-w-0">
+        <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Status</p>
+        <div className="mt-0.5"><StatusBadge label={status.label} color={status.color} /></div>
       </div>
     </div>
   );

@@ -37,6 +37,8 @@ import { getActivityEvents } from "@/lib/activity/data";
 import { type ActivityEvent, type EventType, type FilterCategory, EVENT_FILTER_MAP } from "@/lib/activity/types";
 import Commentable from "@/components/comments/Commentable";
 import DetailTabs from "@/components/shared/DetailTabs";
+import AgreementSummaryCard from "@/components/agreements/AgreementSummaryCard";
+import AgreementBuilder from "@/components/agreements/AgreementBuilder";
 
 // ─── Badge helpers ────────────────────────────────────────
 function typePill(type: CustomerType) {
@@ -989,35 +991,33 @@ function LeadsTab({ id }: { id: string }) {
 // ─── Agreements tab ───────────────────────────────────────
 function AgreementsTab({ id }: { id: string }) {
   const customer   = getCustomer(id)!;
+  const [, bump]   = useState(0);
+  const [creating, setCreating] = useState(false);
   const agreements = getAgreementsForCustomer(id, customer.name);
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <button className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg transition-colors">
+        <button onClick={() => setCreating(true)} className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg transition-colors">
           <Plus className="w-3.5 h-3.5" /> New Agreement
         </button>
       </div>
       {agreements.length === 0 ? (
         <StubContent label="No agreements yet">
-          <Link href="/agreements" className="mt-2 text-xs font-medium text-indigo-600 hover:text-indigo-700">Browse templates →</Link>
+          <button onClick={() => setCreating(true)} className="mt-2 text-xs font-medium text-indigo-600 hover:text-indigo-700">Set up an agreement →</button>
         </StubContent>
       ) : (
-        <TableCard cols="2fr 1fr 1fr 1fr 1fr 1fr">
-          <TableHead cols={["Agreement", "Status", "Billing", "Next Visit", "Renewal", "Value"]} />
-          {agreements.map((a, i) => (
-            <TableRow key={a.id} last={i === agreements.length - 1} cols="2fr 1fr 1fr 1fr 1fr 1fr">
-              <div>
-                <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{a.type}</p>
-                <p className="text-xs" style={{ color: "var(--text-muted)" }}>{a.visitFrequency}</p>
-              </div>
-              <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: "#d1fae5", color: "#065f46" }}>Active</span>
-              <span className="text-sm" style={{ color: "var(--text-secondary)" }}>{a.billingFrequency}</span>
-              <span className="text-sm" style={{ color: a.nextVisit ? "var(--text-secondary)" : "var(--text-muted)" }}>{a.nextVisit ?? "—"}</span>
-              <span className="text-sm" style={{ color: "var(--text-secondary)" }}>{a.renewalDate}</span>
-              <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{a.annualValue.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}/yr</span>
-            </TableRow>
-          ))}
-        </TableCard>
+        <div className="space-y-4 max-w-2xl">
+          {agreements.map(a => <AgreementSummaryCard key={a.id} agreement={a} />)}
+        </div>
+      )}
+
+      {/* Create an agreement for this customer (customer is pre-selected + locked). */}
+      {creating && (
+        <AgreementBuilder
+          preset={{ customerId: id, lockCustomer: true }}
+          onClose={() => setCreating(false)}
+          onCreated={() => { setCreating(false); bump(n => n + 1); }}
+        />
       )}
     </div>
   );

@@ -16,7 +16,7 @@ import Select from "@/components/ui/Select";
 import {
   getCalendarItems, getUnscheduledItems, getUnscheduledJobs, getSessionCalendarItems, getTechnicians, getStaffRoster, markSourceScheduled, type CalendarScope, type TechRosterEntry,
 } from "@/lib/calendar/data";
-import { createJob, updateJob, getJob, JOB_TYPE_CONFIG, type JobType } from "@/lib/jobs/data";
+import { createJob, updateJob, getJob, resolveJobTypeColor, type JobType } from "@/lib/jobs/data";
 import JobStageControl from "@/components/jobs/JobStageControl";
 import { getCustomer } from "@/lib/customers/data";
 import { getUsersByRoles, getBoardCandidates } from "@/lib/users/data";
@@ -306,6 +306,22 @@ export default function CalendarPage() {
   }
 
   // ── Scheduling ──
+  // True if the proposed schedule would overlap another job in that tech's lane
+  // that day — used to block the confirm modal (jobs can't double-book a tech).
+  function slotConflict(d: ScheduleDraft): boolean {
+    if (!d.tech) return false;
+    const start = new Date(`${d.date}T${d.time}`);
+    if (isNaN(start.getTime())) return false;
+    const end = start.getTime() + d.durationMinutes * 60_000;
+    const excludeId = confirm?.item.sourceId;
+    return boardItems.some(i => {
+      if (i.allDay || (i.assignedTo ?? "") !== d.tech) return false;
+      if (excludeId && i.sourceId === excludeId) return false;
+      if (!isSameDay(i.start, start)) return false;
+      const s = i.start.getTime();
+      return start.getTime() < s + i.durationMinutes * 60_000 && end > s;
+    });
+  }
   function openConfirm(u: UnscheduledItem, tech: string, day: Date, hour: number, minute = 0) {
     if (noTechs) return;   // can't schedule without technicians (banner explains)
     setConfirm({ item: u, draft: { tech, date: ymd(day), time: `${String(hour).padStart(2,"0")}:${String(minute).padStart(2,"0")}`, durationMinutes: u.durationMinutes } });
@@ -556,11 +572,11 @@ export default function CalendarPage() {
       />
 
       {/* Drawer */}
-      {selScheduled && <CalendarItemDrawer scheduled={selScheduled} technicians={technicians} onClose={() => setSelScheduled(null)} onReassign={reassign} onStatusChanged={() => setRefreshKey(k => k + 1)} />}
+      {selScheduled && <CalendarItemDrawer scheduled={selScheduled} technicians={technicians} onClose={() => setSelScheduled(null)} onReassign={reassign} />}
       {selUnscheduled && <CalendarItemDrawer unscheduled={selUnscheduled} technicians={technicians} onClose={() => setSelUnscheduled(null)} onSchedule={() => scheduleFromDrawer(selUnscheduled)} />}
 
       {/* Confirm modal */}
-      {confirm && <ScheduleConfirmModal item={confirm.item} draft={confirm.draft} technicians={technicians} dayStart={hourly.startHour} dayEnd={hourly.endHour} onConfirm={confirmSchedule} onClose={() => setConfirm(null)} />}
+      {confirm && <ScheduleConfirmModal item={confirm.item} draft={confirm.draft} technicians={technicians} dayStart={hourly.startHour} dayEnd={hourly.endHour} onConfirm={confirmSchedule} onClose={() => setConfirm(null)} checkOverlap={slotConflict} />}
 
       {/* Time off / availability modal */}
       {timeOffOpen && <TimeOffModal technicians={technicians} defaultDate={ymd(focus)} onClose={() => setTimeOffOpen(false)} onSave={handleAddTimeOff} />}
@@ -622,6 +638,28 @@ function DispatchBoard({ focus, mode, items, roster, availability, dayStart, day
   // Live preview while moving / resizing a block (tech = target row); queue-drag row.
   const [preview, setPreview] = useState<{ id: string; startMin: number; durationMinutes: number; tech: string } | null>(null);
   const [dragTech, setDragTech] = useState<string | null>(null);
+  // Brief "can't overlap" notice when a move/drop would land on another job.
+  const [overlapMsg, setOverlapMsg] = useState(false);
+  function flashOverlap() { setOverlapMsg(true); window.setTimeout(() => setOverlapMsg(false), 2200); }
+
+  // Would a block of [startMin, startMin+dur) overlap another timed item in the
+  // same tech lane today? Jobs can't sit on top of one another.
+  function laneOverlap(tech: string, startMin: number, durationMinutes: number, excludeId: string): boolean {
+    const end = startMin + durationMinutes;
+    return dayItems.some(i => {
+      if (i.id === excludeId || (i.assignedTo ?? "") !== tech) return false;
+      const s = startMinOf(i);
+      return startMin < s + i.durationMinutes && end > s;
+    });
+  }
+  // Does a point in time fall inside an existing block in this lane? (queue drops)
+  function pointInLane(tech: string, min: number): boolean {
+    return dayItems.some(i => {
+      if ((i.assignedTo ?? "") !== tech) return false;
+      const s = startMinOf(i);
+      return min >= s && min < s + i.durationMinutes;
+    });
+  }
 
   // "Now" indicator — the user's LOCAL current time, ticked each minute. Computed
   // client-side (new Date() is the browser's local zone) so it's hydration-safe
@@ -688,6 +726,9 @@ function DispatchBoard({ focus, mode, items, roster, availability, dayStart, day
       blockEl.style.pointerEvents = "";
       setPreview(null);
       if (moved) {
+        const targetTech = kind === "move" ? curTech : originTech;
+        // Reject a move/resize that would overlap another job in the lane — revert.
+        if (laneOverlap(targetTech, curStart, curDur, item.id)) { flashOverlap(); return; }
         const nd = new Date(focus); nd.setHours(dayStart + Math.floor(curStart / 60), curStart % 60, 0, 0);
         onMoveResize(item.id, nd, curDur, kind === "move" ? curTech : undefined);
       } else {
@@ -700,6 +741,13 @@ function DispatchBoard({ focus, mode, items, roster, availability, dayStart, day
 
   return (
     <div className="relative" style={{ paddingTop: "20px" }}>
+      {/* Overlap warning — jobs can't be stacked on the same tech/time. */}
+      {overlapMsg && (
+        <div className="fixed left-1/2 bottom-6 -translate-x-1/2 z-50 flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium shadow-lg"
+          style={{ backgroundColor: "#fee2e2", color: "#991b1b", border: "1px solid #fecaca" }}>
+          <X className="w-4 h-4" /> Jobs can&apos;t overlap — that slot is already taken.
+        </div>
+      )}
       {/* Current-time box — OUTSIDE the board container (which clips), pinned above
           it and aligned to the now-line. Offset by the 180px technician column so
           its x matches the dashed line inside the grid. */}
@@ -772,6 +820,8 @@ function DispatchBoard({ focus, mode, items, roster, availability, dayStart, day
                 const id = e.dataTransfer.getData("text/plain"); if (!id) return;
                 const mm = Math.round(commitFromX(e.clientX, e.currentTarget) / increment) * increment;
                 const safe = clamp(mm, 0, totalMin - increment);
+                // Don't drop onto a slot already taken by another job in this lane.
+                if (pointInLane(tech.name, safe)) { flashOverlap(); return; }
                 onDropItem(id, tech.name, dayStart + Math.floor(safe / 60), safe % 60);
               }}>
               {/* Gridlines (visual only) */}
@@ -819,17 +869,17 @@ function DispatchBoard({ focus, mode, items, roster, availability, dayStart, day
                 const width = Math.max(3, (Math.min(dur, totalMin - sm) / totalMin) * 100);
                 const prio = i.priority && i.priority !== "normal" ? PRIORITY_CONFIG[i.priority] : null;
                 const movingAway = p && p.tech !== (i.assignedTo ?? "");  // dragging to another tech
-                // Card body shade = the JOB TYPE (JOB_TYPE_CONFIG); the full-height
-                // left section is colored by the job's STATUS (its stage). No lane
-                // effects.
+                // Card body shade = the JOB TYPE; the full-height left section is the
+                // status stage icon. While dragging, flag an overlapping drop in red.
                 const job = i.sourceModule === "jobs" ? getJob(i.sourceId) : undefined;
-                const typeColor = (job && JOB_TYPE_CONFIG[job.type]) || i.color;
+                const typeColor = job ? resolveJobTypeColor(job.type) : i.color;
+                const invalid = !!p && laneOverlap(p.tech, p.startMin, p.durationMinutes, i.id);
                 return (
                   <div key={i.id} data-block
                     onMouseDown={e => beginDrag(e, i, "move")}
                     title="Drag to move (across techs) · drag right edge to resize"
                     className="absolute top-1.5 bottom-1.5 rounded-lg overflow-hidden select-none flex"
-                    style={{ left: `${left}%`, width: `${width}%`, backgroundColor: typeColor + "26", cursor: p ? "grabbing" : "grab", boxShadow: p ? "0 4px 14px rgba(0,0,0,0.25)" : undefined, opacity: movingAway ? 0.55 : 1, zIndex: p ? 20 : 1 }}>
+                    style={{ left: `${left}%`, width: `${width}%`, backgroundColor: invalid ? "#ef444426" : typeColor + "26", cursor: p ? "grabbing" : "grab", boxShadow: p ? (invalid ? "0 0 0 2px #ef4444, 0 4px 14px rgba(0,0,0,0.25)" : "0 4px 14px rgba(0,0,0,0.25)") : undefined, opacity: movingAway ? 0.55 : 1, zIndex: p ? 20 : 1 }}>
                     {/* Stage icon as the full-height left section, colored by status —
                         click it to change status. */}
                     <JobStageControl variant="bar" jobId={i.sourceId} statusKey={i.status} onChanged={onItemChanged} size={16} />

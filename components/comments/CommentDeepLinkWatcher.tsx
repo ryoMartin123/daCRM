@@ -15,7 +15,7 @@ import type { AnchorRecordType } from "@/lib/comments/data";
 export default function CommentDeepLinkWatcher() {
   const params = useSearchParams();
   const pathname = usePathname();
-  const { openThread, openPath, setEnabled } = useComments();
+  const { openThread, openPath, openPinThread, setEnabled } = useComments();
   const handled = useRef("");
 
   useEffect(() => {
@@ -32,11 +32,21 @@ export default function CommentDeepLinkWatcher() {
     handled.current = sig;
 
     // Pin / page comments are route + sub-tab scoped — turn comment mode ON so the
-    // pin is visible, then open the page drawer (on the right tab) focused on the
-    // thread the user was tagged in. The page's own ?tab= sync switches the tab.
+    // pin is visible, then open the drawer focused on JUST the thread the user was
+    // tagged in (with a toggle to view all comments on the page). The page's own
+    // ?tab= sync switches the tab.
     if (focus && (focus.startsWith("pin:") || focus.startsWith("page:"))) {
       setEnabled(true);
-      openPath(pathname, undefined, thread ?? undefined, params.get("tab") ?? "");
+      const tab = params.get("tab") ?? "";
+      if (thread) {
+        openPinThread(
+          { recordType: "page", recordId: pathname, recordLabel: "This page", kind: "page", path: pathname, section: tab || undefined },
+          thread,
+        );
+      } else {
+        // No specific thread (e.g. a generic "N here" link) → show all on the page.
+        openPath(pathname, undefined, undefined, tab);
+      }
       return;
     }
 
@@ -54,7 +64,7 @@ export default function CommentDeepLinkWatcher() {
       }, 400);
       return () => clearTimeout(tmr);
     }
-  }, [params, pathname, openThread, openPath, setEnabled]);
+  }, [params, pathname, openThread, openPath, openPinThread, setEnabled]);
 
   return null;
 }

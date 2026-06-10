@@ -65,8 +65,10 @@ export function CommentsProvider({ children }: { children: React.ReactNode }) {
   // anchor (e.g. from the calendar) has no path → it stays record-scoped.
   const openComposer = useCallback((anchor: CommentAnchor) =>
     setDrawer({ open: true, scope: anchor, pathScope: anchor.path, tabScope: anchor.section ?? "", focusThreadId: undefined }), []);
+  // Arriving from a notification: focus JUST the tagged thread (soloThreadId);
+  // the drawer offers a toggle to view all comments on the record/page.
   const openThread   = useCallback((scope: CommentAnchor, threadId: string) =>
-    setDrawer({ open: true, scope, pathScope: scope.path, tabScope: scope.section ?? "", focusThreadId: threadId }), []);
+    setDrawer({ open: true, scope, pathScope: scope.path, tabScope: scope.section ?? "", focusThreadId: threadId, soloThreadId: threadId }), []);
   const openPath     = useCallback((path: string, label?: string, focusThreadId?: string, tab = "") =>
     setDrawer({
       open: true,

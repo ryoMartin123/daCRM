@@ -29,8 +29,8 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
 type Saver = (save: () => void, reset: () => void, dirty: boolean, saved: boolean) => void;
 
 // ─── Job Types tab ────────────────────────────────────────
-type TypeForm = { name: string; key: string; description: string; duration: number; category: JobTypeCategory; active: boolean };
-const EMPTY_TYPE: TypeForm = { name: "", key: "", description: "", duration: 60, category: "service", active: true };
+type TypeForm = { name: string; key: string; description: string; duration: number; category: JobTypeCategory; color: string; active: boolean };
+const EMPTY_TYPE: TypeForm = { name: "", key: "", description: "", duration: 60, category: "service", color: STATUS_COLORS[0], active: true };
 
 function JobTypesTab({ register }: { register: Saver }) {
   const [items, setItems] = useState<JobTypeDef[]>([]);
@@ -51,7 +51,7 @@ function JobTypesTab({ register }: { register: Saver }) {
     setItems([...sorted]); mark();
   }
   function startEdit(t: JobTypeDef) {
-    setForm({ name: t.name, key: t.key, description: t.description, duration: t.duration, category: t.category, active: t.active });
+    setForm({ name: t.name, key: t.key, description: t.description, duration: t.duration, category: t.category, color: t.color ?? STATUS_COLORS[0], active: t.active });
     setEditingId(t.id); setShowAdd(false);
   }
   function startAdd() { setForm({ ...EMPTY_TYPE }); setShowAdd(true); setEditingId(null); }
@@ -117,6 +117,17 @@ function JobTypesTab({ register }: { register: Saver }) {
               options={TYPE_CATS.map(c => ({ value: c, label: JOB_TYPE_CATEGORY_LABELS[c] }))} />
           </div>
         </div>
+        <div>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>Color
+            <span className="font-normal" style={{ color: "var(--text-muted)" }}> — used on the dispatch board</span>
+          </label>
+          <div className="flex flex-wrap gap-1.5">
+            {STATUS_COLORS.map(c => (
+              <button key={c} onClick={() => setForm(f => ({ ...f, color: c }))} className="w-6 h-6 rounded-full"
+                style={{ backgroundColor: c, outline: form.color === c ? "2px solid var(--text-primary)" : "none", outlineOffset: "1px" }} />
+            ))}
+          </div>
+        </div>
         <div className="flex items-center justify-between pt-1">
           <label className="flex items-center gap-2 cursor-pointer">
             <Toggle on={form.active} onChange={v => setForm(f => ({ ...f, active: v }))} />
@@ -166,9 +177,12 @@ function JobTypesTab({ register }: { register: Saver }) {
               <button onClick={() => move(t.id, -1)} disabled={i === 0} className="disabled:opacity-20" style={{ color: "var(--text-muted)" }}><ChevronUp className="w-3.5 h-3.5" /></button>
               <button onClick={() => move(t.id, 1)} disabled={i === sorted.length - 1} className="disabled:opacity-20" style={{ color: "var(--text-muted)" }}><ChevronDown className="w-3.5 h-3.5" /></button>
             </div>
-            <div className="min-w-0">
-              <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{t.name}</p>
-              {t.description && <p className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>{t.description}</p>}
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{t.name}</p>
+                {t.description && <p className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>{t.description}</p>}
+              </div>
             </div>
             <span className="text-xs font-mono truncate" style={{ color: "var(--text-muted)" }}>{t.key}</span>
             <span className="text-xs" style={{ color: "var(--text-secondary)" }}>{t.duration}m</span>

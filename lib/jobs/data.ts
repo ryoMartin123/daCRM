@@ -5,6 +5,8 @@
 // Maps to future DB tables:
 //   projects, jobs, work_orders, checklist_items, job_notes
 
+import { getJobTypes } from "@/lib/job-config/data";
+
 // ─── Types ────────────────────────────────────────────────
 export type JobStatus      = "new" | "scheduled" | "en_route" | "in_progress" | "waiting_on_parts" | "waiting_on_customer" | "completed" | "invoiced" | "closed" | "canceled" | "no_show";
 export type JobType        = "maintenance" | "repair" | "installation" | "inspection" | "emergency" | "estimate" | "warranty" | "replacement" | "other";
@@ -129,6 +131,8 @@ export function resolveJobStatus(
   return { label: statusKey, bg: "var(--bg-input)", color: "var(--text-secondary)" };
 }
 
+// Built-in fallback colors. The editable source of truth is the configured Job
+// Types (Settings → Job Types); these only cover jobs whose type isn't configured.
 export const JOB_TYPE_CONFIG: Record<JobType, string> = {
   maintenance:  "#6366f1", repair:      "#ef4444",
   installation: "#10b981", inspection:  "#3b82f6",
@@ -136,6 +140,12 @@ export const JOB_TYPE_CONFIG: Record<JobType, string> = {
   warranty:     "#f59e0b", replacement: "#0891b2",
   other:        "#6b7280",
 };
+
+// A job type's color, resolved from the configured (editable) Job Types first,
+// then the built-in defaults. Drives the dispatch board card color.
+export function resolveJobTypeColor(type: string): string {
+  return getJobTypes().find(t => t.key === type)?.color ?? JOB_TYPE_CONFIG[type as JobType] ?? "#6b7280";
+}
 
 // ─── Mock jobs ────────────────────────────────────────────
 export const ALL_JOBS: Job[] = [];

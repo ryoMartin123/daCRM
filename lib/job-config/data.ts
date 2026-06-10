@@ -13,6 +13,7 @@ export interface JobTypeDef {
   description: string;
   duration:    number;            // default duration in minutes
   category:    JobTypeCategory;
+  color:       string;            // drives the dispatch board card color
   active:      boolean;
   order:       number;
 }
@@ -22,17 +23,19 @@ export const JOB_TYPE_CATEGORY_LABELS: Record<JobTypeCategory, string> = {
   warranty: "Warranty", emergency: "Emergency", project: "Project",
 };
 
+// Keys match the JobType values jobs actually carry (lib/jobs/data → JOB_TYPE_CONFIG),
+// so a job's type resolves straight to its configured color. Colors mirror the
+// JOB_TYPE_CONFIG defaults and are editable in Settings → Job Types.
 const DEFAULT_JOB_TYPES: JobTypeDef[] = [
-  { id: "jt-1",  name: "Service Call",          key: "service_call",       description: "General service visit",            duration: 60,  category: "service",     active: true, order: 1 },
-  { id: "jt-2",  name: "Maintenance Visit",     key: "maintenance_visit",  description: "Scheduled maintenance",            duration: 90,  category: "maintenance", active: true, order: 2 },
-  { id: "jt-3",  name: "Installation",          key: "installation",       description: "New equipment install",            duration: 240, category: "install",     active: true, order: 3 },
-  { id: "jt-4",  name: "Inspection",            key: "inspection",         description: "Site or equipment inspection",     duration: 60,  category: "service",     active: true, order: 4 },
-  { id: "jt-5",  name: "Estimate / Consultation",key: "estimate",          description: "On-site estimate or consult",      duration: 45,  category: "sales",       active: true, order: 5 },
-  { id: "jt-6",  name: "Callback",              key: "callback",           description: "Return visit on prior work",       duration: 60,  category: "service",     active: true, order: 6 },
-  { id: "jt-7",  name: "Warranty",              key: "warranty",           description: "Warranty-covered work",            duration: 90,  category: "warranty",    active: true, order: 7 },
-  { id: "jt-8",  name: "Emergency",             key: "emergency",          description: "Urgent / after-hours dispatch",    duration: 120, category: "emergency",   active: true, order: 8 },
-  { id: "jt-9",  name: "Commercial PM",         key: "commercial_pm",      description: "Commercial preventive maintenance",duration: 180, category: "maintenance", active: true, order: 9 },
-  { id: "jt-10", name: "Project Work",          key: "project_work",       description: "Multi-day project task",           duration: 480, category: "project",     active: true, order: 10 },
+  { id: "jt-1", name: "Maintenance",  key: "maintenance",  description: "Scheduled preventive maintenance", duration: 90,  category: "maintenance", color: "#6366f1", active: true, order: 1 },
+  { id: "jt-2", name: "Repair",       key: "repair",       description: "Diagnose and fix a problem",       duration: 60,  category: "service",     color: "#ef4444", active: true, order: 2 },
+  { id: "jt-3", name: "Installation", key: "installation", description: "New equipment install",            duration: 240, category: "install",     color: "#10b981", active: true, order: 3 },
+  { id: "jt-4", name: "Inspection",   key: "inspection",   description: "Site or equipment inspection",     duration: 60,  category: "service",     color: "#3b82f6", active: true, order: 4 },
+  { id: "jt-5", name: "Emergency",    key: "emergency",    description: "Urgent / after-hours dispatch",    duration: 120, category: "emergency",   color: "#dc2626", active: true, order: 5 },
+  { id: "jt-6", name: "Estimate",     key: "estimate",     description: "On-site estimate or consult",      duration: 45,  category: "sales",       color: "#8b5cf6", active: true, order: 6 },
+  { id: "jt-7", name: "Warranty",     key: "warranty",     description: "Warranty-covered work",            duration: 90,  category: "warranty",    color: "#f59e0b", active: true, order: 7 },
+  { id: "jt-8", name: "Replacement",  key: "replacement",  description: "Replace existing equipment",       duration: 240, category: "install",     color: "#0891b2", active: true, order: 8 },
+  { id: "jt-9", name: "Other",        key: "other",        description: "Anything else",                    duration: 60,  category: "service",     color: "#6b7280", active: true, order: 9 },
 ];
 
 // ─── Job Statuses ─────────────────────────────────────────

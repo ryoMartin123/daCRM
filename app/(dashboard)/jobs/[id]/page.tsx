@@ -21,7 +21,7 @@ import { QUOTE_STATUS_STYLE, INVOICE_STATUS_STYLE } from "@/lib/quotes/types";
 import PhotoGallery from "@/components/files/PhotoGallery";
 import QuickCreateQuoteModal from "@/components/quotes/QuickCreateQuoteModal";
 import DetailTabs from "@/components/shared/DetailTabs";
-import { JobStatusBar, JobHistoryList } from "@/components/jobs/JobStatusControl";
+import { JobHistoryList } from "@/components/jobs/JobStatusControl";
 
 const TABS = ["Overview", "Work Order", "Checklist", "Photos & Files", "Notes", "Customer", "Invoice / Estimate", "History"];
 
@@ -689,8 +689,8 @@ function JobDetailContent({ params }: { params: Promise<{ id: string }> }) {
             ]} />
           </div>
         </div>
-        {/* Interactive status — role-driven next steps + dispatch override */}
-        <JobStatusBar job={job} onChanged={refresh} />
+        {/* Status is read-only here (shown as the badge in the header above) —
+            it's changed only from the dispatch board stage icon or the mobile app. */}
 
         {/* Sub-tabs — glossy light-amber (comment-mode accent) */}
         <DetailTabs tabs={TABS} active={tab} onChange={setTab} className="px-6 py-2" />

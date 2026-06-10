@@ -277,11 +277,17 @@ export function applyTemplate(key: string, mode: ApplyMode): ApplyResult {
 
   // Job types
   {
+    // Default color per category (editable afterward in Settings → Job Types).
+    const TYPE_CAT_COLOR: Record<JobTypeCategory, string> = {
+      service: "#ef4444", maintenance: "#6366f1", install: "#10b981", sales: "#8b5cf6",
+      warranty: "#f59e0b", emergency: "#dc2626", project: "#0891b2",
+    };
     const existing = getJobTypes();
     const existingKeys = new Set(existing.map(s => s.key));
     const built: JobTypeDef[] = d.jobTypes.map((t, i) => ({
       id: `jt-tpl-${key}-${i}`, name: t.name, key: jcSlug(t.name),
-      description: "", duration: t.duration, category: t.category, active: true, order: i + 1,
+      description: "", duration: t.duration, category: t.category,
+      color: TYPE_CAT_COLOR[t.category] ?? "#6b7280", active: true, order: i + 1,
     }));
     if (mode === "replace") {
       saveJobTypes(built); added += built.length;

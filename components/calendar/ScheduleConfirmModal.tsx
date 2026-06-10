@@ -17,7 +17,7 @@ export interface ScheduleDraft {
 
 // Confirmation before an unscheduled item becomes a scheduled job — never schedule silently.
 export default function ScheduleConfirmModal({
-  item, draft, technicians, dayStart, dayEnd, onConfirm, onClose,
+  item, draft, technicians, dayStart, dayEnd, onConfirm, onClose, checkOverlap,
 }: {
   item: UnscheduledItem;
   draft: ScheduleDraft;
@@ -26,11 +26,14 @@ export default function ScheduleConfirmModal({
   dayEnd: number;     // board closing hour (24h)
   onConfirm: (d: ScheduleDraft) => void;
   onClose: () => void;
+  checkOverlap?: (d: ScheduleDraft) => boolean;   // true = clashes with another job in the lane
 }) {
   const [d, setD] = useState<ScheduleDraft>(draft);
   const set = <K extends keyof ScheduleDraft>(k: K, v: ScheduleDraft[K]) => setD(p => ({ ...p, [k]: v }));
   const isPast = isPastDateTime(d.date, d.time);
   const outsideHours = isOutsideHours(d.time, d.durationMinutes, dayStart, dayEnd);
+  // Only meaningful once a tech is assigned and the time is valid.
+  const conflict = !isPast && !outsideHours && !!d.tech && !!checkOverlap?.(d);
 
   return (
     <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
@@ -81,11 +84,17 @@ export default function ScheduleConfirmModal({
               Outside the board&apos;s hours ({formatHour(dayStart)}–{formatHour(dayEnd)}). Move the start earlier or shorten the duration so it ends by {formatHour(dayEnd)}.
             </p>
           )}
+
+          {conflict && (
+            <p className="text-xs" style={{ color: "#dc2626" }}>
+              {d.tech} already has a job during this time. Pick a different time or technician so jobs don&apos;t overlap.
+            </p>
+          )}
         </div>
 
         <div className="px-5 py-4 flex justify-end gap-2" style={{ borderTop: "1px solid var(--border-subtle)" }}>
           <button onClick={onClose} className="px-3 py-1.5 rounded-lg text-sm" style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}>Cancel</button>
-          <button onClick={() => onConfirm(d)} disabled={!d.date || !d.time || isPast || outsideHours}
+          <button onClick={() => onConfirm(d)} disabled={!d.date || !d.time || isPast || outsideHours || conflict}
             className="px-4 py-1.5 rounded-lg text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 transition-colors">
             Confirm &amp; Schedule
           </button>
