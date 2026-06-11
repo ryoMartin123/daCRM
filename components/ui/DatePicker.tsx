@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
 
 // Themed date picker — a calendar popover that matches the Select dropdown.
 // Value is a "yyyy-mm-dd" string (drop-in for a native <input type="date">).
+// The calendar renders in a portal with fixed positioning so it OVERLAYS its
+// container (e.g. a scrollable modal body) instead of being clipped by it.
 interface Props {
   value: string;
   onChange: (value: string) => void;
@@ -28,18 +31,52 @@ function sameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
+const POP_W = 256;
+const POP_H = 312;   // approx height for flip math
+
 export default function DatePicker({ value, onChange, placeholder = "Select date", size = "md", className, min, clearable = true }: Props) {
   const [open, setOpen] = useState(false);
   const sel = parseYMD(value);
   const [view, setView] = useState<Date>(() => sel ?? new Date());
   const wrapRef = useRef<HTMLDivElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  // Anchor the portal popover to the trigger, flipping above when there's no
+  // room below and clamping to the viewport so it's never off-screen.
+  const place = useCallback(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    let left = Math.min(r.left, window.innerWidth - POP_W - 8);
+    left = Math.max(8, left);
+    // Always open DOWNWARD from the field (never flip up above it). It floats over
+    // surrounding content via the portal; if it would run past the bottom edge we
+    // clamp it up just enough to stay on-screen rather than flipping high.
+    let top = r.bottom + 6;
+    const maxTop = window.innerHeight - POP_H - 8;
+    if (top > maxTop) top = Math.max(8, maxTop);
+    setPos({ top, left });
+  }, []);
 
   useEffect(() => {
     if (!open) return;
     if (sel) setView(sel);
-    const onDoc = (e: MouseEvent) => { if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false); };
+    place();
+    const onDoc = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (wrapRef.current?.contains(t) || popRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    const reposition = () => place();
     document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+    window.addEventListener("scroll", reposition, true);   // capture: catches nested scrollers (modal body)
+    window.addEventListener("resize", reposition);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -67,9 +104,9 @@ export default function DatePicker({ value, onChange, placeholder = "Select date
         <CalendarIcon className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted)" }} />
       </button>
 
-      {open && (
-        <div className="absolute left-0 z-50 mt-1.5 p-3 rounded-xl w-[256px]"
-          style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "0 12px 32px rgba(0,0,0,0.16)" }}>
+      {open && pos && typeof document !== "undefined" && createPortal(
+        <div ref={popRef} className="fixed p-3 rounded-xl"
+          style={{ top: pos.top, left: pos.left, width: POP_W, zIndex: 9999, backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "0 12px 32px rgba(0,0,0,0.16)" }}>
           <div className="flex items-center justify-between mb-2">
             <button type="button" onClick={() => setView(v => new Date(v.getFullYear(), v.getMonth() - 1, 1))}
               className="p-1 rounded-lg hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-secondary)" }}><ChevronLeft className="w-4 h-4" /></button>
@@ -111,7 +148,8 @@ export default function DatePicker({ value, onChange, placeholder = "Select date
               <button type="button" onClick={() => { onChange(""); setOpen(false); }} className="text-xs" style={{ color: "var(--text-muted)" }}>Clear</button>
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

@@ -90,7 +90,7 @@ export interface DispatchStore {
   version: 3;
   scopes: Record<string, ScopedDispatchConfig>;
   boards: DispatchBoard[];
-  queueViews: QueueView[];   // Unscheduled Queue saved tabs/views
+  queueViews: QueueView[];   // Unscheduled Queue saved tabs/views (lead time lives per-view)
 }
 
 export type ScopeLevel = "org" | "company" | "location";
@@ -160,6 +160,28 @@ function defaultStore(): DispatchStore {
   return { version: 3, scopes: {}, boards: defaultBoards(), queueViews: defaultQueueViews() };
 }
 
+// System (source-category) views are constant: always present, always active +
+// visible, with their canonical name/filters — users can't edit, hide, or delete
+// them. Their per-view settings (e.g. the Agreements lead time) and tab order ARE
+// kept. Custom views are preserved as-is.
+function reconcileQueueViews(saved: QueueView[] | undefined): QueueView[] {
+  const defaults = defaultQueueViews();
+  const list = saved?.length ? saved : defaults;
+  const out: QueueView[] = [];
+  for (const v of list) {
+    if (v.system) {
+      const def = defaults.find(d => d.key === v.key);
+      if (def) out.push({ ...def, order: v.order, leadDays: v.leadDays ?? def.leadDays });   // lock identity, keep order + settings
+    } else {
+      out.push(v);                                       // custom view untouched
+    }
+  }
+  for (const def of defaults) {
+    if (!out.some(v => v.key === def.key)) out.push({ ...def });
+  }
+  return out;
+}
+
 // ─── Persistence + migration ──────────────────────────────
 // Map a legacy board's free-text `location` label to a location id.
 function locationIdFromLabel(label: string): { companyId: string; locationId: string } {
@@ -219,7 +241,7 @@ export function getStore(): DispatchStore {
         version: 3,
         scopes: store.scopes ?? {},
         boards: ensureBoards(store.boards),
-        queueViews: store.queueViews?.length ? store.queueViews : defaultQueueViews(),
+        queueViews: reconcileQueueViews(store.queueViews),
       };
     }
     if (parsed.version === 2) {
@@ -319,6 +341,14 @@ export function itemMatchesBoard(
   // If the board declares neither techs nor job types, treat it as "all".
   if (board.techNames.length === 0 && board.jobTypes.length === 0) return true;
   return techMatch || typeMatch;
+}
+
+// ─── Agreement visit lead time ────────────────────────────
+// How many days ahead an agreement's planned visit starts appearing in the
+// Unscheduled Queue. Lives on the (locked) "Agreement Visits" queue view, edited
+// in Settings → Calendar / Dispatch → Queue Views. Default 30.
+export function getAgreementLeadDays(): number {
+  return getQueueViews().find(v => v.key === "agreement_visits")?.leadDays ?? 30;
 }
 
 // ─── Queue views ──────────────────────────────────────────

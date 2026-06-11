@@ -117,6 +117,7 @@ export interface UnscheduledItem {
   jobType?: string;
   dispatchBoardId?: string;  // optional board affinity for board-specific views
   description?: string;
+  agreementId?: string;      // for agreement_visit items: the parent agreement (sourceId = visit id)
 }
 
 // ─── Priority config ──────────────────────────────────────

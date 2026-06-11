@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import {
-  Plus, Pencil, Trash2, Check, ChevronUp, ChevronDown, X,
+  Plus, Pencil, Trash2, Check, ChevronUp, ChevronDown, X, Lock, Settings2,
   Star, CalendarDays, CalendarRange, Calendar, Clock, LayoutGrid, Users, Layers, Inbox, Search,
 } from "lucide-react";
 import { useRegisterSaveAction } from "@/components/settings/SettingsActions";
@@ -761,32 +761,27 @@ export default function CalendarDispatchSection() {
 
       {/* ── QUEUE VIEWS TAB ── */}
       {tab === "queue" && (
-        <SettingsCard icon={Inbox} title="Unscheduled Queue Views" subtitle="Saved tabs for the Unscheduled Queue. Each view is a filter; admins can add, reorder, hide, or edit them."
+        <SettingsCard icon={Inbox} title="Unscheduled Queue Views" subtitle="The core categories (Jobs, Agreements, Tasks, Quotes, Projects) are locked and always shown. Add your own views on top — each view is a filter."
           action={
             <button onClick={addQueueView} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white" style={{ backgroundColor: "#4f46e5" }}>
               <Plus className="w-3.5 h-3.5" /> Add View
             </button>
           }>
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {sortedViews.map((v, i) => (
-              editingView === v.id ? (
-                <QueueViewEditor key={v.id} view={v}
-                  onPatch={p => patchQueueView(v.id, p)}
-                  onToggleFilter={(f, val) => toggleQueueFilter(v.id, f, val)}
-                  onSetDue={d => setQueueDue(v.id, d)}
-                  onDone={() => setEditingView(null)} />
-              ) : (
-                <QueueViewRow key={v.id} view={v} first={i === 0} last={i === sortedViews.length - 1}
-                  onMove={dir => moveQueueView(v.id, dir)}
-                  onEdit={() => setEditingView(v.id)}
-                  onToggleActive={val => patchQueueView(v.id, { active: val })}
-                  onRemove={() => removeQueueView(v.id)} />
-              )
+              <QueueViewCard key={v.id} view={v} first={i === 0} last={i === sortedViews.length - 1}
+                expanded={editingView === v.id}
+                onToggleExpand={() => setEditingView(cur => (cur === v.id ? null : v.id))}
+                onMove={dir => moveQueueView(v.id, dir)}
+                onPatch={p => patchQueueView(v.id, p)}
+                onToggleFilter={(f, val) => toggleQueueFilter(v.id, f, val)}
+                onSetDue={d => setQueueDue(v.id, d)}
+                onRemove={() => removeQueueView(v.id)} />
             ))}
             {sortedViews.length === 0 && <p className="text-xs py-2" style={{ color: "var(--text-muted)" }}>No queue views. Add one to create a tab.</p>}
           </div>
           <p className="text-[11px] mt-3" style={{ color: "var(--text-muted)" }}>
-            Queue views currently apply across all boards. Board-specific views can be added later.
+            Core categories are locked and always shown; each has its own settings. Custom views you add can be edited or removed. Queue views currently apply across all boards.
           </p>
         </SettingsCard>
       )}
@@ -908,43 +903,105 @@ function queueFilterSummary(f: QueueFilters): string {
   return parts.length ? parts.join(" · ") : "All items (no filter)";
 }
 
-function QueueViewRow({ view, first, last, onMove, onEdit, onToggleActive, onRemove }: {
-  view: QueueView; first: boolean; last: boolean;
-  onMove: (dir: -1 | 1) => void; onEdit: () => void; onToggleActive: (v: boolean) => void; onRemove: () => void;
+// A queue view as an expandable card. Locked (core) views show a slim settings
+// panel (their own options only); custom views show the full filter editor.
+function QueueViewCard({ view, first, last, expanded, onToggleExpand, onMove, onPatch, onToggleFilter, onSetDue, onRemove }: {
+  view: QueueView; first: boolean; last: boolean; expanded: boolean;
+  onToggleExpand: () => void;
+  onMove: (dir: -1 | 1) => void;
+  onPatch: (p: Partial<QueueView>) => void;
+  onToggleFilter: (field: "sourceTypes" | "priorities" | "jobTypes", value: string) => void;
+  onSetDue: (days: number | undefined) => void;
+  onRemove: () => void;
 }) {
+  const locked = !!view.system;
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg" style={{ border: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-surface-2)", opacity: view.active ? 1 : 0.55 }}>
-      <div className="flex flex-col">
-        <button onClick={() => onMove(-1)} disabled={first} className="disabled:opacity-20" style={{ color: "var(--text-muted)" }}><ChevronUp className="w-3.5 h-3.5" /></button>
-        <button onClick={() => onMove(1)} disabled={last} className="disabled:opacity-20" style={{ color: "var(--text-muted)" }}><ChevronDown className="w-3.5 h-3.5" /></button>
-      </div>
-      {view.color && <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: view.color }} />}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{view.name}</p>
-          {view.system && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: "#e0e7ff", color: "#3730a3" }}>System</span>}
-          {!view.defaultVisible && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: "var(--bg-input)", color: "var(--text-muted)" }}>Hidden</span>}
+    <div className="rounded-xl overflow-hidden transition-colors"
+      style={{ border: `1px solid ${expanded ? "var(--accent-soft-border)" : "var(--border-subtle)"}`, backgroundColor: "var(--bg-surface)" }}>
+      <div className="flex items-center gap-3 px-3 py-2.5" style={{ opacity: view.active ? 1 : 0.55 }}>
+        <div className="flex flex-col shrink-0">
+          <button onClick={() => onMove(-1)} disabled={first} className="disabled:opacity-20" style={{ color: "var(--text-muted)" }}><ChevronUp className="w-3.5 h-3.5" /></button>
+          <button onClick={() => onMove(1)} disabled={last} className="disabled:opacity-20" style={{ color: "var(--text-muted)" }}><ChevronDown className="w-3.5 h-3.5" /></button>
         </div>
-        <p className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{queueFilterSummary(view.filters)}</p>
+        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: view.color ?? "var(--border)" }} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{view.name}</p>
+            {locked && <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: "#e0e7ff", color: "#3730a3" }}><Lock className="w-2.5 h-2.5" /> Core</span>}
+            {!locked && !view.defaultVisible && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: "var(--bg-input)", color: "var(--text-muted)" }}>Hidden</span>}
+          </div>
+          <p className="text-xs truncate" style={{ color: "var(--text-muted)" }}>
+            {queueFilterSummary(view.filters)}{view.key === "agreement_visits" ? ` · ${view.leadDays ?? 30}-day lead` : ""}
+          </p>
+        </div>
+        {!locked && <Toggle on={view.active} onChange={v => onPatch({ active: v })} />}
+        <button onClick={onToggleExpand} title="Settings"
+          className="p-1.5 rounded-lg hover:bg-[var(--bg-input)]" style={{ color: expanded ? "var(--accent-text)" : "var(--text-muted)" }}>
+          <Settings2 className="w-3.5 h-3.5" />
+        </button>
+        {!locked && (
+          <button onClick={onRemove} title="Delete view" className="p-1.5 rounded-lg hover:bg-red-50" style={{ color: "#9ca3af" }}><Trash2 className="w-3.5 h-3.5" /></button>
+        )}
       </div>
-      <Toggle on={view.active} onChange={onToggleActive} />
-      <button onClick={onEdit} className="p-1.5 rounded-lg hover:bg-[var(--bg-input)]" style={{ color: "var(--text-muted)" }}><Pencil className="w-3.5 h-3.5" /></button>
-      <button onClick={onRemove} disabled={view.system} title={view.system ? "System views can't be deleted" : "Delete view"}
-        className="p-1.5 rounded-lg hover:bg-red-50 disabled:opacity-20 disabled:cursor-not-allowed" style={{ color: "#9ca3af" }}><Trash2 className="w-3.5 h-3.5" /></button>
+      {expanded && (
+        <div className="px-3 pb-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+          {locked
+            ? <SystemViewSettings view={view} onPatch={onPatch} />
+            : <CustomViewSettings view={view} onPatch={onPatch} onToggleFilter={onToggleFilter} onSetDue={onSetDue} />}
+        </div>
+      )}
     </div>
   );
 }
 
-function QueueViewEditor({ view, onPatch, onToggleFilter, onSetDue, onDone }: {
+// Tab-color swatch row, shared by both settings panels.
+function ColorRow({ view, onPatch }: { view: QueueView; onPatch: (p: Partial<QueueView>) => void }) {
+  return (
+    <div className="flex items-center gap-1.5 pt-1">
+      <button onClick={() => onPatch({ color: undefined })} title="No color"
+        className="w-5 h-5 rounded-full flex items-center justify-center text-[10px]" style={{ border: "1px solid var(--border)", color: "var(--text-muted)", outline: !view.color ? "2px solid var(--text-primary)" : "none", outlineOffset: "1px" }}>—</button>
+      {QV_SWATCHES.map(c => (
+        <button key={c} onClick={() => onPatch({ color: c })}
+          className="w-5 h-5 rounded-full" style={{ backgroundColor: c, outline: view.color === c ? "2px solid var(--text-primary)" : "none", outlineOffset: "1px" }} />
+      ))}
+    </div>
+  );
+}
+
+// Settings for a locked core view — its own options only (no identity/source edits).
+function SystemViewSettings({ view, onPatch }: { view: QueueView; onPatch: (p: Partial<QueueView>) => void }) {
+  return (
+    <div className="space-y-3 pt-3">
+      <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>Core category — always shown and can&apos;t be removed. Its source type is fixed.</p>
+      {view.key === "agreement_visits" && (
+        <div className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5" style={{ backgroundColor: "var(--bg-surface-2)" }}>
+          <div className="min-w-0">
+            <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Lead time</p>
+            <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>Days before its due date a visit enters the queue.</p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <input type="number" min={0} value={view.leadDays ?? 30}
+              onChange={e => onPatch({ leadDays: Math.max(0, parseInt(e.target.value) || 0) })}
+              className="w-20 rounded-lg px-3 py-2 text-sm outline-none" style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }} />
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>days</span>
+          </div>
+        </div>
+      )}
+      <div><FieldLabel>Tab Color</FieldLabel><ColorRow view={view} onPatch={onPatch} /></div>
+    </div>
+  );
+}
+
+// Full editor for a custom view.
+function CustomViewSettings({ view, onPatch, onToggleFilter, onSetDue }: {
   view: QueueView;
   onPatch: (p: Partial<QueueView>) => void;
   onToggleFilter: (field: "sourceTypes" | "priorities" | "jobTypes", value: string) => void;
   onSetDue: (days: number | undefined) => void;
-  onDone: () => void;
 }) {
   const sourceKeys = Object.keys(SOURCE_TYPE_LABELS) as QueueSourceType[];
   return (
-    <div className="rounded-xl p-4 space-y-4" style={{ border: "2px solid #c7d2fe", backgroundColor: "var(--bg-surface)" }}>
+    <div className="space-y-4 pt-3">
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2">
           <FieldLabel>View Name</FieldLabel>
@@ -953,27 +1010,15 @@ function QueueViewEditor({ view, onPatch, onToggleFilter, onSetDue, onDone }: {
         </div>
         <div>
           <FieldLabel>Tab Color</FieldLabel>
-          <div className="flex items-center gap-1.5 pt-1">
-            <button onClick={() => onPatch({ color: undefined })} title="No color"
-              className="w-5 h-5 rounded-full flex items-center justify-center text-[10px]" style={{ border: "1px solid var(--border)", color: "var(--text-muted)", outline: !view.color ? "2px solid var(--text-primary)" : "none", outlineOffset: "1px" }}>—</button>
-            {QV_SWATCHES.map(c => (
-              <button key={c} onClick={() => onPatch({ color: c })}
-                className="w-5 h-5 rounded-full" style={{ backgroundColor: c, outline: view.color === c ? "2px solid var(--text-primary)" : "none", outlineOffset: "1px" }} />
-            ))}
-          </div>
+          <ColorRow view={view} onPatch={onPatch} />
         </div>
-        <div className="flex items-end gap-4">
-          <label className="flex items-center gap-2 cursor-pointer pb-2">
-            <Toggle on={view.active} onChange={v => onPatch({ active: v })} />
-            <span className="text-sm" style={{ color: "var(--text-secondary)" }}>Active</span>
-          </label>
+        <div className="flex items-end">
           <label className="flex items-center gap-2 cursor-pointer pb-2">
             <Toggle on={view.defaultVisible} onChange={v => onPatch({ defaultVisible: v })} />
             <span className="text-sm" style={{ color: "var(--text-secondary)" }}>Show as tab</span>
           </label>
         </div>
       </div>
-
       <div><FieldLabel>Source Types</FieldLabel><ChipMulti all={sourceKeys} labels={SOURCE_TYPE_LABELS} selected={view.filters.sourceTypes ?? []} onToggle={v => onToggleFilter("sourceTypes", v)} /></div>
       <div><FieldLabel>Priority</FieldLabel><ChipMulti all={PRIORITY_OPTIONS} labels={PRIORITY_LABELS} selected={view.filters.priorities ?? []} onToggle={v => onToggleFilter("priorities", v)} /></div>
       <div><FieldLabel>Job Types</FieldLabel><ChipMulti all={MOCK_JOB_TYPES} selected={view.filters.jobTypes ?? []} onToggle={v => onToggleFilter("jobTypes", v)} /></div>
@@ -984,11 +1029,7 @@ function QueueViewEditor({ view, onPatch, onToggleFilter, onSetDue, onDone }: {
             onChange={val => onSetDue(val === "any" ? undefined : Number(val))} options={DUE_OPTIONS} />
         </div>
       </div>
-
-      <div className="flex items-center justify-between pt-1">
-        <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>Empty filters match every queue item.</p>
-        <button onClick={onDone} className="px-4 py-1.5 rounded-lg text-sm font-medium text-white" style={{ backgroundColor: "#4f46e5" }}>Done</button>
-      </div>
+      <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>Empty filters match every queue item.</p>
     </div>
   );
 }

@@ -138,12 +138,33 @@ function OverviewTab({ id }: { id: string }) {
   const notes       = getNotes(id);
   const tasks       = getTasks(id);
   const agreements  = getAgreementsForCustomer(id, customer.name);
+  const invoices    = getInvoicesForCustomer(id);
 
   const primary     = contacts.find(c => c.isPrimary) ?? contacts[0];
   const primaryProp = properties.find(p => p.isPrimary) ?? properties[0];
   const openJobs    = jobs.filter(j => j.status === "Scheduled" || j.status === "In Progress");
   const openLeads   = leads.filter(l => l.status !== "Won" && l.status !== "Lost");
   const openTasks   = tasks.filter(t => t.status !== "completed");
+
+  // Snapshot metrics — meaningful at-a-glance figures rather than raw counts.
+  const lifetime    = invoices.reduce((s, i) => s + i.total, 0);
+  const outstanding = invoices.filter(i => i.balanceDue > 0).reduce((s, i) => s + i.balanceDue, 0);
+  const earliest = (vals: (string | null | undefined)[]) =>
+    vals.filter(Boolean).map(s => ({ s: s as string, t: new Date(s as string).getTime() }))
+      .filter(x => !isNaN(x.t)).sort((a, b) => a.t - b.t)[0]?.s ?? null;
+  const latest = (vals: (string | null | undefined)[]) =>
+    vals.filter(Boolean).map(s => ({ s: s as string, t: new Date(s as string).getTime() }))
+      .filter(x => !isNaN(x.t)).sort((a, b) => b.t - a.t)[0]?.s ?? null;
+  const nextVisit   = earliest(agreements.map(a => a.nextVisit));
+  const lastService = latest(jobs.filter(j => j.status === "Completed").map(j => j.date));
+
+  const snapshot: { label: string; value: string; accent?: string }[] = [
+    { label: "Lifetime value", value: fmtCurrency(lifetime) },
+    { label: "Open balance",   value: outstanding > 0 ? fmtCurrency(outstanding) : "Paid up", accent: outstanding > 0 ? "#dc2626" : "#10b981" },
+    { label: "Next visit",     value: nextVisit ?? "—" },
+    { label: "Last service",   value: lastService ?? "—" },
+    { label: "Customer since", value: customer.since },
+  ];
 
   const company     = getAllCompanies().find(c => c.id === customer.companyId);
   const location    = getAllLocations().find(l => l.id === customer.locationId);
@@ -153,24 +174,14 @@ function OverviewTab({ id }: { id: string }) {
 
   return (
     <div className="space-y-6">
-      {/* ── At-a-glance ─────────────────────────────── */}
-      <div className="grid grid-cols-5 gap-3">
-        {([
-          { label: "Open Jobs",  value: openJobs.length,   icon: Briefcase,   color: "#4f46e5", tint: "#eef2ff" },
-          { label: "Open Leads", value: openLeads.length,  icon: TrendingUp,  color: "#0891b2", tint: "#ecfeff" },
-          { label: "Agreements", value: agreements.length, icon: FileText,    color: "#059669", tint: "#ecfdf5" },
-          { label: "Open Tasks", value: openTasks.length,  icon: CheckSquare, color: "#d97706", tint: "#fffbeb" },
-          { label: "Properties", value: properties.length, icon: MapPin,      color: "#7c3aed", tint: "#f5f3ff" },
-        ]).map(k => (
-          <div key={k.label} className="rounded-xl p-3 flex items-center gap-3"
-            style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
-            <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: k.tint }}>
-              <k.icon className="w-4 h-4" style={{ color: k.color }} />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xl font-semibold leading-none" style={{ color: "var(--text-primary)" }}>{k.value}</p>
-              <p className="text-[11px] mt-1 truncate" style={{ color: "var(--text-muted)" }}>{k.label}</p>
-            </div>
+      {/* ── Snapshot strip ──────────────────────────── */}
+      <div className="rounded-xl px-5 py-4 grid grid-cols-2 sm:grid-cols-5 gap-x-4 gap-y-3"
+        style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+        {snapshot.map((m, i) => (
+          <div key={m.label} className="min-w-0"
+            style={{ borderLeft: i > 0 ? "1px solid var(--border-subtle)" : undefined, paddingLeft: i > 0 ? "1rem" : undefined }}>
+            <p className="text-lg font-semibold leading-none truncate" style={{ color: m.accent ?? "var(--text-primary)" }}>{m.value}</p>
+            <p className="text-[11px] mt-1 truncate" style={{ color: "var(--text-muted)" }}>{m.label}</p>
           </div>
         ))}
       </div>
@@ -1631,7 +1642,7 @@ function CustomerDetailContent({ params }: { params: Promise<{ id: string }> }) 
           </div>
         </div>
 
-        {/* Sub-tabs — glossy light-amber (comment-mode accent) */}
+        {/* Sub-tabs — same flat pill as the main tabs, in amber instead of indigo */}
         <DetailTabs tabs={TABS} active={tab} onChange={setTab} className="px-6 py-2" />
       </div>
 

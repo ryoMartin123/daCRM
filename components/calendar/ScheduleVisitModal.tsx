@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { X, CalendarClock, FileText } from "lucide-react";
+import { useState, useMemo, useRef, useEffect } from "react";
+import { X, CalendarClock, FileText, Search, ChevronDown, Check } from "lucide-react";
 import Select from "@/components/ui/Select";
 import DatePicker from "@/components/ui/DatePicker";
 import TimePicker from "@/components/ui/TimePicker";
@@ -93,8 +93,7 @@ export default function ScheduleVisitModal({
         ) : (
           <div className="p-5 space-y-3">
             <Field label="Agreement">
-              <Select size="sm" value={agreementId} onChange={chooseAgreement}
-                options={agreements.map(a => ({ value: a.id, label: `${a.customer} — ${a.type}` }))} />
+              <AgreementPicker agreements={agreements} value={agreementId} onChange={chooseAgreement} />
             </Field>
 
             <Field label="Visit">
@@ -169,6 +168,82 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div>
       <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>{label}</label>
       {children}
+    </div>
+  );
+}
+
+// Searchable agreement picker — there can be many agreements, so type to filter by
+// customer, type, or number rather than scrolling a long dropdown.
+function AgreementPicker({ agreements, value, onChange }: {
+  agreements: CustomerAgreement[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const selected = agreements.find(a => a.id === value);
+
+  const results = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return agreements;
+    return agreements.filter(a => {
+      const hay = [a.customer, a.type, a.number ?? "", a.location].join(" ").toLowerCase();
+      return q.split(/\s+/).every(t => hay.includes(t));
+    });
+  }, [agreements, query]);
+
+  useEffect(() => {
+    if (!open) { setQuery(""); return; }
+    const id = requestAnimationFrame(() => inputRef.current?.focus());
+    const onDoc = (e: MouseEvent) => { if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => { cancelAnimationFrame(id); document.removeEventListener("mousedown", onDoc); };
+  }, [open]);
+
+  return (
+    <div ref={wrapRef} className="relative w-full">
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between gap-2 rounded-lg outline-none transition-colors px-3 py-2"
+        style={{ border: `1px solid ${open ? "#a5b4fc" : "var(--border)"}`, backgroundColor: "var(--bg-surface)", boxShadow: open ? "0 0 0 3px rgba(99,102,241,0.12)" : "none" }}>
+        <span className="min-w-0 text-left">
+          {selected
+            ? <span className="text-sm font-medium truncate block" style={{ color: "var(--text-primary)" }}>{selected.customer} — {selected.type}</span>
+            : <span className="text-sm" style={{ color: "var(--text-muted)" }}>Select an agreement…</span>}
+        </span>
+        <ChevronDown className="w-3.5 h-3.5 shrink-0 transition-transform" style={{ color: "var(--text-muted)", transform: open ? "rotate(180deg)" : "none" }} />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 right-0 z-50 mt-1.5 rounded-xl overflow-hidden"
+          style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "0 12px 32px rgba(0,0,0,0.16)" }}>
+          <div className="flex items-center gap-2 px-3 py-2.5" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+            <Search className="w-4 h-4 shrink-0" style={{ color: "var(--text-muted)" }} />
+            <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)}
+              placeholder="Search by customer, type, or number…"
+              className="flex-1 bg-transparent outline-none text-sm" style={{ color: "var(--text-primary)" }} />
+            {query && <button type="button" onClick={() => { setQuery(""); inputRef.current?.focus(); }} style={{ color: "var(--text-muted)" }}><X className="w-3.5 h-3.5" /></button>}
+          </div>
+          <div className="p-1 overflow-y-auto thin-scroll-y" style={{ maxHeight: "240px" }}>
+            {results.length === 0 ? (
+              <div className="px-3 py-6 text-center text-xs" style={{ color: "var(--text-muted)" }}>No agreements match “{query}”.</div>
+            ) : results.map(a => {
+              const isSel = a.id === value;
+              return (
+                <button key={a.id} type="button" onClick={() => { onChange(a.id); setOpen(false); }}
+                  className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-colors hover:bg-[var(--bg-surface-2)]">
+                  <span className="flex flex-col min-w-0 flex-1">
+                    <span className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{a.customer}</span>
+                    <span className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>{a.type}{a.number ? ` · ${a.number}` : ""}{a.location ? ` · ${a.location}` : ""}</span>
+                  </span>
+                  {isSel && <Check className="w-3.5 h-3.5 shrink-0" style={{ color: "#4f46e5" }} />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

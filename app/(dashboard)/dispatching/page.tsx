@@ -34,7 +34,7 @@ import {
 } from "@/lib/calendar/types";
 import {
   resolveDispatchSettings, defaultDispatchSettings, getBoardsForContext, itemMatchesBoard,
-  getVisibleQueueViews,
+  getVisibleQueueViews, getAgreementLeadDays,
   type DispatchSettings, type SettingsServiceBlock, type DispatchBoard,
 } from "@/lib/calendar/settings";
 import {
@@ -86,6 +86,7 @@ export default function CalendarPage() {
   const [hidden, setHidden]       = useState<Set<CalendarItemType>>(new Set());
   const [settings, setSettings]   = useState<DispatchSettings>(() => defaultDispatchSettings());
   const [boards, setBoards]       = useState<DispatchBoard[]>([]);
+  const [agreementLeadDays, setAgreementLeadDays] = useState(30);
 
   // Resolve the most-specific settings for the active company/location context
   // (Organization → Company → Location), then seed view/mode/layers and load the
@@ -101,6 +102,7 @@ export default function CalendarPage() {
       cfg.layers.filter(l => !l.enabled || !l.visibleByDefault).map(l => l.type),
     ));
     setBoards(getBoardsForContext(effectiveCompanyId, effectiveLocationId));
+    setAgreementLeadDays(getAgreementLeadDays());
     setBoardId("all");
     // Load the queue tabs configured in Settings → Calendar / Dispatch.
     const views = getVisibleQueueViews();
@@ -156,7 +158,7 @@ export default function CalendarPage() {
   // current view/mode/board. Fixes "changed the dispatch time but the board
   // didn't update".
   useEffect(() => {
-    const reread = () => setSettings(resolveDispatchSettings(effectiveCompanyId, effectiveLocationId));
+    const reread = () => { setSettings(resolveDispatchSettings(effectiveCompanyId, effectiveLocationId)); setAgreementLeadDays(getAgreementLeadDays()); };
     window.addEventListener("focus", reread);
     window.addEventListener("storage", reread);
     document.addEventListener("visibilitychange", reread);
@@ -195,7 +197,7 @@ export default function CalendarPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const rawItems    = useMemo(() => getCalendarItems(scope), [effectiveCompanyId, effectiveLocationId, effectiveServiceAreaId, refreshKey]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const allUnscheduled = useMemo(() => getUnscheduledItems(scope), [effectiveCompanyId, effectiveLocationId, effectiveServiceAreaId, refreshKey]);
+  const allUnscheduled = useMemo(() => getUnscheduledItems(scope, agreementLeadDays), [effectiveCompanyId, effectiveLocationId, effectiveServiceAreaId, refreshKey, agreementLeadDays]);
   // Technician filter mirrors the viewing scope (down-inclusion), plus anyone
   // already assigned to an in-scope item.
   const technicians = useMemo(
@@ -361,9 +363,22 @@ export default function CalendarPage() {
       return;
     }
 
-    // Any other source (approved quote, agreement visit, follow-up task) becomes a
-    // real Job linked back to its origin, so everything on the board lives under
-    // the one job lifecycle. dispatchType keeps its original color/label.
+    // Agreement visit from the queue → materialize THAT planned visit into a Job so
+    // the visit is flipped to scheduled and linked (write-back works on completion).
+    if (u.sourceModule === "agreements" && u.agreementId) {
+      const res = materializeVisitJob(u.agreementId, u.sourceId, {
+        companyId: u.companyId, locationId: u.locationId, serviceAreaId: u.serviceAreaId,
+        scheduledDate: jobDateStr(start), scheduledTime: jobTimeStr(start),
+        assignedTo: d.tech || undefined, durationMinutes: d.durationMinutes,
+      });
+      if (!res.error) { setRemoved(r => new Set(r).add(u.id)); setRefreshKey(k => k + 1); }
+      setConfirm(null);
+      return;
+    }
+
+    // Any other source (approved quote, follow-up task) becomes a real Job linked
+    // back to its origin, so everything on the board lives under the one job
+    // lifecycle. dispatchType keeps its original color/label.
     const map = SOURCE_TO_JOB[u.sourceType] ?? SOURCE_TO_JOB_DEFAULT;
     const cust = u.accountId ? getCustomer(u.accountId) : undefined;
     createJob({

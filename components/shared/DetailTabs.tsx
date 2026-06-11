@@ -1,10 +1,9 @@
 "use client";
 
 // Sub-tabs shown inside a single record — a specific customer, project, job,
-// quote, invoice, lead, or agreement. The active tab is a glossy light-amber
-// chip, the same amber the comments / comment-mode theme uses, so being
-// "inside a record" reads distinctly from the indigo top-level section nav.
-// Styling lives in `.detail-tab` (app/globals.css).
+// quote, invoice, lead, or agreement. Same flat pill as StatusTabs (the main
+// list-page tabs); only the color differs — amber instead of indigo, so being
+// "inside a record" reads distinctly. Styling lives in `.detail-tab` (globals.css).
 export default function DetailTabs({ tabs, active, onChange, className = "" }: {
   tabs: readonly string[];
   active: string;

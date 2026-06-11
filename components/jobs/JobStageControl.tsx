@@ -2,9 +2,11 @@
 
 // ─── Job stage control ────────────────────────────────────
 // A prominent stage-icon badge for a job (used on dispatch cards). Click it to
-// open a dropdown and set the job to ANY status — handy for testing and quick
-// dispatch overrides. The menu is rendered with fixed positioning so it isn't
-// clipped by the card's overflow. Non-job items just show a static icon.
+// open a dropdown of statuses: the valid next step(s) from the current status are
+// enabled, the current one is tagged "Current", and statuses you can't move to are
+// dimmed + disabled (override-capable users see those tagged "Override" instead, so
+// they can still force a jump). The menu is body-portaled so the card's overflow
+// doesn't clip it. Non-job items just show a static icon.
 
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -15,7 +17,7 @@ import {
 import { usePermissions } from "@/components/providers/PermissionProvider";
 import { getJob } from "@/lib/jobs/data";
 import { getJobStatuses } from "@/lib/job-config/data";
-import { transitionJobStatus, type TransitionActor } from "@/lib/jobs/lifecycle";
+import { transitionJobStatus, checkTransition, type TransitionActor } from "@/lib/jobs/lifecycle";
 
 // Each lifecycle stage → an icon, so a card shows at a glance where the job is.
 export const JOB_STAGE_ICON: Record<string, typeof Briefcase> = {
@@ -112,12 +114,22 @@ export default function JobStageControl({ jobId, statusKey, onChanged, size = 18
             {statuses.map(s => {
               const SI = stageIcon(s.key);
               const on = s.key === status;
+              // What this actor can actually do from the current status. ok=false
+              // means clicking would no-op, so we disable + dim it; needsOverride
+              // means it's only reachable via the override flag (tagged).
+              const c = on ? null : checkTransition(job!, s.key, actor);
+              const disabled = !on && !c?.ok;
+              const isOverride = !on && !!c?.ok && !!c?.needsOverride;
               return (
-                <button key={s.key} onClick={e => { e.stopPropagation(); set(s.key); }}
-                  className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-[var(--bg-surface-2)]"
-                  style={{ color: "var(--text-primary)", backgroundColor: on ? "var(--bg-surface-2)" : "transparent" }}>
+                <button key={s.key} disabled={disabled}
+                  onClick={e => { e.stopPropagation(); if (!disabled && !on) set(s.key); }}
+                  title={disabled ? (c?.reason ?? `Not available from ${meta?.name ?? status}`) : undefined}
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs transition-colors enabled:hover:bg-[var(--bg-surface-2)] disabled:cursor-not-allowed"
+                  style={{ color: disabled ? "var(--text-muted)" : "var(--text-primary)", opacity: disabled ? 0.45 : 1, backgroundColor: on ? "var(--bg-surface-2)" : "transparent" }}>
                   <SI style={{ width: 14, height: 14, color: s.color }} />
                   <span className="flex-1 truncate">{s.name}</span>
+                  {on && <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: "var(--accent-soft-bg)", color: "var(--accent-text)" }}>Current</span>}
+                  {isOverride && <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: "var(--bg-input)", color: "var(--text-muted)" }}>Override</span>}
                 </button>
               );
             })}

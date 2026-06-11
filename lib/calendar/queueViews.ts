@@ -56,8 +56,11 @@ export interface QueueView {
   order: number;
   active: boolean;        // available at all
   defaultVisible: boolean;// shown as a tab on first load
-  system?: boolean;       // built-in default (can be hidden/edited, not deleted)
+  system?: boolean;       // core source-category view — locked (always on, not editable/deletable)
   filters: QueueFilters;
+  // Per-view settings. leadDays (Agreements view): how many days ahead a planned
+  // agreement visit enters the queue. Other views may add their own settings here.
+  leadDays?: number;
 }
 
 // ─── System default views ─────────────────────────────────
@@ -66,9 +69,9 @@ export interface QueueView {
 export function defaultQueueViews(): QueueView[] {
   return [
     { id: "qv-all",      key: "all",      name: "All",                order: 0, active: true, defaultVisible: true, system: true, filters: {} },
-    { id: "qv-urgent",   key: "urgent",   name: "Urgent",             order: 1, active: true, defaultVisible: true, system: true, color: "#dc2626", filters: { priorities: ["urgent"] } },
+    { id: "qv-urgent",   key: "urgent",   name: "Urgent",             order: 1, active: true, defaultVisible: true, color: "#dc2626", filters: { priorities: ["urgent"] } },
     { id: "qv-jobs",     key: "jobs",     name: "Jobs",               order: 2, active: true, defaultVisible: true, system: true, filters: { sourceTypes: ["job"] } },
-    { id: "qv-agr",      key: "agreement_visits", name: "Agreement Visits", order: 3, active: true, defaultVisible: true, system: true, filters: { sourceTypes: ["agreement_visit"] } },
+    { id: "qv-agr",      key: "agreement_visits", name: "Agreement Visits", order: 3, active: true, defaultVisible: true, system: true, leadDays: 30, filters: { sourceTypes: ["agreement_visit"] } },
     { id: "qv-tasks",    key: "tasks",    name: "Tasks / Follow-Ups", order: 4, active: true, defaultVisible: true, system: true, filters: { sourceTypes: ["task_follow_up"] } },
     { id: "qv-quotes",   key: "approved_quotes", name: "Approved Quotes", order: 5, active: true, defaultVisible: true, system: true, filters: { sourceTypes: ["approved_quote"] } },
     { id: "qv-projects", key: "project_items", name: "Project Items",  order: 6, active: true, defaultVisible: true, system: true, filters: { sourceTypes: ["project_milestone"] } },

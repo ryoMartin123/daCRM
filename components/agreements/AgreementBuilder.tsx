@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  X, Check, ChevronLeft, ChevronRight, Plus, Trash2, Star, FileText, Send, SlidersHorizontal,
+  X, Check, ChevronLeft, ChevronRight, Plus, Trash2, Star, Send, SlidersHorizontal,
 } from "lucide-react";
 import UiSelect from "@/components/ui/Select";
 import DatePicker from "@/components/ui/DatePicker";
+import NumberStepper from "@/components/ui/NumberStepper";
 import AccountSearchSelect from "@/components/customers/AccountSearchSelect";
 import AgreementDocumentPreview, { type AgreementDocData } from "@/components/agreements/AgreementDocumentPreview";
 import { getAllCustomers, getProperties } from "@/lib/customers/data";
@@ -398,8 +399,7 @@ export default function AgreementBuilder({ preset, editAgreement, onClose, onCre
               <div className="grid grid-cols-3 gap-3">
                 <Field label="Start Date *"><DatePicker value={startDate} onChange={setStartDate} clearable={false} /></Field>
                 <Field label="Term (months)">
-                  <input type="number" min={1} value={termMonths} onChange={e => setTermMonths(e.target.value)} disabled={Boolean(endDate)}
-                    className="w-full rounded-lg px-3 py-2 text-sm outline-none disabled:opacity-50" style={inputStyle} />
+                  <NumberStepper value={termMonths} onChange={setTermMonths} min={1} disabled={Boolean(endDate)} />
                 </Field>
                 <Field label="End Date" hint="optional"><DatePicker value={endDate} onChange={setEndDate} placeholder="By term" /></Field>
               </div>
@@ -436,17 +436,13 @@ export default function AgreementBuilder({ preset, editAgreement, onClose, onCre
                   <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                     Use <span style={{ fontWeight: 600, color: "var(--text-secondary)" }}>{tmpl?.name}</span> as-is ({tmpl?.services.length ?? 0} services · {tmpl?.visits.length ?? 0} visit type(s) · ${tmpl?.billing.amount ?? 0} {tmpl?.billing.frequencyKey}), or customize billing, the visit schedule, and more for this customer.
                   </p>
-                  <div className="grid grid-cols-3 gap-2">
-                    <button onClick={() => save(false)} className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium"
-                      style={{ border: "1px solid var(--border)", color: "var(--text-secondary)", backgroundColor: "var(--bg-surface)" }}>
-                      <FileText className="w-4 h-4" /> Draft
-                    </button>
-                    <button onClick={() => save(true)} className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium text-white" style={{ backgroundColor: "#4f46e5" }}>
-                      <Send className="w-4 h-4" /> Activate
-                    </button>
+                  <div className="grid grid-cols-2 gap-2">
                     <button onClick={() => { setCustomize(true); setStep(3); }} className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium"
                       style={{ border: "1px solid var(--accent-soft-border)", color: "var(--accent-text-strong)", backgroundColor: "var(--accent-soft-bg)" }}>
                       <SlidersHorizontal className="w-4 h-4" /> Customize
+                    </button>
+                    <button onClick={() => save(true)} className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium text-white" style={{ backgroundColor: "#4f46e5" }}>
+                      <Send className="w-4 h-4" /> Activate
                     </button>
                   </div>
                 </div>
@@ -624,16 +620,10 @@ export default function AgreementBuilder({ preset, editAgreement, onClose, onCre
                   <Check className="w-4 h-4" /> Save Changes
                 </button>
               ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  <button onClick={() => save(false)} className="flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium"
-                    style={{ border: "1px solid var(--border)", color: "var(--text-secondary)", backgroundColor: "var(--bg-surface)" }}>
-                    <FileText className="w-4 h-4" /> Save as Draft
-                  </button>
-                  <button onClick={() => save(true)} disabled={generatedVisits.length === 0}
-                    className="flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium text-white disabled:opacity-40" style={{ backgroundColor: "#4f46e5" }}>
-                    <Send className="w-4 h-4" /> Activate Agreement
-                  </button>
-                </div>
+                <button onClick={() => save(true)} disabled={generatedVisits.length === 0}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium text-white disabled:opacity-40" style={{ backgroundColor: "#4f46e5" }}>
+                  <Send className="w-4 h-4" /> Activate Agreement
+                </button>
               )}
               {!isEdit && (
                 <p className="text-[11px] text-center" style={{ color: generatedVisits.length === 0 ? "#dc2626" : "var(--text-muted)" }}>

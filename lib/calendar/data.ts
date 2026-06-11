@@ -4,6 +4,7 @@
 import { ALL_JOBS, getAllJobs, getSessionJobs, WORK_ORDERS, JOB_STATUS_CONFIG, type Job } from "@/lib/jobs/data";
 import { getAllTasks } from "@/lib/tasks/data";
 import { getAllAgreements, getVisitsToSchedule, type CustomerAgreement, type AgreementVisit } from "@/lib/agreements/data";
+import { getCustomer } from "@/lib/customers/data";
 import { ALL_PROJECTS } from "@/lib/projects/data";
 import { getAllQuotes } from "@/lib/quotes/data";
 import { getTechnicianUsers, getStaffedUsers } from "@/lib/users/data";
@@ -205,7 +206,7 @@ function isConverted(sourceModule: string, sourceId: string): boolean {
 }
 
 // ─── Unscheduled queue (triage) ───────────────────────────
-export function getUnscheduledItems(scope: CalendarScope): UnscheduledItem[] {
+export function getUnscheduledItems(scope: CalendarScope, agreementLeadDays = 30): UnscheduledItem[] {
   const out: UnscheduledItem[] = [];
 
   // Approved quotes waiting to be scheduled into a job
@@ -240,21 +241,28 @@ export function getUnscheduledItems(scope: CalendarScope): UnscheduledItem[] {
     });
   }
 
-  // Agreement visits due
-  for (const a of getAllAgreements()) {
-    if (a.status !== "due_soon" && a.status !== "overdue") continue;
-    if (isConverted("agreements", a.id)) continue;
-    const loc = resolveAgreementLocation(a.location);
-    if (!inScope({ companyId: loc.companyId, locationId: loc.locationId }, scope)) continue;
+  // Agreement visits that are due — surfaced automatically, per planned visit, once
+  // the target date is within the lead window (or already past). No manual step: an
+  // agreement's upcoming visit lands in the queue on its own. Each item carries the
+  // visit id (sourceId) + parent agreementId so scheduling materializes that exact
+  // visit. Once booked, the visit gets a jobId and drops out of getSchedulableVisits.
+  const now = Date.now();
+  for (const { agreement, visit, companyId, locationId } of getSchedulableVisits(scope)) {
+    const due = parseDateTime(visit.scheduled);
+    const daysOut = due ? (due.getTime() - now) / 86_400_000 : 0;
+    if (daysOut > agreementLeadDays) continue;   // beyond the lead window — stays out of the queue
+    const overdue = daysOut < 0;
     out.push({
-      id: `uq-agr-${a.id}`, type: "agreement_visit", sourceType: "agreement_visit",
-      title: `${a.type} — ${a.customer}`,
-      reason: "Agreement visit due", status: a.status,
-      companyId: loc.companyId, locationId: loc.locationId,
-      customerName: a.customer,
-      sourceId: a.id, sourceModule: "agreements", color: LAYER_CONFIG.agreement_visit.color,
-      priority: a.status === "overdue" ? "urgent" : "normal",
-      durationMinutes: 90, preferredDate: a.nextVisit ?? undefined, dueDate: a.nextVisit ?? undefined,
+      id: `uq-visit-${visit.id}`, type: "agreement_visit", sourceType: "agreement_visit",
+      title: `${agreement.type} — ${visit.label}`,
+      reason: overdue ? "Agreement visit overdue" : "Agreement visit due",
+      status: overdue ? "overdue" : "due_soon",
+      companyId, locationId,
+      customerName: agreement.customer,
+      sourceId: visit.id, agreementId: agreement.id,
+      sourceModule: "agreements", color: LAYER_CONFIG.agreement_visit.color,
+      priority: overdue ? "urgent" : "normal",
+      durationMinutes: 90, preferredDate: visit.scheduled, dueDate: visit.scheduled,
     });
   }
 
@@ -272,9 +280,16 @@ export interface SchedulableVisit { agreement: CustomerAgreement; visit: Agreeme
 export function getSchedulableVisits(scope: CalendarScope): SchedulableVisit[] {
   const out: SchedulableVisit[] = [];
   for (const { agreement, visit } of getVisitsToSchedule()) {
-    const loc = resolveAgreementLocation(agreement.location);
-    if (!inScope({ companyId: loc.companyId, locationId: loc.locationId }, scope)) continue;
-    out.push({ agreement, visit, companyId: loc.companyId, locationId: loc.locationId });
+    // Resolve the agreement's company/location from its location label, falling back
+    // to the linked customer record so an agreement still scopes correctly when the
+    // label doesn't match a hierarchy location (e.g. customer had no location set).
+    let { companyId, locationId } = resolveAgreementLocation(agreement.location);
+    if ((!companyId || !locationId) && agreement.customerId) {
+      const c = getCustomer(agreement.customerId);
+      if (c) { companyId = companyId || c.companyId; locationId = locationId || c.locationId; }
+    }
+    if (!inScope({ companyId, locationId }, scope)) continue;
+    out.push({ agreement, visit, companyId, locationId });
   }
   return out;
 }
