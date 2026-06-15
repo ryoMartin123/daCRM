@@ -6,7 +6,7 @@
 //   agreement_templates, customer_agreements,
 //   agreement_visits, agreement_billing_events
 
-import { createJob, updateJob, getJob, type Job } from "@/lib/jobs/data";
+import { createJob, updateJob, getJob, registerAgreementJobDeletedHandler, type Job } from "@/lib/jobs/data";
 
 export type AgreementStatus =
   | "active"
@@ -523,6 +523,11 @@ export function reopenAgreementVisitForJob(job: { agreementId?: string; sourceRe
   });
   if (changed) updateAgreement(job.agreementId, { visits, nextVisit: nextPlannedDate(visits) });
 }
+
+// Wire the visit-revert handler into jobs/data without a static back-import, so
+// deleteJob can return an orphaned visit to the queue. This keeps the module
+// dependency one-directional (agreements → jobs) and breaks the import cycle.
+registerAgreementJobDeletedHandler(revertAgreementVisitForJob);
 
 // Visits still needing a job — the dispatcher's "Visits to schedule" queue. A visit
 // is schedulable when it has NO live job: either never materialized, or its job was

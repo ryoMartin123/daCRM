@@ -6,7 +6,18 @@
 //   projects, jobs, work_orders, checklist_items, job_notes
 
 import { getJobTypes } from "@/lib/job-config/data";
-import { revertAgreementVisitForJob } from "@/lib/agreements/data";
+
+// ─── Agreement-visit revert hook ──────────────────────────
+// deleteJob must return a materialized agreement visit to the schedule queue,
+// but importing lib/agreements/data here would close a jobs⇄agreements import
+// cycle (agreements already imports createJob/updateJob/getJob from this file).
+// That cycle destabilizes the dev compiler/HMR worker. Instead, agreements/data
+// REGISTERS its revert handler at load time and deleteJob calls it if present.
+type JobDeletedHandler = (job: { agreementId?: string; sourceRefId?: string; sourceModule?: string }) => void;
+let _onAgreementJobDeleted: JobDeletedHandler | null = null;
+export function registerAgreementJobDeletedHandler(fn: JobDeletedHandler): void {
+  _onAgreementJobDeleted = fn;
+}
 
 // ─── Types ────────────────────────────────────────────────
 export type JobStatus      = "new" | "scheduled" | "en_route" | "in_progress" | "waiting_on_parts" | "waiting_on_customer" | "completed" | "invoiced" | "closed" | "canceled" | "no_show";
@@ -215,8 +226,10 @@ export function deleteJob(id: string): void {
     _jobOverrides = all;
     try { localStorage.setItem(JOBS_OV_KEY, JSON.stringify(all)); } catch { /* ignore */ }
   }
-  // Don't orphan the agreement visit when its job is deleted.
-  if (job?.sourceModule === "agreements") revertAgreementVisitForJob(job);
+  // Don't orphan the agreement visit when its job is deleted. Routed through the
+  // registered handler (see registerAgreementJobDeletedHandler) to avoid a static
+  // jobs⇄agreements import cycle.
+  if (job?.sourceModule === "agreements") _onAgreementJobDeleted?.(job);
 }
 
 // Delete every job under a company (hierarchy cascade).
