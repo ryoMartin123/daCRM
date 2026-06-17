@@ -128,7 +128,7 @@ const DEFAULT_SECTIONS: SectionKey[] = ALL_SECTIONS.map(s => s.key);
 const svc = (name: string, included = true, quantity = 1, discountPct?: number): TemplateService =>
   ({ id: agrId("ts"), name, quantity, included, discountPct,
      scopeType: included ? "included" : "discounted", applies: "per_visit" });
-const vis = (name: string, frequencyKey: string, durationMin: number, preferredWindow?: string, jobTypeKey = "maintenance"): TemplateVisit =>
+const vis = (name: string, frequencyKey: string, durationMin: number, preferredWindow?: string, jobTypeKey = "agreement_visit"): TemplateVisit =>
   ({ id: agrId("tv"), name, frequencyKey, durationMin, preferredWindow, jobTypeKey, autoGenerate: true });
 
 const STD_TERMS: TemplateTerm[] = [
@@ -229,7 +229,7 @@ export const DEFAULT_PLAN_TEMPLATES: PlanTemplate[] = [
     industry: "General", typeKey: "service_agreement",
     description: "A flexible recurring service agreement for any trade — configure visits, billing, and benefits.",
     services: [svc("Routine service tasks")],
-    visits: [vis("Service Visit", "quarterly", 90, "Each quarter", "maintenance")],
+    visits: [vis("Service Visit", "quarterly", 90, "Each quarter", "agreement_visit")],
     billing: { frequencyKey: "quarterly", amount: 150, taxable: false },
     benefits: ["Priority Scheduling", "Repair Discount"],
     terms: STD_TERMS, renewal: STD_RENEWAL,

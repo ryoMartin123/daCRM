@@ -8,7 +8,7 @@ import {
 import Select from "@/components/ui/Select";
 import StatusBadge from "@/components/shared/StatusBadge";
 import { getWorkOrder, getJob, resolveJobStatus } from "@/lib/jobs/data";
-import { getJobStatuses } from "@/lib/job-config/data";
+import { getJobStatuses, jobTypeLabel } from "@/lib/job-config/data";
 import {
   LAYER_CONFIG, PRIORITY_CONFIG, type CalendarItem, type UnscheduledItem,
 } from "@/lib/calendar/types";
@@ -84,7 +84,7 @@ export default function CalendarItemDrawer({
             {isScheduled
               ? <Row icon={Clock} label="Scheduled" value={scheduled!.allDay ? `${fmtDate(scheduled!.start)} · All day` : `${fmtDate(scheduled!.start)} · ${fmtTime(scheduled!.start)}–${fmtTime(scheduled!.end)}`} />
               : <Row icon={CalendarClock} label="Preferred" value={unscheduled!.preferredDate ?? "No preference"} />}
-            {scheduled?.jobType ?? unscheduled?.jobType ? <Row icon={Briefcase} label="Type" value={(scheduled?.jobType ?? unscheduled?.jobType)!} /> : null}
+            {scheduled?.jobType ?? unscheduled?.jobType ? <Row icon={Briefcase} label="Type" value={jobTypeLabel((scheduled?.jobType ?? unscheduled?.jobType)!)} /> : null}
             {(scheduled?.address ?? unscheduled?.address ?? scheduled?.city ?? unscheduled?.city) &&
               <Row icon={MapPin} label="Location" value={scheduled?.address ?? unscheduled?.address ?? scheduled?.city ?? unscheduled?.city ?? ""} />}
             {scheduled?.contact && <Row icon={User} label="Contact" value={scheduled.contact} />}

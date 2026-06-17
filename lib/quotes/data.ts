@@ -6,7 +6,8 @@
 //   supabase.from('quotes').select('*, line_items(*)')
 //     .eq('organization_id', orgId).order('created_at', { ascending: false })
 
-import type { Quote, Invoice, QuoteStatus, InvoiceStatus, LineItemCategory } from "./types";
+import type { Quote, Invoice, QuoteStatus, QuoteMode, QuotePricing, InvoiceStatus, LineItemCategory } from "./types";
+import type { QuoteBlock } from "./blocks";
 import { QUOTE_STATUS_STYLE } from "./types";
 import { createJob, getJob, type Job } from "@/lib/jobs/data";
 import { createProject, type Project } from "@/lib/projects/data";
@@ -34,10 +35,42 @@ export interface LineItem {
 // Snapshot of a template section on the quote. Editing the template later does
 // not change existing quotes — each quote owns its section copy.
 export interface QuoteSection {
-  key: string;          // proposal SectionKey (e.g. "recommended_solution")
-  label: string;
+  id?: string;          // stable unique identity (lets a quote hold duplicates of a type)
+  key: string;          // section TYPE — proposal SectionKey (e.g. "recommended_solution")
+  label: string;        // editable display title (renaming a section edits this)
   body: string;         // editable customer-facing wording
   visible: boolean;
+  locked?: boolean;     // structural section that shouldn't be deleted (e.g. cover)
+}
+
+// Stable per-section id generator + a migration helper so legacy quotes (whose
+// sections were saved before `id` existed) get ids on load. Identity matters for
+// React keys, selection, drag-reorder, and duplicating a section.
+let _secSeq = 0;
+export function quoteSectionId(): string { return `qsec-${Date.now().toString(36)}-${(_secSeq++).toString(36)}`; }
+export function ensureSectionIds(sections: QuoteSection[]): QuoteSection[] {
+  return sections.map(s => (s.id ? s : { ...s, id: quoteSectionId() }));
+}
+
+// ─── Proposal option card (copied from a salesbook) ──────
+// Snapshot of a salesbook option on the quote. Editing the quote never changes
+// the master salesbook — each quote owns its option copies.
+export interface QuoteOption {
+  id: string;
+  tier?: "good" | "better" | "best";
+  name: string;
+  brand?: string;
+  model?: string;
+  description?: string;
+  price: number;
+  monthlyPrice?: number;
+  efficiency?: string;
+  warranty?: string;
+  category?: string;
+  includes?: string[];
+  notes?: string;
+  image?: string;            // image URL or data-URL (equipment/product photo)
+  selected?: boolean;        // customer-chosen tier
 }
 
 // ─── Activity log (per quote) ─────────────────────────────
@@ -47,7 +80,8 @@ export type QuoteActivityKind =
 
 export interface QuoteActivity {
   id: string;
-  at: string;          // display date/time
+  at: string;          // display date (e.g. "Jun 12, 2026")
+  iso?: string;        // precise ISO timestamp for ordering + time-of-day display
   actor: string;
   kind: QuoteActivityKind;
   message: string;
@@ -59,8 +93,12 @@ export interface QuoteRecord extends Quote {
   internalNotes?: string;
   customerNotes?: string;          // customer-facing notes shown on the quote
   templateKey?: string;            // template the quote was created from
+  salesbookId?: string;            // company salesbook the quote was started from (template path)
   proposalTemplateId?: string;     // proposal template the quote was built from
-  sections?: QuoteSection[];       // ordered, snapshot-copied proposal sections
+  sections?: QuoteSection[];       // ordered, snapshot-copied proposal sections (template path)
+  blocks?: QuoteBlock[];           // ordered content blocks (Custom Proposal document builder)
+  options?: QuoteOption[];         // snapshot-copied option cards (template/salesbook quotes)
+  pricing?: QuotePricing;          // pricing-wizard worksheet + results (custom quotes)
   assignedTo?: string;             // salesperson (falls back to createdBy)
   activity?: QuoteActivity[];      // status/notes history
   // Denormalized for list display
@@ -246,7 +284,7 @@ function nowStamp(): string {
   return new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 function newActivity(kind: QuoteActivityKind, message: string, actor = "Marcus Reyes"): QuoteActivity {
-  return { id: `qa-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, at: nowStamp(), actor, kind, message };
+  return { id: `qa-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, at: nowStamp(), iso: new Date().toISOString(), actor, kind, message };
 }
 
 // Activity for a quote, synthesizing a baseline "created" entry for seed quotes.
@@ -480,8 +518,14 @@ export interface NewQuoteInput {
   linkedLabel?: string; linkedType?: QuoteRecord["linkedType"]; linkedId?: string;
   // Metadata
   templateKey?: string; assignedTo?: string; customerNotes?: string; internalNotes?: string;
+  // How the quote was created (drives which editor it opens). Defaults to "custom".
+  quoteMode?: QuoteMode;
+  // Salesbook this quote was started from (template path)
+  salesbookId?: string;
   // Proposal template structure (snapshot-copied into the quote)
   proposalTemplateId?: string; sections?: QuoteSection[];
+  // Option cards (snapshot-copied from a salesbook) + pricing-wizard results
+  options?: QuoteOption[]; pricing?: QuotePricing;
   // Create as sent rather than draft (logs a "sent" activity entry)
   markSent?: boolean;
 }
@@ -505,6 +549,7 @@ export function createQuote(input: NewQuoteInput): QuoteRecord {
     propertyId: input.propertyId, leadId: input.leadId, jobId: input.jobId,
     projectId: input.projectId, agreementId: input.agreementId,
     quoteNumber: number, title: input.title, status,
+    quoteMode: input.quoteMode ?? "custom",
     ...totals, expiresAt: input.expiresAt,
     assignedUserId: undefined,
     createdBy: "Marcus Reyes",
@@ -513,7 +558,9 @@ export function createQuote(input: NewQuoteInput): QuoteRecord {
     customerName: input.customerName, customerInitials: input.customerInitials, locationName: input.locationName,
     propertyLabel: input.propertyLabel,
     templateKey: input.templateKey, assignedTo: input.assignedTo ?? "Marcus Reyes",
+    salesbookId: input.salesbookId,
     proposalTemplateId: input.proposalTemplateId, sections: input.sections,
+    options: input.options, pricing: input.pricing,
     customerNotes: input.customerNotes, internalNotes: input.internalNotes,
     activity,
     linkedLabel: input.linkedLabel, linkedType: input.linkedType, linkedId: input.linkedId,

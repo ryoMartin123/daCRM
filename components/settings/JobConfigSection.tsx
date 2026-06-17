@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Plus, Pencil, ChevronUp, ChevronDown, Trash2, Check, RotateCcw, Briefcase, Tags } from "lucide-react";
+import { Plus, Pencil, ChevronUp, ChevronDown, Trash2, Check, RotateCcw, Briefcase, Tags, Lock } from "lucide-react";
 import {
   getJobTypes, saveJobTypes, resetJobTypes,
   getJobStatuses, saveJobStatuses, resetJobStatuses,
@@ -22,6 +22,17 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
       <span className="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform"
         style={{ transform: on ? "translateX(16px)" : "translateX(0)" }} />
     </button>
+  );
+}
+
+// Core entries (e.g. the Maintenance type keyed agreement_visit, lifecycle statuses) are required by
+// other modules — flagged with a locked badge and protected from delete/deactivate.
+function CoreBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0"
+      style={{ backgroundColor: "#e0e7ff", color: "#3730a3" }}>
+      <Lock className="w-2.5 h-2.5" /> Core
+    </span>
   );
 }
 
@@ -74,6 +85,7 @@ function JobTypesTab({ register }: { register: Saver }) {
   useEffect(() => { register(save, reset, dirty, saved); });
 
   const sorted = [...items].sort((a, b) => a.order - b.order);
+  const editingType = items.find(t => t.id === editingId);
 
   function Form() {
     return (
@@ -82,6 +94,11 @@ function JobTypesTab({ register }: { register: Saver }) {
         <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: "#4f46e5" }}>
           {editingId ? "Edit Job Type" : "New Job Type"}
         </p>
+        {editingType?.core && (
+          <p className="text-[11px] rounded-lg px-3 py-2" style={{ backgroundColor: "var(--bg-surface-2)", color: "var(--text-muted)" }}>
+            This is a core type required by Agreements. You can rename or recolor it, but its key can&apos;t change and it can&apos;t be deleted.
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Name *</label>
@@ -91,10 +108,14 @@ function JobTypesTab({ register }: { register: Saver }) {
               style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }} />
           </div>
           <div>
-            <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Key</label>
-            <input value={form.key} onChange={e => setForm(f => ({ ...f, key: jcSlug(e.target.value) }))}
+            <label className="text-xs font-medium mb-1 flex items-center gap-1.5" style={{ color: "var(--text-secondary)" }}>
+              Key {editingType?.core && <Lock className="w-3 h-3" style={{ color: "var(--text-muted)" }} />}
+            </label>
+            <input value={form.key} readOnly={editingType?.core}
+              onChange={e => { if (!editingType?.core) setForm(f => ({ ...f, key: jcSlug(e.target.value) })); }}
+              title={editingType?.core ? "Core type — key is locked because other modules reference it" : undefined}
               className="w-full rounded-lg px-3 py-2 text-sm font-mono outline-none"
-              style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-input)", color: "var(--text-primary)" }} />
+              style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-input)", color: "var(--text-primary)", opacity: editingType?.core ? 0.6 : 1, cursor: editingType?.core ? "not-allowed" : "text" }} />
           </div>
         </div>
         <div>
@@ -180,7 +201,10 @@ function JobTypesTab({ register }: { register: Saver }) {
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
               <div className="min-w-0">
-                <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{t.name}</p>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{t.name}</p>
+                  {t.core && <CoreBadge />}
+                </div>
                 {t.description && <p className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>{t.description}</p>}
               </div>
             </div>
@@ -188,11 +212,17 @@ function JobTypesTab({ register }: { register: Saver }) {
             <span className="text-xs" style={{ color: "var(--text-secondary)" }}>{t.duration}m</span>
             <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full inline-block w-fit"
               style={{ backgroundColor: "var(--bg-input)", color: "var(--text-secondary)" }}>{JOB_TYPE_CATEGORY_LABELS[t.category]}</span>
-            <div className="flex justify-center"><Toggle on={t.active} onChange={() => toggle(t.id)} /></div>
+            <div className="flex justify-center">
+              {t.core
+                ? <span title="Core type — stays active" style={{ opacity: 0.4, cursor: "not-allowed" }}><Toggle on onChange={() => {}} /></span>
+                : <Toggle on={t.active} onChange={() => toggle(t.id)} />}
+            </div>
             <div className="flex items-center gap-1 justify-end">
               <button onClick={() => startEdit(t)} className="p-1.5 rounded-lg hover:bg-[var(--bg-input)]" style={{ color: "var(--text-muted)" }}><Pencil className="w-3.5 h-3.5" /></button>
-              <button onClick={() => remove(t.id)} className="p-1.5 rounded-lg hover:bg-red-50" style={{ color: "#d1d5db" }}
-                onMouseEnter={e => (e.currentTarget.style.color = "#ef4444")} onMouseLeave={e => (e.currentTarget.style.color = "#d1d5db")}><Trash2 className="w-3.5 h-3.5" /></button>
+              {t.core
+                ? <span className="p-1.5" title="Core type — can't be deleted" style={{ color: "var(--text-muted)", opacity: 0.5 }}><Lock className="w-3.5 h-3.5" /></span>
+                : <button onClick={() => remove(t.id)} className="p-1.5 rounded-lg hover:bg-red-50" style={{ color: "#d1d5db" }}
+                    onMouseEnter={e => (e.currentTarget.style.color = "#ef4444")} onMouseLeave={e => (e.currentTarget.style.color = "#d1d5db")}><Trash2 className="w-3.5 h-3.5" /></button>}
             </div>
           </div>
         ))}
@@ -247,6 +277,7 @@ function JobStatusesTab({ register }: { register: Saver }) {
   useEffect(() => { register(save, reset, dirty, saved); });
 
   const sorted = [...items].sort((a, b) => a.order - b.order);
+  const editingStatus = items.find(s => s.id === editingId);
 
   function Form() {
     return (
@@ -255,6 +286,11 @@ function JobStatusesTab({ register }: { register: Saver }) {
         <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: "#4f46e5" }}>
           {editingId ? "Edit Status" : "New Status"}
         </p>
+        {editingStatus?.core && (
+          <p className="text-[11px] rounded-lg px-3 py-2" style={{ backgroundColor: "var(--bg-surface-2)", color: "var(--text-muted)" }}>
+            This is a core status that drives the job lifecycle and dispatch lanes. You can rename or recolor it, but its key can&apos;t change and it can&apos;t be deleted.
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Name *</label>
@@ -264,10 +300,14 @@ function JobStatusesTab({ register }: { register: Saver }) {
               style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }} />
           </div>
           <div>
-            <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Key</label>
-            <input value={form.key} onChange={e => setForm(f => ({ ...f, key: jcSlug(e.target.value) }))}
+            <label className="text-xs font-medium mb-1 flex items-center gap-1.5" style={{ color: "var(--text-secondary)" }}>
+              Key {editingStatus?.core && <Lock className="w-3 h-3" style={{ color: "var(--text-muted)" }} />}
+            </label>
+            <input value={form.key} readOnly={editingStatus?.core}
+              onChange={e => { if (!editingStatus?.core) setForm(f => ({ ...f, key: jcSlug(e.target.value) })); }}
+              title={editingStatus?.core ? "Core status — key is locked because the job lifecycle references it" : undefined}
               className="w-full rounded-lg px-3 py-2 text-sm font-mono outline-none"
-              style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-input)", color: "var(--text-primary)" }} />
+              style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-input)", color: "var(--text-primary)", opacity: editingStatus?.core ? 0.6 : 1, cursor: editingStatus?.core ? "not-allowed" : "text" }} />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -338,15 +378,22 @@ function JobStatusesTab({ register }: { register: Saver }) {
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
               <span className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{s.name}</span>
+              {s.core && <CoreBadge />}
             </div>
             <span className="text-xs font-mono truncate" style={{ color: "var(--text-muted)" }}>{s.key}</span>
             <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full inline-block w-fit"
               style={{ backgroundColor: "var(--bg-input)", color: "var(--text-secondary)" }}>{JOB_STATUS_CATEGORY_LABELS[s.category]}</span>
-            <div className="flex justify-center"><Toggle on={s.active} onChange={() => toggle(s.id)} /></div>
+            <div className="flex justify-center">
+              {s.core
+                ? <span title="Core status — stays active" style={{ opacity: 0.4, cursor: "not-allowed" }}><Toggle on onChange={() => {}} /></span>
+                : <Toggle on={s.active} onChange={() => toggle(s.id)} />}
+            </div>
             <div className="flex items-center gap-1 justify-end">
               <button onClick={() => startEdit(s)} className="p-1.5 rounded-lg hover:bg-[var(--bg-input)]" style={{ color: "var(--text-muted)" }}><Pencil className="w-3.5 h-3.5" /></button>
-              <button onClick={() => remove(s.id)} className="p-1.5 rounded-lg hover:bg-red-50" style={{ color: "#d1d5db" }}
-                onMouseEnter={e => (e.currentTarget.style.color = "#ef4444")} onMouseLeave={e => (e.currentTarget.style.color = "#d1d5db")}><Trash2 className="w-3.5 h-3.5" /></button>
+              {s.core
+                ? <span className="p-1.5" title="Core status — can't be deleted" style={{ color: "var(--text-muted)", opacity: 0.5 }}><Lock className="w-3.5 h-3.5" /></span>
+                : <button onClick={() => remove(s.id)} className="p-1.5 rounded-lg hover:bg-red-50" style={{ color: "#d1d5db" }}
+                    onMouseEnter={e => (e.currentTarget.style.color = "#ef4444")} onMouseLeave={e => (e.currentTarget.style.color = "#d1d5db")}><Trash2 className="w-3.5 h-3.5" /></button>}
             </div>
           </div>
         ))}

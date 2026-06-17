@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FilePen, ExternalLink } from "lucide-react";
+import { FilePen, ExternalLink, FileText } from "lucide-react";
 import { ALL_QUOTES, fmt } from "@/lib/quotes/data";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
 
@@ -42,8 +42,8 @@ export default function QuotesFollowUp() {
             <Link key={q.id} href={`/quotes/${q.id}`}
               className="flex flex-1 min-h-[58px] items-center gap-3 px-4 py-3 hover:bg-[var(--bg-surface-2)] transition-colors"
               style={{ borderBottom: i < quotes.length - 1 ? "1px solid var(--border-subtle)" : "none", textDecoration: "none" }}>
-              <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-[9px] font-bold text-indigo-600 shrink-0">
-                {q.customerInitials}
+              <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "var(--bg-input)" }}>
+                <FileText className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium truncate" style={{ color: "var(--text-primary)" }}>{q.customerName}</p>

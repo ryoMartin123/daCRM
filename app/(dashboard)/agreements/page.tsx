@@ -308,8 +308,8 @@ export default function AgreementsPage() {
                     >
                       {/* Customer */}
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-600 shrink-0">
-                          {a.customerInitials}
+                        <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "var(--bg-input)" }}>
+                          <FileText className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
                         </div>
                         <div className="min-w-0">
                           <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>

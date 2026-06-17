@@ -36,7 +36,7 @@ export interface ServiceScopeTemplate {
 // ─── Seed builders ────────────────────────────────────────
 const vis = (
   name: string, frequencyKey: string, durationMin: number,
-  preferredWindow?: string, jobTypeKey = "maintenance",
+  preferredWindow?: string, jobTypeKey = "agreement_visit",
   workOrderTemplateId?: string,
 ): TemplateVisit =>
   ({ id: agrId("tv"), name, frequencyKey, durationMin, preferredWindow, jobTypeKey, workOrderTemplateId, autoGenerate: true });
@@ -51,8 +51,8 @@ const DEFAULT_VISIT_SCHEDULES: VisitScheduleTemplate[] = [
     description: "Two seasonal tune-up visits — cooling in spring, heating in fall.",
     industry: "HVAC", frequencyType: "semi_annual",
     visits: [
-      vis("Spring Cooling Tune-Up", "semi_annual", 90, "March–May", "maintenance", "wt-2"),
-      vis("Fall Heating Tune-Up",   "semi_annual", 90, "September–November", "maintenance", "wt-2"),
+      vis("Spring Cooling Tune-Up", "semi_annual", 90, "March–May", "agreement_visit", "wt-2"),
+      vis("Fall Heating Tune-Up",   "semi_annual", 90, "September–November", "agreement_visit", "wt-2"),
     ],
     active: true, order: 1,
   },
@@ -60,7 +60,7 @@ const DEFAULT_VISIT_SCHEDULES: VisitScheduleTemplate[] = [
     id: "vst-2", name: "Quarterly Commercial PM", key: "quarterly_commercial_pm",
     description: "Four preventive-maintenance visits per year for commercial sites.",
     industry: "HVAC", frequencyType: "quarterly",
-    visits: [vis("Quarterly PM Visit", "quarterly", 120, "Each quarter", "maintenance", "wt-9")],
+    visits: [vis("Quarterly PM Visit", "quarterly", 120, "Each quarter", "agreement_visit", "wt-9")],
     active: true, order: 2,
   },
   {
@@ -74,14 +74,14 @@ const DEFAULT_VISIT_SCHEDULES: VisitScheduleTemplate[] = [
     id: "vst-4", name: "Monthly Property Walkthrough", key: "monthly_property_walkthrough",
     description: "A recurring monthly walkthrough of the property.",
     industry: "Property Maintenance", frequencyType: "monthly",
-    visits: [vis("Monthly Walkthrough", "monthly", 60, "Each month", "maintenance", "wt-2")],
+    visits: [vis("Monthly Walkthrough", "monthly", 60, "Each month", "agreement_visit", "wt-2")],
     active: true, order: 4,
   },
   {
     id: "vst-5", name: "On-Demand Service Allowance", key: "on_demand_service_allowance",
     description: "No pre-scheduled visits — service booked on demand within the agreement.",
     industry: "General", frequencyType: "on_demand",
-    visits: [vis("On-Demand Service", "on_demand", 90, "As needed", "maintenance")],
+    visits: [vis("On-Demand Service", "on_demand", 90, "As needed", "agreement_visit")],
     active: true, order: 5,
   },
   {
@@ -243,12 +243,12 @@ export function serviceItemToService(s: ServiceItem): TemplateService {
 }
 
 const DEFAULT_VISIT_TEMPLATES: VisitTemplate[] = [
-  { id: "vt-1", name: "Spring Cooling Tune-Up", industry: "HVAC", frequencyKey: "semi_annual", preferredWindow: "March–May", durationMin: 90, jobTypeKey: "maintenance", workOrderTemplateId: "wt-2", autoGenerate: true, active: true, order: 1 },
-  { id: "vt-2", name: "Fall Heating Tune-Up",   industry: "HVAC", frequencyKey: "semi_annual", preferredWindow: "September–November", durationMin: 90, jobTypeKey: "maintenance", workOrderTemplateId: "wt-2", autoGenerate: true, active: true, order: 2 },
-  { id: "vt-3", name: "Quarterly PM Visit",     industry: "HVAC", frequencyKey: "quarterly", preferredWindow: "Each quarter", durationMin: 120, jobTypeKey: "maintenance", workOrderTemplateId: "wt-9", autoGenerate: true, active: true, order: 3 },
+  { id: "vt-1", name: "Spring Cooling Tune-Up", industry: "HVAC", frequencyKey: "semi_annual", preferredWindow: "March–May", durationMin: 90, jobTypeKey: "agreement_visit", workOrderTemplateId: "wt-2", autoGenerate: true, active: true, order: 1 },
+  { id: "vt-2", name: "Fall Heating Tune-Up",   industry: "HVAC", frequencyKey: "semi_annual", preferredWindow: "September–November", durationMin: 90, jobTypeKey: "agreement_visit", workOrderTemplateId: "wt-2", autoGenerate: true, active: true, order: 2 },
+  { id: "vt-3", name: "Quarterly PM Visit",     industry: "HVAC", frequencyKey: "quarterly", preferredWindow: "Each quarter", durationMin: 120, jobTypeKey: "agreement_visit", workOrderTemplateId: "wt-9", autoGenerate: true, active: true, order: 3 },
   { id: "vt-4", name: "Annual Roof Inspection", industry: "Roofing", frequencyKey: "annual", preferredWindow: "Spring", durationMin: 120, jobTypeKey: "inspection", workOrderTemplateId: "wt-4", autoGenerate: true, active: true, order: 4 },
-  { id: "vt-5", name: "Monthly Walkthrough",    industry: "Property Maintenance", frequencyKey: "monthly", preferredWindow: "Each month", durationMin: 60, jobTypeKey: "maintenance", workOrderTemplateId: "wt-2", autoGenerate: true, active: true, order: 5 },
-  { id: "vt-6", name: "On-Demand Service",      industry: "General", frequencyKey: "on_demand", preferredWindow: "As needed", durationMin: 90, jobTypeKey: "maintenance", autoGenerate: false, active: true, order: 6 },
+  { id: "vt-5", name: "Monthly Walkthrough",    industry: "Property Maintenance", frequencyKey: "monthly", preferredWindow: "Each month", durationMin: 60, jobTypeKey: "agreement_visit", workOrderTemplateId: "wt-2", autoGenerate: true, active: true, order: 5 },
+  { id: "vt-6", name: "On-Demand Service",      industry: "General", frequencyKey: "on_demand", preferredWindow: "As needed", durationMin: 90, jobTypeKey: "agreement_visit", autoGenerate: false, active: true, order: 6 },
 ];
 
 const svcItem = (id: string, name: string, industry: Industry, order: number, scopeType: ServiceScopeType = "included", applies: ServiceApplies = "per_visit"): ServiceItem =>

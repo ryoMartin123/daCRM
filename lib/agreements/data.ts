@@ -440,7 +440,7 @@ export function materializeVisitJob(agreementId: string, visitId: string, ctx: M
     customerName: agreement.customer, customerInitials: agreement.customerInitials,
     locationName: agreement.location,
     title: `${agreement.type} — ${visit.label}`,
-    type: "maintenance",
+    type: "agreement_visit",
     scheduledDate: date, scheduledTime: ctx.scheduledTime, durationMinutes: ctx.durationMinutes,
     assignedTo: tech, assignedToInitials: tech ? visitInitials(tech) : "",
     dispatchType: "agreement_visit", sourceModule: "agreements", sourceRefId: visitId,

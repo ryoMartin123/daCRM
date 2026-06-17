@@ -8,7 +8,7 @@ import {
   TrendingUp, Briefcase, FolderKanban, ClipboardList, Image as ImageIcon,
   FileText, ChevronRight, Plus, Pencil, LayoutDashboard,
   Settings2, ArrowLeft, CalendarClock, ListChecks,
-  Package, Tag, Percent, FileStack, FilePen, Lock,
+  Package, Tag, Percent, FileStack, FilePen, Lock, BookOpen,
 } from "lucide-react";
 import { useTheme } from "@/components/providers/ThemeProvider";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
@@ -33,6 +33,7 @@ const TasksSettingsSection      = dynamic(() => import("@/components/settings/Ta
 const ItemsCategoriesSection    = dynamic(() => import("@/components/settings/ItemsCategoriesSection"),    { loading: SectionLoading, ssr: false });
 const QuoteSettingsSection      = dynamic(() => import("@/components/settings/QuoteSettingsSection"),      { loading: SectionLoading, ssr: false });
 const QuoteTemplatesSection     = dynamic(() => import("@/components/settings/QuoteTemplatesSection"),     { loading: SectionLoading, ssr: false });
+const SalesbookLibrarySection   = dynamic(() => import("@/components/settings/SalesbookLibrarySection"),   { loading: SectionLoading, ssr: false });
 const TermsConditionsSection    = dynamic(() => import("@/components/settings/TermsConditionsSection"),    { loading: SectionLoading, ssr: false });
 const TaxesFeesSection          = dynamic(() => import("@/components/settings/TaxesFeesSection"),          { loading: SectionLoading, ssr: false });
 const AgreementsSettingsSection = dynamic(() => import("@/components/settings/AgreementsSettingsSection"), { loading: SectionLoading, ssr: false });
@@ -59,7 +60,7 @@ type SectionKey =
   | "appearance" | "business_structure"
   | "organization" | "companies" | "locations" | "service_areas"
   | "pipelines" | "job_types" | "projects" | "work_orders" | "tasks" | "photo_categories" | "calendar_dispatch" | "agreements"
-  | "items_categories" | "quote_settings" | "quote_templates" | "proposal_builder" | "terms_conditions" | "taxes_fees"
+  | "items_categories" | "quote_settings" | "quote_templates" | "salesbook_library" | "proposal_builder" | "terms_conditions" | "taxes_fees"
   | "users" | "roles" | "security"
   | "marketing" | "communication"
   | "integrations" | "industry" | "custom_fields" | "dashboards" | "billing" | "import_export";
@@ -74,8 +75,8 @@ type View =
   | { mode: "category"; category: CategoryKey }
   | { mode: "section"; category: CategoryKey; section: SectionKey; sub?: { key: string; label: string } | null };
 
-// Props the Agreements hub section needs to drive its module sub-navigation.
-type AgreementsProps = { activeModule: string | null; onOpen: (key: string, label: string) => void; onBack: () => void };
+// Props a hub section needs to drive its container/module sub-navigation.
+type HubProps = { activeModule: string | null; onOpen: (key: string, label: string) => void; onBack: () => void };
 
 interface SettingItem {
   key:         SectionKey;
@@ -136,6 +137,7 @@ const CATEGORIES: Category[] = [
       { key: "items_categories", label: "Items & Categories", description: "Catalog item types, categories, and item defaults", icon: Tag },
       { key: "quote_settings",   label: "Quote Settings",     description: "Numbering, expiration, and quote workflow rules",   icon: FilePen },
       { key: "quote_templates",  label: "Quote Templates",    description: "Default quote structures and section toggles",      icon: FileStack },
+      { key: "salesbook_library",label: "Salesbook Library",  description: "Premium proposal libraries to copy and customize",  icon: BookOpen },
       { key: "proposal_builder", label: "Proposal Builder",   description: "Proposal templates, section library, terms, and branding", icon: FilePen },
       { key: "terms_conditions", label: "Terms & Conditions", description: "Reusable terms blocks for quotes and invoices",     icon: FileText },
       { key: "taxes_fees",       label: "Taxes & Fees",       description: "Default tax rate, taxable types, and fees",         icon: Percent },
@@ -203,6 +205,7 @@ const SECTION_LAYERS: Record<SectionKey, SectionLayers> = {
   items_categories:   ["org", "company"],
   quote_settings:     ["org", "company", "location"],
   quote_templates:    ["org", "company"],
+  salesbook_library:  ["org", "company"],
   proposal_builder:   ["org", "company"],
   terms_conditions:   ["org", "company"],
   taxes_fees:         ["org", "company", "location"],
@@ -218,6 +221,11 @@ const SECTION_LAYERS: Record<SectionKey, SectionLayers> = {
   billing:            ["org"],
   import_export:      ["org"],
 };
+
+// Sections that render as a hub: a container picker first, then the chosen
+// container's tabs. On the picker there's nothing scope-specific to edit, so the
+// editing-scope header + gate are hidden until a container is open.
+const HUB_SECTIONS = new Set<SectionKey>(["agreements", "calendar_dispatch"]);
 
 // ─── Shared primitives ────────────────────────────────────
 function SectionHeader({ title, subtitle, action }: { title: string; subtitle: string; action?: React.ReactNode }) {
@@ -866,7 +874,7 @@ export default function SettingsPage() {
   function goSection(c: CategoryKey, s: SectionKey)            { setView({ mode: "section", category: c, section: s, sub: null }); }
 
   // ── Section renderer ──────────────────────────────────────
-  function renderSection(s: SectionKey, agProps?: AgreementsProps) {
+  function renderSection(s: SectionKey, hubProps?: HubProps) {
     switch (s) {
       case "appearance":         return <AppearanceSection />;
       case "business_structure": return <BusinessStructureSection />;
@@ -878,11 +886,15 @@ export default function SettingsPage() {
       case "job_types":          return <JobConfigSection />;
       case "projects":           return <ProjectsSection />;
       case "photo_categories":   return <PhotoCategoriesSection />;
-      case "calendar_dispatch":  return <CalendarDispatchSection />;
+      case "calendar_dispatch":  return <CalendarDispatchSection
+        activeModule={hubProps?.activeModule ?? null}
+        onOpen={hubProps?.onOpen ?? (() => {})}
+        onBack={hubProps?.onBack ?? (() => {})} />;
       case "tasks":              return <TasksSettingsSection />;
       case "items_categories":   return <ItemsCategoriesSection />;
       case "quote_settings":     return <QuoteSettingsSection />;
       case "quote_templates":    return <QuoteTemplatesSection />;
+      case "salesbook_library":  return <SalesbookLibrarySection />;
       case "proposal_builder":   return <ProposalBuilderSection />;
       case "terms_conditions":   return <TermsConditionsSection />;
       case "taxes_fees":         return <TaxesFeesSection />;
@@ -890,9 +902,9 @@ export default function SettingsPage() {
       case "custom_fields":      return <CustomFieldsSection />;
       case "work_orders":    return <WorkOrderTemplatesSection />;
       case "agreements":     return <AgreementsSettingsSection
-        activeModule={agProps?.activeModule ?? null}
-        onOpen={agProps?.onOpen ?? (() => {})}
-        onBack={agProps?.onBack ?? (() => {})} />;
+        activeModule={hubProps?.activeModule ?? null}
+        onOpen={hubProps?.onOpen ?? (() => {})}
+        onBack={hubProps?.onBack ?? (() => {})} />;
       case "users":          return <UsersSection />;
       case "roles":          return <RolesSection />;
       case "security":       return <ComingSoon label="Security"
@@ -933,8 +945,12 @@ export default function SettingsPage() {
     const item = cat.items.find(i => i.key === view.section)!;
     const sub = view.sub ?? null;
     const clearSub = () => setView(v => v.mode === "section" ? { ...v, sub: null } : v);
-    // Agreements is a hub: its modules add a 4th breadcrumb level + dedicated page.
-    const agProps: AgreementsProps | undefined = view.section === "agreements" ? {
+    // Hub sections (Agreements, Calendar/Dispatch) drill into a container — a 4th
+    // breadcrumb level + dedicated page. On the picker (no container open) there's
+    // nothing scope-specific yet, so the scope header + gate stay hidden.
+    const isHub = HUB_SECTIONS.has(view.section);
+    const onPicker = isHub && !sub;
+    const hubProps: HubProps | undefined = isHub ? {
       activeModule: sub?.key ?? null,
       onOpen: (key, label) => setView(v => v.mode === "section" ? { ...v, sub: { key, label } } : v),
       onBack: clearSub,
@@ -968,12 +984,16 @@ export default function SettingsPage() {
           </div>
           <SettingsSaveSlot />
         </div>
-        <EditingScopeHeader sectionLayers={SECTION_LAYERS[view.section] ?? "any"} />
-        <SectionGate layers={SECTION_LAYERS[view.section] ?? "any"} title={item?.label ?? "This setting"}>
-          <Commentable anchor={{ recordType: "settings", recordId: view.section, recordLabel: item?.label ?? "Settings" }}>
-            {renderSection(view.section, agProps)}
-          </Commentable>
-        </SectionGate>
+        {!onPicker && <EditingScopeHeader sectionLayers={SECTION_LAYERS[view.section] ?? "any"} />}
+        <Commentable anchor={{ recordType: "settings", recordId: view.section, recordLabel: item?.label ?? "Settings" }}>
+          {onPicker
+            ? renderSection(view.section, hubProps)
+            : (
+              <SectionGate layers={SECTION_LAYERS[view.section] ?? "any"} title={item?.label ?? "This setting"}>
+                {renderSection(view.section, hubProps)}
+              </SectionGate>
+            )}
+        </Commentable>
       </div>
     );
   }

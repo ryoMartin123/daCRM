@@ -1,13 +1,14 @@
 "use client";
 
+import { useMemo } from "react";
 import { Building2 } from "lucide-react";
-import { companies } from "@/lib/hierarchy/data";
+import { getAllCompanies } from "@/lib/hierarchy/data";
 import { ALL_JOBS } from "@/lib/jobs/data";
 import { ALL_LEADS } from "@/lib/leads/data";
 import { ALL_INVOICES, fmt } from "@/lib/quotes/data";
 
 export default function CompanyPerformance() {
-  const stats = companies.filter(c => c.status === "active").map(co => {
+  const stats = useMemo(() => getAllCompanies().filter(c => c.status === "active").map(co => {
     const activeJobs = ALL_JOBS.filter(j =>
       j.companyId === co.id &&
       (j.status === "in_progress" || j.status === "en_route" || j.status === "scheduled")
@@ -21,7 +22,7 @@ export default function CompanyPerformance() {
       .reduce((s, i) => s + i.balanceDue, 0);
 
     return { co, activeJobs, openLeads, wonLeads, outstanding };
-  });
+  }), []);
 
   const industryColors: Record<string, string> = {
     hvac: "#6366f1", roofing: "#0891b2", plumbing: "#0d9488", electrical: "#d97706",

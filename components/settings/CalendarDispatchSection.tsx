@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import {
-  Plus, Pencil, Trash2, Check, ChevronUp, ChevronDown, X, Lock, Settings2,
+  Plus, Pencil, Trash2, Check, ChevronUp, ChevronDown, ChevronRight, X, Lock, Settings2,
   Star, CalendarDays, CalendarRange, Calendar, Clock, LayoutGrid, Users, Layers, Inbox, Search,
 } from "lucide-react";
 import { useRegisterSaveAction } from "@/components/settings/SettingsActions";
@@ -13,12 +13,13 @@ import { getAssignableRoles, getRoleLabel } from "@/lib/roles/store";
 import {
   getStore, saveStore, scopeKeyOf, resolveFromStore, resolveParent,
   defaultDispatchSettings, formatHour, newBlockId, newBoardId,
-  MOCK_JOB_TYPES, BOARD_TYPE_LABELS, LAYER_LABEL,
+  BOARD_TYPE_LABELS, BOARD_TYPE_JOB_TYPE, LAYER_LABEL,
   type DispatchStore, type ScopedDispatchConfig, type DispatchSettings,
   type SettingsServiceBlock, type DispatchBoard, type BoardType,
   type ScopeLevel, type DispatchSection,
   type CalendarViewMode, type HourIncrement, type HourLabelStyle,
 } from "@/lib/calendar/settings";
+import { getJobTypes, jobTypeLabel } from "@/lib/job-config/data";
 import {
   SOURCE_TYPE_LABELS, newQueueViewId,
   type QueueView, type QueueFilters, type QueueSourceType,
@@ -50,6 +51,14 @@ const TABS: { key: SectionTab; label: string; icon: typeof Clock }[] = [
   { key: "boards",   label: "Dispatch Boards", icon: Users },
   { key: "queue",    label: "Queue Views",     icon: Inbox },
   { key: "layers",   label: "Calendar Layers", icon: Layers },
+];
+
+// The section is a hub: the tabs are grouped into containers (cards). Picking a
+// container opens its tabs. Mirrors the Agreements settings layout.
+type ContainerDef = { key: string; label: string; description: string; icon: typeof Clock; tabs: SectionTab[] };
+const CONTAINERS: ContainerDef[] = [
+  { key: "calendar", label: "Calendar Display", description: "Default view, working hours, service blocks, and which record layers show on the calendar.", icon: CalendarDays, tabs: ["defaults", "blocks", "layers"] },
+  { key: "dispatch", label: "Dispatch & Queues", description: "Dispatch boards and the unscheduled queue views that feed them.", icon: Users, tabs: ["boards", "queue"] },
 ];
 
 // ─── Primitives ───────────────────────────────────────────
@@ -223,6 +232,74 @@ function PeoplePicker({ title, allNames, suggested, selected, onToggle, emptyLab
   );
 }
 
+// Same add-from-a-list UX as PeoplePicker, but for simple string tags like job
+// types: selected values show as removable chips and the "Add" button opens a
+// searchable, checkable list. Keeps board Job Types consistent with how crews and
+// dispatchers are added, instead of a row of toggle pills.
+function TagPicker({ title, all, selected, onToggle, emptyLabel, searchPlaceholder, labels }: {
+  title: string;
+  all: string[];
+  selected: string[];
+  onToggle: (v: string) => void;
+  emptyLabel: string;
+  searchPlaceholder?: string;
+  labels?: Record<string, string>;   // value → display label (value stays the stored key)
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const ql = q.trim().toLowerCase();
+  const labelOf = (v: string) => labels?.[v] ?? v;
+  const list = all.filter(v => !ql || labelOf(v).toLowerCase().includes(ql));
+  const selectedVals = all.filter(v => selected.includes(v));
+
+  return (
+    <>
+      <div className="w-full min-h-[38px] rounded-lg px-2.5 py-1.5 flex flex-wrap items-center gap-1.5"
+        style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)" }}>
+        {selectedVals.length === 0 && <span className="text-sm" style={{ color: "var(--text-muted)" }}>{emptyLabel}</span>}
+        {selectedVals.map(v => (
+          <span key={v} className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full" style={{ backgroundColor: "var(--accent-soft-bg)", color: "var(--accent-text)" }}>
+            {labelOf(v)}
+            <span role="button" onClick={() => onToggle(v)} className="cursor-pointer hover:opacity-70"><X className="w-2.5 h-2.5" /></span>
+          </span>
+        ))}
+        <button type="button" onClick={() => { setQ(""); setOpen(true); }}
+          className="ml-auto flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-lg shrink-0"
+          style={{ border: "1px solid var(--border)", color: "var(--accent-text)" }}>
+          <Plus className="w-3 h-3" /> Add
+        </button>
+      </div>
+
+      {open && (
+        <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4" onClick={() => setOpen(false)}>
+          <div className="w-full max-w-md max-h-[80vh] flex flex-col rounded-2xl overflow-hidden" onClick={e => e.stopPropagation()}
+            style={{ backgroundColor: "var(--bg-surface)", boxShadow: "0 16px 48px rgba(0,0,0,0.24)" }}>
+            <div className="flex items-center justify-between px-5 py-3.5 shrink-0" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{title}</p>
+              <button onClick={() => setOpen(false)} style={{ color: "var(--text-muted)" }}><X className="w-4 h-4" /></button>
+            </div>
+            <div className="px-5 py-2.5 shrink-0" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+              <div className="flex items-center gap-2 rounded-lg px-2.5 py-1.5" style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface-2)" }}>
+                <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted)" }} />
+                <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder={searchPlaceholder ?? "Search…"} className="w-full text-sm outline-none bg-transparent" style={{ color: "var(--text-primary)" }} />
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto thin-scroll-y px-2 py-2">
+              {list.length === 0
+                ? <p className="px-3 py-3 text-xs" style={{ color: "var(--text-muted)" }}>No matches.</p>
+                : list.map(v => <PersonRow key={v} name={labelOf(v)} checked={selected.includes(v)} onToggle={() => onToggle(v)} />)}
+            </div>
+            <div className="px-5 py-3 flex items-center justify-between shrink-0" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>{selected.length} selected</span>
+              <button onClick={() => setOpen(false)} className="px-4 py-1.5 rounded-lg text-sm font-medium text-white" style={{ backgroundColor: "#4f46e5" }}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // Modern multi-select: selected items show as removable chips; the dropdown is
 // searchable. Used for picking dispatchers, technicians, and roles on a board.
 function MultiSelect({ options, selected, onToggle, placeholder }: {
@@ -307,7 +384,11 @@ function cloneSection(section: DispatchSection, src: DispatchSettings): ScopedDi
 }
 
 // ─── Section ──────────────────────────────────────────────
-export default function CalendarDispatchSection() {
+export default function CalendarDispatchSection({ activeModule, onOpen, onBack }: {
+  activeModule: string | null;
+  onOpen: (key: string, label: string) => void;
+  onBack: () => void;
+}) {
   const [store, setStore] = useState<DispatchStore | null>(null);
   // Scope comes from the page-level Editing Scope (org → company → location).
   // Settings cascade and boards are scoped to the layer being edited.
@@ -337,6 +418,47 @@ export default function CalendarDispatchSection() {
   useRegisterSaveAction({ dirty, saved, onSave: handleSave });
 
   if (!store) return <div className="p-6 text-sm" style={{ color: "var(--text-muted)" }}>Loading…</div>;
+
+  // ── Hub: pick a container before any scoped settings show ──
+  if (!activeModule) {
+    return (
+      <div className="space-y-5">
+        <div>
+          <h2 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>Calendar / Dispatch</h2>
+          <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>
+            Pick an area to configure its settings.
+          </p>
+        </div>
+        <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" }}>
+          {CONTAINERS.map(c => {
+            const Icon = c.icon;
+            return (
+              <button key={c.key} onClick={() => onOpen(c.key, c.label)}
+                className="flex items-start gap-3 p-4 rounded-xl text-left w-full transition-all group hover:shadow-md cursor-pointer"
+                style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "var(--bg-surface-2)" }}>
+                  <Icon className="w-4 h-4" style={{ color: "#4f46e5" }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{c.label}</p>
+                  <p className="text-xs mt-0.5 leading-snug" style={{ color: "var(--text-muted)" }}>{c.description}</p>
+                </div>
+                <ChevronRight className="w-4 h-4 shrink-0 mt-0.5 opacity-0 group-hover:opacity-40 transition-opacity" style={{ color: "var(--text-muted)" }} />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Container open: show only its tabs ──
+  const activeContainer = CONTAINERS.find(c => c.key === activeModule);
+  if (!activeContainer) { onBack(); return null; }
+  const containerTabs = TABS.filter(t => activeContainer.tabs.includes(t.key));
+  // Snap the active tab into the open container so navigating between containers
+  // never leaves a stale tab from the other one selected.
+  const curTab: SectionTab = activeContainer.tabs.includes(tab) ? tab : activeContainer.tabs[0];
 
   const scopeKey = scopeKeyOf(level, companyId, locationId);
   const scopeCfg: ScopedDispatchConfig = store.scopes[scopeKey] ?? {};
@@ -433,10 +555,14 @@ export default function CalendarDispatchSection() {
     const co = level === "org" ? "" : companyId;
     const loc = level === "location" ? locationId : "";
     update(next => {
+      // The first board created for a company+location becomes that branch's
+      // default — it acts as the catch-all that claims any in-scope work the
+      // branch's other (Install/Service/…) boards don't. Later boards default off.
+      const firstInScope = !next.boards.some(b => b.companyId === co && b.locationId === loc);
       next.boards.push({
         id, name: "New Board", companyId: co, locationId: loc, boardType: "custom",
         dispatchers: [], techNames: [], roleKeys: [], jobTypes: [], serviceAreaIds: [],
-        active: true, isDefault: false,
+        active: true, isDefault: firstInScope,
       });
     });
     setEditingBoard(id);
@@ -511,10 +637,8 @@ export default function CalendarDispatchSection() {
     <div className="space-y-5">
       {/* Header — Save lives in the shared top-right slot (see SettingsSaveSlot) */}
       <div>
-        <h2 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>Calendar / Dispatch</h2>
-        <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>
-          Organization defaults for the dispatch board, service blocks, boards, queue views, and calendar layers.
-        </p>
+        <h2 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>{activeContainer.label}</h2>
+        <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>{activeContainer.description}</p>
       </div>
 
       {dirty && (
@@ -523,10 +647,10 @@ export default function CalendarDispatchSection() {
         </div>
       )}
 
-      {/* Tabs */}
+      {/* Tabs — only the ones in this container */}
       <div className="flex items-center gap-1 flex-wrap">
-        {TABS.map(t => {
-          const active = tab === t.key;
+        {containerTabs.map(t => {
+          const active = curTab === t.key;
           return (
             <button key={t.key} onClick={() => setTab(t.key)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
@@ -538,7 +662,7 @@ export default function CalendarDispatchSection() {
       </div>
 
       {/* ── DEFAULTS TAB (default view/mode + hourly grid) ── */}
-      {tab === "defaults" && (
+      {curTab === "defaults" && (
         <>
           {/* Default view — icon cards */}
           <SettingsCard icon={CalendarDays} title="Default View" subtitle="What the Dispatching module opens to."
@@ -622,7 +746,7 @@ export default function CalendarDispatchSection() {
       )}
 
       {/* ── SERVICE BLOCKS TAB ── */}
-      {tab === "blocks" && (
+      {curTab === "blocks" && (
         <SettingsCard icon={LayoutGrid} title="Service Blocks" subtitle="Arrival windows shown in Service Blocks mode."
           action={
             <div className="flex items-center gap-2">
@@ -684,7 +808,7 @@ export default function CalendarDispatchSection() {
       )}
 
       {/* ── DISPATCH BOARDS TAB ── */}
-      {tab === "boards" && (
+      {curTab === "boards" && (
         <SettingsCard icon={Users} title="Dispatch Boards / Teams" subtitle="Group dispatchers, technicians, and job types into a board. Assign members by user or by role."
           action={
             <button onClick={addBoard} disabled={!scopeReady} title={scopeReady ? "Add board" : "Select a company / branch first"}
@@ -722,7 +846,7 @@ export default function CalendarDispatchSection() {
       )}
 
       {/* ── CALENDAR LAYERS TAB ── */}
-      {tab === "layers" && (
+      {curTab === "layers" && (
         <SettingsCard icon={Layers} title="Calendar Layers" subtitle="Which record types appear on the calendar and their colors."
           action={level !== "org" ? <OverrideToggle on={isOverridden("layers")} onChange={v => setOverride("layers", v)} /> : undefined}>
           {!isOverridden("layers") ? (
@@ -760,7 +884,7 @@ export default function CalendarDispatchSection() {
       )}
 
       {/* ── QUEUE VIEWS TAB ── */}
-      {tab === "queue" && (
+      {curTab === "queue" && (
         <SettingsCard icon={Inbox} title="Unscheduled Queue Views" subtitle="The core categories (Jobs, Agreements, Tasks, Quotes, Projects) are locked and always shown. Add your own views on top — each view is a filter."
           action={
             <button onClick={addQueueView} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white" style={{ backgroundColor: "#4f46e5" }}>
@@ -834,7 +958,7 @@ function BoardRow({ board, onEdit, onRemove, onSetDefault }: {
           <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs" style={{ color: "var(--text-secondary)" }}>
             <span><span style={{ color: "var(--text-muted)" }}>Dispatchers:</span> {board.dispatchers.length ? board.dispatchers.join(", ") : "—"}</span>
             <span><span style={{ color: "var(--text-muted)" }}>Members:</span> {members.length ? members.join(", ") : "All technicians"}</span>
-            <span><span style={{ color: "var(--text-muted)" }}>Job types:</span> {board.jobTypes.length ? board.jobTypes.join(", ") : "All"}</span>
+            <span><span style={{ color: "var(--text-muted)" }}>Job types:</span> {board.jobTypes.length ? board.jobTypes.map(jobTypeLabel).join(", ") : "All"}</span>
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
@@ -859,12 +983,32 @@ function BoardEditor({ board, onPatch, onToggleMember, onDone }: {
   const bCo = board.companyId || undefined;
   const bLoc = board.locationId || undefined;
   const allStaff = getBoardCandidateNames(bCo, bLoc);
+  // Job-type options come from the configured Job Types (active ones), keyed. Any
+  // key already on the board is unioned in so a stale/inactive selection stays
+  // visible and removable. The board stores keys; the picker shows labels.
+  const jtKeys = Array.from(new Set([...getJobTypes().filter(t => t.active).map(t => t.key), ...board.jobTypes]));
+  const jtLabels = Object.fromEntries(jtKeys.map(k => [k, jobTypeLabel(k)]));
+  // Picking a board type stamps the type label and, when that type maps to a job
+  // type (Install/Maintenance), auto-adds the matching Job Types chip so the two
+  // can't drift apart. Service/Commercial/Custom leave Job Types as-is.
+  function changeBoardType(t: BoardType) {
+    const jt = BOARD_TYPE_JOB_TYPE[t];
+    const jobTypes = jt && !board.jobTypes.includes(jt) ? [...board.jobTypes, jt] : board.jobTypes;
+    onPatch({ boardType: t, jobTypes });
+  }
   return (
     <div className="rounded-xl p-4 space-y-4" style={{ border: "2px solid #c7d2fe", backgroundColor: "var(--bg-surface)" }}>
       <div>
         <FieldLabel>Board Name</FieldLabel>
         <input value={board.name} onChange={e => onPatch({ name: e.target.value })}
           className="w-full rounded-lg px-3 py-2 text-sm outline-none" style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }} />
+      </div>
+      <div>
+        <FieldLabel>Board Type</FieldLabel>
+        <UiSelect value={board.boardType}
+          onChange={v => changeBoardType(v as BoardType)}
+          options={(Object.keys(BOARD_TYPE_LABELS) as BoardType[]).map(t => ({ value: t, label: BOARD_TYPE_LABELS[t] }))} />
+        <p className="text-[11px] mt-1.5" style={{ color: "var(--text-muted)" }}>Install and Maintenance add their matching job type below automatically. Service, Commercial, and Custom leave job types up to you.</p>
       </div>
       <div>
         <FieldLabel>Dispatchers — who runs this board</FieldLabel>
@@ -881,7 +1025,12 @@ function BoardEditor({ board, onPatch, onToggleMember, onDone }: {
         <MultiSelect options={roleDefs.map(r => ({ value: r.key, label: r.label }))} selected={board.roleKeys ?? []} onToggle={v => onToggleMember("roleKeys", v)} placeholder="Select roles…" />
         <p className="text-[11px] mt-1.5" style={{ color: "var(--text-muted)" }}>Anyone holding a selected role is automatically a member. Only members (added by name or role) appear on the board — dispatchers don&apos;t, unless they&apos;re also members.</p>
       </div>
-      <div><FieldLabel>Job Types</FieldLabel><ChipMulti all={MOCK_JOB_TYPES} selected={board.jobTypes} onToggle={v => onToggleMember("jobTypes", v)} /></div>
+      <div>
+        <FieldLabel>Job Types — work this board handles</FieldLabel>
+        <TagPicker title="Add job types" all={jtKeys} labels={jtLabels} selected={board.jobTypes}
+          onToggle={v => onToggleMember("jobTypes", v)} emptyLabel="Any job type" searchPlaceholder="Search job types…" />
+        <p className="text-[11px] mt-1.5" style={{ color: "var(--text-muted)" }}>The board claims queue items and jobs matching any of these types. Leave empty to rely on the branch&apos;s default board.</p>
+      </div>
       <div className="flex justify-end pt-1">
         <button onClick={onDone} className="px-4 py-1.5 rounded-lg text-sm font-medium text-white" style={{ backgroundColor: "#4f46e5" }}>Done</button>
       </div>
@@ -898,7 +1047,7 @@ function queueFilterSummary(f: QueueFilters): string {
   const parts: string[] = [];
   if (f.sourceTypes?.length) parts.push(f.sourceTypes.map(s => SOURCE_TYPE_LABELS[s]).join(", "));
   if (f.priorities?.length) parts.push(f.priorities.map(cap).join("/"));
-  if (f.jobTypes?.length) parts.push(f.jobTypes.join(", "));
+  if (f.jobTypes?.length) parts.push(f.jobTypes.map(jobTypeLabel).join(", "));
   if (f.dueWithinDays != null) parts.push(f.dueWithinDays === 0 ? "Due today" : `Due ≤ ${f.dueWithinDays}d`);
   return parts.length ? parts.join(" · ") : "All items (no filter)";
 }
@@ -1000,6 +1149,10 @@ function CustomViewSettings({ view, onPatch, onToggleFilter, onSetDue }: {
   onSetDue: (days: number | undefined) => void;
 }) {
   const sourceKeys = Object.keys(SOURCE_TYPE_LABELS) as QueueSourceType[];
+  // Job-type filter options: configured active types (keyed) plus any stale key the
+  // view already filters on, so it stays visible/removable. Stored as keys, shown as labels.
+  const jtFilterKeys = Array.from(new Set([...getJobTypes().filter(t => t.active).map(t => t.key), ...(view.filters.jobTypes ?? [])]));
+  const jtFilterLabels = Object.fromEntries(jtFilterKeys.map(k => [k, jobTypeLabel(k)]));
   return (
     <div className="space-y-4 pt-3">
       <div className="grid grid-cols-2 gap-3">
@@ -1021,7 +1174,7 @@ function CustomViewSettings({ view, onPatch, onToggleFilter, onSetDue }: {
       </div>
       <div><FieldLabel>Source Types</FieldLabel><ChipMulti all={sourceKeys} labels={SOURCE_TYPE_LABELS} selected={view.filters.sourceTypes ?? []} onToggle={v => onToggleFilter("sourceTypes", v)} /></div>
       <div><FieldLabel>Priority</FieldLabel><ChipMulti all={PRIORITY_OPTIONS} labels={PRIORITY_LABELS} selected={view.filters.priorities ?? []} onToggle={v => onToggleFilter("priorities", v)} /></div>
-      <div><FieldLabel>Job Types</FieldLabel><ChipMulti all={MOCK_JOB_TYPES} selected={view.filters.jobTypes ?? []} onToggle={v => onToggleFilter("jobTypes", v)} /></div>
+      <div><FieldLabel>Job Types</FieldLabel><ChipMulti all={jtFilterKeys} labels={jtFilterLabels} selected={view.filters.jobTypes ?? []} onToggle={v => onToggleFilter("jobTypes", v)} /></div>
       <div className="flex items-center gap-3">
         <FieldLabel>Due Within</FieldLabel>
         <div className="-mt-1.5 w-44">

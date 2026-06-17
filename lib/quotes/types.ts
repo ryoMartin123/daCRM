@@ -12,6 +12,50 @@ export type QuoteStatus =
   | "expired"
   | "converted";
 
+// How a quote was created — drives which editing experience it opens.
+//   quick    = simple catalog line-item quote (Quick Quote page)
+//   template = polished proposal from a salesbook/template (Proposal Builder)
+//   custom   = advanced pricing wizard → custom Proposal Builder
+export type QuoteMode = "quick" | "template" | "custom";
+
+export const QUOTE_MODE_LABELS: Record<QuoteMode, string> = {
+  quick:    "Quick Quote",
+  template: "Proposal From Template",
+  custom:   "Custom Proposal",
+};
+
+// Pricing-wizard worksheet + computed results, stored on a custom-mode quote.
+// Internal (rep-only) — not shown to the customer on the proposal.
+export interface QuotePricing {
+  // Cost inputs
+  equipmentCost: number;
+  materialCost: number;
+  laborHours: number;
+  laborRate: number;
+  laborBurdenPct: number;
+  subcontractorCost: number;
+  permitCost: number;
+  craneCost: number;
+  disposalCost: number;
+  miscCost: number;
+  // Margin / target inputs
+  overheadPct: number;
+  commissionPct: number;
+  financingPct: number;
+  targetGrossMarginPct: number;
+  targetNetProfitPct: number;
+  financeMonths: number;
+  // Computed results
+  totalCost: number;
+  recommendedSellPrice: number;
+  sellPrice: number;
+  grossProfit: number;
+  grossMargin: number;       // 0–1
+  netProfit: number;
+  netMargin: number;         // 0–1
+  monthly: number;           // financing estimate
+}
+
 export type InvoiceStatus =
   | "draft"
   | "sent"
@@ -52,6 +96,7 @@ export interface Quote {
   quoteNumber: string;
   title: string;
   status: QuoteStatus;
+  quoteMode?: QuoteMode;   // how the quote was created (defaults to "custom" for legacy records)
 
   subtotal: number;
   tax: number;

@@ -29,7 +29,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCustomers } from "@/components/providers/CustomerProvider";
 import EditCustomerModal from "@/components/customers/EditCustomerModal";
 import LeadWizard from "@/components/leads/LeadWizard";
-import QuickCreateQuoteModal from "@/components/quotes/QuickCreateQuoteModal";
+import QuoteTypeChooser from "@/components/quotes/create/QuoteTypeChooser";
 import { AddressAutocomplete, EMPTY_ADDRESS, type ParsedAddress } from "@/components/address/AddressAutocomplete";
 import UiSelect from "@/components/ui/Select";
 import PhotoGallery from "@/components/files/PhotoGallery";
@@ -1234,9 +1234,8 @@ function BillingTab({ id }: { id: string }) {
   return (
     <div className="space-y-6">
       {wizard && (
-        <QuickCreateQuoteModal preset={{ customerId: id, lockCustomer: true }}
-          onClose={() => setWizard(false)}
-          onContinue={(qid) => { setWizard(false); router.push(`/quotes/${qid}/builder`); }} />
+        <QuoteTypeChooser preset={{ customerId: id, lockCustomer: true }}
+          onClose={() => setWizard(false)} />
       )}
       {outstanding > 0 && (
         <div className="rounded-xl px-4 py-3 flex items-center gap-3"
@@ -1661,7 +1660,7 @@ function CustomerDetailContent({ params }: { params: Promise<{ id: string }> }) 
 
       {/* Create flows — driven from the header actions */}
       {createModal === "job"   && <JobWizard preset={{ customerId: id, lockCustomer: true }} onClose={() => setCreateModal(null)} onCreated={() => { setCreateModal(null); setRefreshKey(k => k + 1); }} />}
-      {createModal === "quote" && <QuickCreateQuoteModal preset={{ customerId: id, lockCustomer: true }} onClose={() => setCreateModal(null)} onContinue={(qid) => { setCreateModal(null); router.push(`/quotes/${qid}/builder`); }} />}
+      {createModal === "quote" && <QuoteTypeChooser preset={{ customerId: id, lockCustomer: true }} onClose={() => setCreateModal(null)} />}
       {createModal === "lead"  && <LeadWizard preset={{ accountId: id, lockAccount: true }} onClose={() => setCreateModal(null)} onCreated={() => { setCreateModal(null); setRefreshKey(k => k + 1); }} />}
 
       {/* Edit account — mounted on open so the form re-seeds from current data */}

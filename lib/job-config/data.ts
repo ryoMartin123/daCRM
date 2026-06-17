@@ -16,6 +16,10 @@ export interface JobTypeDef {
   color:       string;            // drives the dispatch board card color
   active:      boolean;
   order:       number;
+  // Core types are required by other modules (e.g. Agreements always schedule the
+  // "agreement_visit" type). They can't be deleted/deactivated and their key — the
+  // foreign key everything resolves against — is locked. Name/color/etc. stay editable.
+  core?:       boolean;
 }
 
 export const JOB_TYPE_CATEGORY_LABELS: Record<JobTypeCategory, string> = {
@@ -26,8 +30,14 @@ export const JOB_TYPE_CATEGORY_LABELS: Record<JobTypeCategory, string> = {
 // Keys match the JobType values jobs actually carry (lib/jobs/data → JOB_TYPE_CONFIG),
 // so a job's type resolves straight to its configured color. Colors mirror the
 // JOB_TYPE_CONFIG defaults and are editable in Settings → Job Types.
+//
+// "Maintenance" is keyed "agreement_visit" — the single canonical key for all
+// maintenance work, whether a human books an ad-hoc tune-up or the agreement engine
+// auto-generates a recurring visit. It's core because Agreements depend on the key
+// always existing. (The legacy "maintenance" key still resolves for old data via
+// JOB_TYPE_CONFIG, but it's no longer a configurable type.)
 const DEFAULT_JOB_TYPES: JobTypeDef[] = [
-  { id: "jt-1", name: "Maintenance",  key: "maintenance",  description: "Scheduled preventive maintenance", duration: 90,  category: "maintenance", color: "#6366f1", active: true, order: 1 },
+  { id: "jt-agr", name: "Maintenance",  key: "agreement_visit", description: "Preventive maintenance — also used for recurring agreement visits", duration: 90,  category: "maintenance", color: "#6366f1", active: true, order: 1, core: true },
   { id: "jt-2", name: "Repair",       key: "repair",       description: "Diagnose and fix a problem",       duration: 60,  category: "service",     color: "#ef4444", active: true, order: 2 },
   { id: "jt-3", name: "Installation", key: "installation", description: "New equipment install",            duration: 240, category: "install",     color: "#10b981", active: true, order: 3 },
   { id: "jt-4", name: "Inspection",   key: "inspection",   description: "Site or equipment inspection",     duration: 60,  category: "service",     color: "#3b82f6", active: true, order: 4 },
@@ -50,6 +60,10 @@ export interface JobStatusDef {
   color:    string;
   category: JobStatusCategory;
   active:   boolean;
+  // Core statuses are referenced by the job lifecycle engine and dispatch lane
+  // mapping (and the agreement visit↔job sync rides "completed"/"canceled"). They
+  // can't be deleted/deactivated and their key is locked. See lib/jobs/lifecycle.ts.
+  core?:    boolean;
 }
 
 export const JOB_STATUS_CATEGORY_LABELS: Record<JobStatusCategory, string> = {
@@ -64,17 +78,17 @@ export const STATUS_COLORS = [
 
 const DEFAULT_JOB_STATUSES: JobStatusDef[] = [
   { id: "js-1",  name: "New",                 key: "new",                  order: 1,  color: "#6b7280", category: "open",      active: true },
-  { id: "js-2",  name: "Scheduled",           key: "scheduled",            order: 2,  color: "#6366f1", category: "scheduled", active: true },
-  { id: "js-3",  name: "Dispatched",          key: "dispatched",           order: 3,  color: "#3b82f6", category: "scheduled", active: true },
-  { id: "js-4",  name: "En Route",            key: "en_route",             order: 4,  color: "#3b82f6", category: "active",    active: true },
-  { id: "js-5",  name: "In Progress",         key: "in_progress",          order: 5,  color: "#0891b2", category: "active",    active: true },
+  { id: "js-2",  name: "Scheduled",           key: "scheduled",            order: 2,  color: "#6366f1", category: "scheduled", active: true, core: true },
+  { id: "js-3",  name: "Dispatched",          key: "dispatched",           order: 3,  color: "#3b82f6", category: "scheduled", active: true, core: true },
+  { id: "js-4",  name: "En Route",            key: "en_route",             order: 4,  color: "#3b82f6", category: "active",    active: true, core: true },
+  { id: "js-5",  name: "In Progress",         key: "in_progress",          order: 5,  color: "#0891b2", category: "active",    active: true, core: true },
   { id: "js-6",  name: "Waiting on Parts",    key: "waiting_on_parts",     order: 6,  color: "#f59e0b", category: "waiting",   active: true },
   { id: "js-7",  name: "Waiting on Customer", key: "waiting_on_customer",  order: 7,  color: "#f59e0b", category: "waiting",   active: true },
   { id: "js-8",  name: "Waiting on Approval", key: "waiting_on_approval",  order: 8,  color: "#f59e0b", category: "waiting",   active: true },
-  { id: "js-9",  name: "Completed",           key: "completed",            order: 9,  color: "#10b981", category: "completed", active: true },
-  { id: "js-10", name: "Invoiced",            key: "invoiced",             order: 10, color: "#8b5cf6", category: "completed", active: true },
-  { id: "js-11", name: "Closed",              key: "closed",               order: 11, color: "#6b7280", category: "completed", active: true },
-  { id: "js-12", name: "Canceled",            key: "canceled",             order: 12, color: "#ef4444", category: "canceled",  active: true },
+  { id: "js-9",  name: "Completed",           key: "completed",            order: 9,  color: "#10b981", category: "completed", active: true, core: true },
+  { id: "js-10", name: "Invoiced",            key: "invoiced",             order: 10, color: "#8b5cf6", category: "completed", active: true, core: true },
+  { id: "js-11", name: "Closed",              key: "closed",               order: 11, color: "#6b7280", category: "completed", active: true, core: true },
+  { id: "js-12", name: "Canceled",            key: "canceled",             order: 12, color: "#ef4444", category: "canceled",  active: true, core: true },
   { id: "js-13", name: "No Show",             key: "no_show",              order: 13, color: "#ef4444", category: "canceled",  active: true },
 ];
 
@@ -98,8 +112,17 @@ function load<T>(key: string, fallback: T[], cacheSetter: (v: T[]) => void): T[]
   }
 }
 
+// Guarantee every core default exists in a loaded list. Saved data from before a
+// core entry was introduced won't contain it, so we merge any missing ones back
+// in (other modules depend on them always being present).
+function withCore<T extends { key: string; core?: boolean }>(loaded: T[], defaults: T[]): T[] {
+  const have = new Set(loaded.map(x => x.key));
+  const missing = defaults.filter(d => d.core && !have.has(d.key));
+  return missing.length ? [...loaded, ...missing] : loaded;
+}
+
 export function getJobTypes(): JobTypeDef[] {
-  if (!_types) _types = load(TYPES_KEY, DEFAULT_JOB_TYPES, v => { _types = v; });
+  if (!_types) _types = withCore(load(TYPES_KEY, DEFAULT_JOB_TYPES, v => { _types = v; }), DEFAULT_JOB_TYPES);
   return [..._types].sort((a, b) => a.order - b.order);
 }
 export function saveJobTypes(list: JobTypeDef[]): void {
@@ -114,7 +137,7 @@ export function resetJobTypes(): JobTypeDef[] {
 }
 
 export function getJobStatuses(): JobStatusDef[] {
-  if (!_statuses) _statuses = load(STATUSES_KEY, DEFAULT_JOB_STATUSES, v => { _statuses = v; });
+  if (!_statuses) _statuses = withCore(load(STATUSES_KEY, DEFAULT_JOB_STATUSES, v => { _statuses = v; }), DEFAULT_JOB_STATUSES);
   return [..._statuses].sort((a, b) => a.order - b.order);
 }
 export function saveJobStatuses(list: JobStatusDef[]): void {
@@ -133,4 +156,33 @@ export function jcId(prefix: string): string {
 }
 export function jcSlug(name: string): string {
   return name.toLowerCase().trim().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "").slice(0, 48);
+}
+
+// ─── Job-type key ⇄ label ─────────────────────────────────
+// The KEY is the source of truth everywhere outside Settings — jobs carry it
+// (job.type), agreements write it, and dispatch boards / queue views match on it.
+// The label is for display only. These helpers convert in both directions so the
+// UI can show names while everything stored/matched stays keyed.
+
+// Humanize a key as a fallback when no configured type matches (e.g. a stale key
+// from saved data): "agreement_visit" → "Agreement Visit".
+function humanizeKey(key: string): string {
+  return key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+// Resolve a job-type key to its display label.
+export function jobTypeLabel(key: string): string {
+  if (!key) return "";
+  return getJobTypes().find(t => t.key === key)?.name ?? humanizeKey(key);
+}
+
+// Normalize a value that may be a key OR a display name into the canonical key.
+// Idempotent: a value that's already a key returns unchanged. Used to migrate
+// saved boards / queue-view filters that stored names before keys were canonical.
+export function toJobTypeKey(nameOrKey: string): string {
+  if (!nameOrKey) return nameOrKey;
+  const types = getJobTypes();
+  if (types.some(t => t.key === nameOrKey)) return nameOrKey;            // already a key
+  const byName = types.find(t => t.name.toLowerCase() === nameOrKey.toLowerCase());
+  return byName ? byName.key : jcSlug(nameOrKey);                        // name → key, else slugify
 }

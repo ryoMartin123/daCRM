@@ -419,7 +419,7 @@ function VisitTemplatesCrud({ register }: { register: Saver }) {
         { key: "dispatchBoardId", label: "Dispatch Board", type: "select", options: boardOptions },
         { key: "active", label: "Active", type: "toggle" },
       ]}
-      makeNew={() => ({ id: agrId("vt"), name: "", frequencyKey: freqOptions[0]?.value ?? "semi_annual", preferredWindow: "", durationMin: 90, jobTypeKey: "maintenance", workOrderTemplateId: "", dispatchBoardId: "", autoGenerate: true, active: true, order: 999 })} />
+      makeNew={() => ({ id: agrId("vt"), name: "", frequencyKey: freqOptions[0]?.value ?? "semi_annual", preferredWindow: "", durationMin: 90, jobTypeKey: "agreement_visit", workOrderTemplateId: "", dispatchBoardId: "", autoGenerate: true, active: true, order: 999 })} />
   );
 }
 

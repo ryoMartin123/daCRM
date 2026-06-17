@@ -9,8 +9,7 @@ import {
   ArrowLeft, MoreVertical, Calendar, FileText, RefreshCw, Copy, Eye,
   Pencil, Upload, Download, XCircle, Archive, Trash2,
 } from "lucide-react";
-import { AGREEMENT_STATUS_META, type CustomerAgreement } from "@/lib/agreements/data";
-import StatusBadge from "@/components/shared/StatusBadge";
+import { type CustomerAgreement } from "@/lib/agreements/data";
 
 export interface HeaderActions {
   scheduleVisit: () => void;
@@ -45,7 +44,6 @@ export default function DetailHeader({ agreement, actions, menuOpen, setMenuOpen
   menuOpen: boolean;
   setMenuOpen: (v: boolean) => void;
 }) {
-  const s = AGREEMENT_STATUS_META[agreement.status] ?? AGREEMENT_STATUS_META.active;
   const primary = primaryFor(agreement.status, actions);
   const term = [agreement.startDate, agreement.endDate || agreement.renewalDate].filter(Boolean).join(" → ");
 
@@ -59,20 +57,18 @@ export default function DetailHeader({ agreement, actions, menuOpen, setMenuOpen
 
   return (
     <div className="px-6 py-4">
-      <Link href="/agreements" className="flex items-center gap-1.5 text-sm mb-3 w-fit transition-colors hover:brightness-110" style={{ color: "var(--text-secondary)" }}>
-        <ArrowLeft className="w-4 h-4" /> Agreements
-      </Link>
-      <div className="flex items-start justify-between gap-4">
-        {/* Identity */}
-        <div className="flex items-start gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 text-sm font-bold shrink-0">
-            {agreement.customerInitials}
+      <div className="flex items-center justify-between gap-4">
+        {/* Back + Identity */}
+        <div className="flex items-center gap-4 min-w-0">
+          <Link href="/agreements" className="flex items-center gap-1.5 text-sm shrink-0 transition-colors hover:brightness-110" style={{ color: "var(--text-secondary)" }}>
+            <ArrowLeft className="w-4 h-4" /> Agreements
+          </Link>
+          <div className="w-px h-9 shrink-0" style={{ backgroundColor: "var(--border)" }} />
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "var(--bg-input)" }}>
+            <FileText className="w-5 h-5" style={{ color: "var(--text-muted)" }} />
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-lg font-semibold truncate" style={{ color: "var(--text-primary)" }}>{agreement.type}</h1>
-              <StatusBadge label={s.label} color={s.color} />
-            </div>
+            <h1 className="text-lg font-semibold truncate" style={{ color: "var(--text-primary)" }}>{agreement.type}</h1>
             <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
               {agreement.number ? `${agreement.number} · ` : ""}{agreement.customer}{term ? ` · ${term}` : ""}
             </p>

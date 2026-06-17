@@ -146,6 +146,16 @@ export function HierarchyProvider({ children }: { children: React.ReactNode }) {
   // memoized lists recompute.
   const [hierarchyVersion, setHierarchyVersion] = useState(0);
 
+  // Hydration gate. The server renders this provider's children with the seed
+  // values above (e.g. "Northstar Holdings"), the browser paints that HTML, and
+  // only then does the mount effect swap in the persisted localStorage state —
+  // producing a brief flash of stale/seed data on every hard refresh. We hold
+  // the subtree behind a neutral themed placeholder until the persisted state is
+  // loaded, so the first painted content is already the real data. This provider
+  // mounts once at the layout level, so the gate only affects full-page refreshes,
+  // not in-app navigation.
+  const [hydrated, setHydrated] = useState(false);
+
   // Restore persisted state on mount — validate IDs against current options
   // so stale IDs (from dev changes or location renames) don't filter out all records.
   useEffect(() => {
@@ -180,6 +190,10 @@ export function HierarchyProvider({ children }: { children: React.ReactNode }) {
 
     // Load any persisted organization override (e.g. renamed org).
     setOrg(getOrganization());
+
+    // Persisted state is now applied — open the gate so the first paint of the
+    // subtree shows real data, not the seed.
+    setHydrated(true);
   }, []);
 
   function persistSelection(next: { company: SelectionValue; location: SelectionValue; serviceArea: SelectionValue }) {
@@ -365,7 +379,7 @@ export function HierarchyProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <HierarchyContext.Provider value={value}>
-      {children}
+      {hydrated ? children : <div className="h-screen w-full" style={{ backgroundColor: "var(--bg-page)" }} />}
     </HierarchyContext.Provider>
   );
 }

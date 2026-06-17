@@ -14,7 +14,8 @@ export type SectionKey =
   | "cover_header" | "customer_info" | "property_info" | "problem_need"
   | "inspection_findings" | "recommended_solution" | "scope_of_work"
   | "line_items" | "gbb_options" | "optional_addons" | "photos"
-  | "warranty" | "financing_note" | "terms" | "approval";
+  | "equipment_cards" | "warranty" | "financing_note" | "terms"
+  | "approval" | "custom_text" | "internal_pricing_summary";
 
 export const SECTION_CATALOG: { key: SectionKey; label: string }[] = [
   { key: "cover_header",        label: "Cover / Header" },
@@ -28,11 +29,26 @@ export const SECTION_CATALOG: { key: SectionKey; label: string }[] = [
   { key: "gbb_options",         label: "Good / Better / Best Options" },
   { key: "optional_addons",     label: "Optional Add-ons" },
   { key: "photos",              label: "Photos" },
+  { key: "equipment_cards",     label: "Equipment Cards" },
   { key: "warranty",            label: "Warranty" },
-  { key: "financing_note",      label: "Financing Note" },
+  { key: "financing_note",      label: "Financing" },
   { key: "terms",               label: "Terms & Conditions" },
   { key: "approval",            label: "Approval / Signature" },
+  { key: "custom_text",         label: "Custom Text" },
+  { key: "internal_pricing_summary", label: "Internal Pricing Summary" },
 ];
+
+// Section types whose content lives on the quote record itself (line items,
+// option cards, customer/property fields, pricing worksheet) rather than in the
+// section body — the inspector edits those stores, not a free-text body.
+export const STRUCTURAL_SECTION_KEYS: SectionKey[] = [
+  "cover_header", "customer_info", "property_info", "line_items",
+  "gbb_options", "optional_addons", "approval", "internal_pricing_summary",
+];
+
+// Internal-only section types — never rendered on the customer-facing proposal
+// (preview / print / PDF). Shown in the workspace canvas with an internal badge.
+export const INTERNAL_SECTION_KEYS: SectionKey[] = ["internal_pricing_summary"];
 
 export const SECTION_LABELS: Record<SectionKey, string> =
   Object.fromEntries(SECTION_CATALOG.map(s => [s.key, s.label])) as Record<SectionKey, string>;
@@ -131,10 +147,12 @@ const DEFAULT_SECTIONS: ProposalSection[] = [
   sectionBlock("gbb_options", "Good / Better / Best Options", "Present tiered options for the customer to choose from.", [], 9),
   sectionBlock("optional_addons", "Optional Add-ons", "Optional upgrades the customer can add.", [], 10),
   sectionBlock("photos", "Photos", "Attach before/after or site photos.", [], 11),
-  sectionBlock("warranty", "Warranty", "Describe warranty coverage and duration.", [], 12),
-  sectionBlock("financing_note", "Financing Note", "Financing is available. Ask {{rep.name}} for details.", ["{{rep.name}}"], 13),
-  sectionBlock("terms", "Terms & Conditions", "Standard terms and conditions apply.", [], 14),
-  sectionBlock("approval", "Approval / Signature", "By signing below, {{customer.name}} approves this proposal.", ["{{customer.name}}", "{{quote.total}}"], 15),
+  sectionBlock("equipment_cards", "Equipment Cards", "Highlight the equipment included in this proposal.", [], 12),
+  sectionBlock("warranty", "Warranty", "Describe warranty coverage and duration.", [], 13),
+  sectionBlock("financing_note", "Financing", "Financing is available. Ask {{rep.name}} for details.", ["{{rep.name}}"], 14),
+  sectionBlock("terms", "Terms & Conditions", "Standard terms and conditions apply.", [], 15),
+  sectionBlock("approval", "Approval / Signature", "By signing below, {{customer.name}} approves this proposal.", ["{{customer.name}}", "{{quote.total}}"], 16),
+  sectionBlock("custom_text", "Custom Text", "", [], 17),
 ];
 
 // ─── Seed: Terms Blocks ───────────────────────────────────
@@ -309,5 +327,14 @@ export function resolveTemplateSections(template: ProposalTemplate): ResolvedSec
   return template.sections.map(ref => {
     const block = getSectionBlock(ref.key);
     return { key: ref.key, label: SECTION_LABELS[ref.key], body: block?.defaultBody ?? "", visible: ref.visible };
+  });
+}
+
+// Build a section snapshot from a bare list of keys (all visible). Used by the
+// Quick Quote / Custom paths and Salesbooks, which carry section keys directly.
+export function buildSectionsFromKeys(keys: SectionKey[]): ResolvedSection[] {
+  return keys.map(key => {
+    const block = getSectionBlock(key);
+    return { key, label: SECTION_LABELS[key], body: block?.defaultBody ?? "", visible: true };
   });
 }

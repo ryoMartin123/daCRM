@@ -21,7 +21,7 @@ export function registerAgreementJobDeletedHandler(fn: JobDeletedHandler): void 
 
 // ─── Types ────────────────────────────────────────────────
 export type JobStatus      = "new" | "scheduled" | "en_route" | "in_progress" | "waiting_on_parts" | "waiting_on_customer" | "completed" | "invoiced" | "closed" | "canceled" | "no_show";
-export type JobType        = "maintenance" | "repair" | "installation" | "inspection" | "emergency" | "estimate" | "warranty" | "replacement" | "other";
+export type JobType        = "agreement_visit" | "maintenance" | "repair" | "installation" | "inspection" | "emergency" | "estimate" | "warranty" | "replacement" | "other";
 export type JobPriority    = "low" | "normal" | "high" | "urgent";
 export type WorkOrderStatus = "pending" | "in_progress" | "completed";
 export type JobNoteType    = "note" | "call" | "email" | "visit";
@@ -146,6 +146,7 @@ export function resolveJobStatus(
 // Built-in fallback colors. The editable source of truth is the configured Job
 // Types (Settings → Job Types); these only cover jobs whose type isn't configured.
 export const JOB_TYPE_CONFIG: Record<JobType, string> = {
+  agreement_visit: "#ec4899",
   maintenance:  "#6366f1", repair:      "#ef4444",
   installation: "#10b981", inspection:  "#3b82f6",
   emergency:    "#dc2626", estimate:    "#8b5cf6",

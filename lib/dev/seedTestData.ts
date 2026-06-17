@@ -40,7 +40,7 @@ const SPECS: Spec[] = [
     name: "Ryo Martin", accountType: "residential", status: "Customer",
     phone: "(706) 555-0142", email: "ryo.martin@example.com",
     address: "418 Telfair St", city: "Augusta", state: "GA", zip: "30901",
-    job: { title: "AC Tune-Up", type: "maintenance", tech: "Marcus Reyes", amount: "$189.00", scheduledDate: "Jun 12, 2026", scheduledTime: "9:00 AM" },
+    job: { title: "AC Tune-Up", type: "agreement_visit", tech: "Marcus Reyes", amount: "$189.00", scheduledDate: "Jun 12, 2026", scheduledTime: "9:00 AM" },
   },
   {
     name: "Brecht Holdings LLC", accountType: "commercial", status: "Customer",

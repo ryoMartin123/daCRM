@@ -4,7 +4,7 @@
 import { ALL_JOBS, getAllJobs, getSessionJobs, WORK_ORDERS, JOB_STATUS_CONFIG, type Job } from "@/lib/jobs/data";
 import { getAllTasks } from "@/lib/tasks/data";
 import { getAllAgreements, getVisitsToSchedule, type CustomerAgreement, type AgreementVisit } from "@/lib/agreements/data";
-import { getCustomer } from "@/lib/customers/data";
+import { getCustomer, getProperties } from "@/lib/customers/data";
 import { ALL_PROJECTS } from "@/lib/projects/data";
 import { getAllQuotes } from "@/lib/quotes/data";
 import { getTechnicianUsers, getStaffedUsers } from "@/lib/users/data";
@@ -44,6 +44,19 @@ function resolveAgreementLocation(label: string): { companyId: string; locationI
   return loc ? { companyId: loc.companyId, locationId: loc.id } : { companyId: "", locationId: "" };
 }
 
+// Resolve the service area (territory) a visit actually sits in — from the
+// agreement's linked property (the real job site, e.g. a Stapleton address),
+// falling back to the account's service area. Without this a visit knows only its
+// branch, so it can't route to a service-area board and falls to the branch catch-all.
+function resolveAgreementServiceArea(agreement: CustomerAgreement): string | undefined {
+  if (!agreement.customerId) return undefined;
+  if (agreement.propertyId) {
+    const prop = getProperties(agreement.customerId).find(p => p.id === agreement.propertyId);
+    if (prop?.serviceAreaId) return prop.serviceAreaId;
+  }
+  return getCustomer(agreement.customerId)?.serviceAreaId;
+}
+
 function inScope(item: { companyId: string; locationId: string; serviceAreaId?: string }, scope: CalendarScope): boolean {
   if (scope.companyId     && item.companyId     !== scope.companyId)     return false;
   if (scope.locationId    && item.locationId    !== scope.locationId)    return false;
@@ -76,7 +89,7 @@ function jobToItem(job: Job): CalendarItem | null {
     color: (LAYER_CONFIG[type] ?? LAYER_CONFIG.job).color,
     customerName: job.customerName, address: job.propertyAddress,
     city: cityFromAddress(job.propertyAddress),
-    jobType: job.type.charAt(0).toUpperCase() + job.type.slice(1),
+    jobType: job.type,
     priority: job.priority,
     description: job.description,
   };
@@ -220,7 +233,7 @@ export function getUnscheduledItems(scope: CalendarScope, agreementLeadDays = 30
       companyId: q.companyId, locationId: q.locationId,
       customerName: q.customerName, accountId: q.customerId, value: `$${q.total.toLocaleString()}`,
       sourceId: q.id, sourceModule: "quotes", color: LAYER_CONFIG.job.color,
-      priority: "high", durationMinutes: 240, jobType: "Installation",
+      priority: "high", durationMinutes: 240, jobType: "installation",
     });
   }
 
@@ -247,7 +260,7 @@ export function getUnscheduledItems(scope: CalendarScope, agreementLeadDays = 30
   // visit id (sourceId) + parent agreementId so scheduling materializes that exact
   // visit. Once booked, the visit gets a jobId and drops out of getSchedulableVisits.
   const now = Date.now();
-  for (const { agreement, visit, companyId, locationId } of getSchedulableVisits(scope)) {
+  for (const { agreement, visit, companyId, locationId, serviceAreaId } of getSchedulableVisits(scope)) {
     const due = parseDateTime(visit.scheduled);
     const daysOut = due ? (due.getTime() - now) / 86_400_000 : 0;
     if (daysOut > agreementLeadDays) continue;   // beyond the lead window — stays out of the queue
@@ -257,11 +270,15 @@ export function getUnscheduledItems(scope: CalendarScope, agreementLeadDays = 30
       title: `${agreement.type} — ${visit.label}`,
       reason: overdue ? "Agreement visit overdue" : "Agreement visit due",
       status: overdue ? "overdue" : "due_soon",
-      companyId, locationId,
+      companyId, locationId, serviceAreaId,
       customerName: agreement.customer,
       sourceId: visit.id, agreementId: agreement.id,
       sourceModule: "agreements", color: LAYER_CONFIG.agreement_visit.color,
       priority: overdue ? "urgent" : "normal",
+      // Tag the work type up front (it becomes an "agreement_visit" job when booked)
+      // so an Agreement Visit board claims it by job type, routing it to the right
+      // board within the branch instead of relying only on the catch-all.
+      jobType: "agreement_visit",
       durationMinutes: 90, preferredDate: visit.scheduled, dueDate: visit.scheduled,
     });
   }
@@ -276,7 +293,7 @@ export function getUnscheduledItems(scope: CalendarScope, agreementLeadDays = 30
 // becomes a Job only when scheduled (materializeVisitJob). Unlike the due-soon queue
 // above, this lists EVERY planned visit regardless of date, so a visit can be booked
 // early/ad-hoc whenever the customer wants it.
-export interface SchedulableVisit { agreement: CustomerAgreement; visit: AgreementVisit; companyId: string; locationId: string }
+export interface SchedulableVisit { agreement: CustomerAgreement; visit: AgreementVisit; companyId: string; locationId: string; serviceAreaId?: string }
 export function getSchedulableVisits(scope: CalendarScope): SchedulableVisit[] {
   const out: SchedulableVisit[] = [];
   for (const { agreement, visit } of getVisitsToSchedule()) {
@@ -288,8 +305,11 @@ export function getSchedulableVisits(scope: CalendarScope): SchedulableVisit[] {
       const c = getCustomer(agreement.customerId);
       if (c) { companyId = companyId || c.companyId; locationId = locationId || c.locationId; }
     }
-    if (!inScope({ companyId, locationId }, scope)) continue;
-    out.push({ agreement, visit, companyId, locationId });
+    // Resolve the territory from the agreement's job site (linked property) so the
+    // visit can route to a service-area board, not just its branch.
+    const serviceAreaId = resolveAgreementServiceArea(agreement);
+    if (!inScope({ companyId, locationId, serviceAreaId }, scope)) continue;
+    out.push({ agreement, visit, companyId, locationId, serviceAreaId });
   }
   return out;
 }
@@ -323,7 +343,7 @@ export function getUnscheduledJobs(scope: CalendarScope): UnscheduledItem[] {
       customerName: job.customerName, address: job.propertyAddress, city: cityFromAddress(job.propertyAddress),
       sourceId: job.id, sourceModule: "jobs", color: LAYER_CONFIG.job.color,
       priority: job.priority, durationMinutes: job.durationMinutes,
-      jobType: job.type.charAt(0).toUpperCase() + job.type.slice(1),
+      jobType: job.type,
       value: job.estimatedAmount,
       description: job.description,
     });

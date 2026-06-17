@@ -6,8 +6,10 @@ import UiSelect from "@/components/ui/Select";
 import AccountCombobox from "@/components/customers/AccountCombobox";
 import DatePicker from "@/components/ui/DatePicker";
 import TimePicker from "@/components/ui/TimePicker";
+import NumberStepper from "@/components/ui/NumberStepper";
 import { getAllCustomers, getProperties, updateCustomer } from "@/lib/customers/data";
 import { createJob, type JobType, type JobPriority } from "@/lib/jobs/data";
+import { jobTypeLabel } from "@/lib/job-config/data";
 import { getBoardCandidates } from "@/lib/users/data";
 import { AddressAutocomplete, EMPTY_ADDRESS, type ParsedAddress } from "@/components/address/AddressAutocomplete";
 import { todayYMD, isPastDateTime } from "@/lib/utils/schedule";
@@ -18,7 +20,7 @@ export interface JobWizardPreset {
   lockCustomer?: boolean;
 }
 
-const JOB_TYPES: JobType[] = ["maintenance", "repair", "installation", "inspection", "emergency", "estimate", "warranty", "replacement", "other"];
+const JOB_TYPES: JobType[] = ["agreement_visit", "repair", "installation", "inspection", "emergency", "estimate", "warranty", "replacement", "other"];
 const PRIORITIES: JobPriority[] = ["low", "normal", "high", "urgent"];
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -193,7 +195,7 @@ export default function JobWizard({ preset, onClose, onCreated }: {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Type</label>
-              <UiSelect value={type} onChange={v => setType(v as JobType)} options={JOB_TYPES.map(t => ({ value: t, label: cap(t) }))} />
+              <UiSelect value={type} onChange={v => setType(v as JobType)} options={JOB_TYPES.map(t => ({ value: t, label: jobTypeLabel(t) }))} />
             </div>
             <div>
               <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Priority</label>
@@ -226,8 +228,7 @@ export default function JobWizard({ preset, onClose, onCreated }: {
               </div>
               <div>
                 <label className="block text-[10px] font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Duration (min)</label>
-                <input type="number" min={15} step={15} value={duration} onChange={e => setDuration(e.target.value)}
-                  className="w-full rounded-lg px-2.5 py-1.5 text-xs outline-none" style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }} />
+                <NumberStepper size="sm" min={15} step={15} value={duration} onChange={setDuration} />
               </div>
             </div>
             {schedulePast && (

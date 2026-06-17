@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Search, Plus, SlidersHorizontal, ChevronUp, ChevronDown, FilePen, Send, AlarmClock, DollarSign } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -9,7 +8,7 @@ import { getAllQuotes, getArchivedQuotes, fmt, type QuoteRecord } from "@/lib/qu
 import { QUOTE_STATUS_STYLE, type QuoteStatus } from "@/lib/quotes/types";
 
 type QuoteTab = "all" | "archived" | QuoteStatus;
-import QuickCreateQuoteModal from "@/components/quotes/QuickCreateQuoteModal";
+import QuoteTypeChooser from "@/components/quotes/create/QuoteTypeChooser";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
 import ModuleSummaryCards, { type SummaryCard } from "@/components/shared/ModuleSummaryCards";
 import PageTitle from "@/components/shared/PageTitle";
@@ -52,7 +51,6 @@ const LINKED_TYPE_STYLE: Record<string, { bg: string; color: string }> = {
 export default function QuotesPage() {
   const { effectiveCompanyId, effectiveLocationId, effectiveServiceAreaId } = useHierarchy();
 
-  const router = useRouter();
   const [tab, setTab]         = useState<QuoteTab>("all");
   const [search, setSearch]   = useState("");
   const [sortField, setSort]  = useState<SortField>("createdAt");
@@ -203,10 +201,7 @@ export default function QuotesPage() {
                     <span className="text-sm font-mono font-medium truncate" style={{ color: "var(--text-primary)" }}>{q.quoteNumber}</span>
                     {/* Customer / Account (+ title) */}
                     <div className="min-w-0 pr-2">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-4 h-4 rounded-full bg-indigo-100 flex items-center justify-center text-[8px] font-bold text-indigo-600 shrink-0">{q.customerInitials}</div>
-                        <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{q.customerName}</p>
-                      </div>
+                      <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{q.customerName}</p>
                       <p className="text-[10px] truncate mt-0.5" style={{ color: "var(--text-muted)" }}>{q.title}</p>
                     </div>
                     {/* Property */}
@@ -214,7 +209,10 @@ export default function QuotesPage() {
                     {/* Related To */}
                     <div className="pr-2 min-w-0">
                       {q.linkedLabel && lt ? (
-                        <span className="inline-block max-w-full truncate text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: lt.bg, color: lt.color }}>{q.linkedLabel}</span>
+                        <span className="inline-flex items-center gap-1.5 max-w-full text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: lt.color }} />
+                          <span className="truncate">{q.linkedLabel}</span>
+                        </span>
                       ) : <span style={{ color: "var(--text-muted)" }}>—</span>}
                     </div>
                     {/* Status */}
@@ -248,11 +246,7 @@ export default function QuotesPage() {
       </div>
       )}
 
-      {showCreate && (
-        <QuickCreateQuoteModal
-          onClose={() => setShowCreate(false)}
-          onContinue={(id) => { setShowCreate(false); router.push(`/quotes/${id}/builder`); }} />
-      )}
+      {showCreate && <QuoteTypeChooser onClose={() => setShowCreate(false)} />}
     </div>
   );
 }

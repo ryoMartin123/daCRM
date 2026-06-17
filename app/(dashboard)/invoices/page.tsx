@@ -195,10 +195,7 @@ export default function InvoicesPage() {
                 <span className="text-sm font-mono font-medium" style={{ color: "var(--text-primary)" }}>{inv.invoiceNumber}</span>
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{inv.title}</p>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <div className="w-4 h-4 rounded-full bg-indigo-100 flex items-center justify-center text-[8px] font-bold text-indigo-600 shrink-0">{inv.customerInitials}</div>
-                    <p className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>{inv.customerName}</p>
-                  </div>
+                  <p className="text-[10px] truncate mt-0.5" style={{ color: "var(--text-muted)" }}>{inv.customerName}</p>
                 </div>
                 <div>
                   {inv.linkedLabel && lt ? (

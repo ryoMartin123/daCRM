@@ -36,9 +36,9 @@ const PLACES = [
 ];
 const TECHS = ["Marcus Reyes", "Dana Whitfield", "Luis Romero", "Priya Shah", "Owen Bauer"];
 
-const JOB_TYPES: JobType[] = ["maintenance", "repair", "installation", "inspection", "emergency", "estimate", "warranty", "replacement"];
+const JOB_TYPES: JobType[] = ["agreement_visit", "repair", "installation", "inspection", "emergency", "estimate", "warranty", "replacement"];
 const JOB_TITLES: Record<string, string[]> = {
-  maintenance:  ["AC Tune-Up", "Seasonal HVAC Service", "Filter & Coil Cleaning"],
+  agreement_visit: ["AC Tune-Up", "Seasonal HVAC Service", "Filter & Coil Cleaning"],
   repair:       ["Compressor Repair", "Thermostat Replacement", "Refrigerant Leak Fix"],
   installation: ["New System Install", "Ductwork Installation", "Mini-Split Install"],
   inspection:   ["Annual Safety Inspection", "Pre-Sale HVAC Inspection", "Quarterly Check"],

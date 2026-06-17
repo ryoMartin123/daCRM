@@ -17,6 +17,7 @@ import {
 } from "./types";
 import { defaultQueueViews, type QueueView } from "./queueViews";
 import { companies, locations } from "@/lib/hierarchy/data";
+import { toJobTypeKey } from "@/lib/job-config/data";
 
 const STORAGE_KEY = "crm-dispatch-settings";
 
@@ -95,13 +96,25 @@ export interface DispatchStore {
 
 export type ScopeLevel = "org" | "company" | "location";
 
-// ─── Job types (board filter options) ─────────────────────
+// ─── Board job types ──────────────────────────────────────
 // Dispatchers/technicians for boards now come from the user directory
-// (lib/users getDispatcherNames / getTechnicianNames). Job types stay here.
-export const MOCK_JOB_TYPES = ["Service", "Repair", "Installation", "Maintenance", "Inspection", "Estimate"];
+// (lib/users getDispatcherNames / getTechnicianNames). Board job-type OPTIONS come
+// from the configured Job Types (Settings → Job Types) via getJobTypes() — a board
+// stores type KEYS, the UI shows labels. There's no hardcoded list here anymore.
 
 export const BOARD_TYPE_LABELS: Record<BoardType, string> = {
   service: "Service", install: "Install", maintenance: "Maintenance", commercial: "Commercial", custom: "Custom",
+};
+
+// Choosing a board type auto-adds the matching job type KEY to the board's Job
+// Types so the type label and what the board actually claims can't drift apart.
+// Only types that exist as a single job-type key are mapped: Install → installation,
+// Maintenance → agreement_visit (the canonical Maintenance key, so the board claims
+// both ad-hoc maintenance and agreement-generated visits). Service has no single
+// job-type key (it's a category spanning repair/inspection), and Commercial/Custom
+// are segments, so those leave the Job Types list untouched.
+export const BOARD_TYPE_JOB_TYPE: Partial<Record<BoardType, string>> = {
+  install: "installation", maintenance: "agreement_visit",
 };
 
 // ─── Defaults ─────────────────────────────────────────────
@@ -150,14 +163,43 @@ function defaultBoards(): DispatchBoard[] {
 }
 
 // Guarantee ≥1 board and exactly one default. Applied to every store read.
+// Self-heal: a board whose type implies a job type (Service/Install/Maintenance)
+// should carry that job-type chip so the matcher claims the right work. Boards saved
+// before board-type→job-type sync get the chip added on load. Additive only — it
+// never removes a chip the user set.
+function backfillBoardJobType(b: DispatchBoard): DispatchBoard {
+  const jt = BOARD_TYPE_JOB_TYPE[b.boardType];
+  return jt && !b.jobTypes.includes(jt) ? { ...b, jobTypes: [...b.jobTypes, jt] } : b;
+}
+
+// Boards now store job-type KEYS, but boards saved before that stored display names
+// ("Maintenance", "Agreement Visit"). Normalize every entry to its key on load —
+// idempotent, so keys pass through unchanged.
+function normalizeBoardJobTypeKeys(b: DispatchBoard): DispatchBoard {
+  const keys = Array.from(new Set(b.jobTypes.map(toJobTypeKey)));
+  const changed = keys.length !== b.jobTypes.length || keys.some((k, i) => k !== b.jobTypes[i]);
+  return changed ? { ...b, jobTypes: keys } : b;
+}
+
 export function ensureBoards(boards: DispatchBoard[] | undefined): DispatchBoard[] {
   if (!boards || boards.length === 0) return defaultBoards();
-  if (!boards.some(b => b.isDefault)) return boards.map((b, i) => (i === 0 ? { ...b, isDefault: true } : b));
-  return boards;
+  const filled = boards.map(normalizeBoardJobTypeKeys).map(backfillBoardJobType);
+  if (!filled.some(b => b.isDefault)) return filled.map((b, i) => (i === 0 ? { ...b, isDefault: true } : b));
+  return filled;
 }
 
 function defaultStore(): DispatchStore {
   return { version: 3, scopes: {}, boards: defaultBoards(), queueViews: defaultQueueViews() };
+}
+
+// A custom view's job-type filter stored display names before keys were canonical;
+// normalize it the same way boards are. Idempotent.
+function normalizeViewJobTypeKeys(v: QueueView): QueueView {
+  const jt = v.filters?.jobTypes;
+  if (!jt?.length) return v;
+  const keys = Array.from(new Set(jt.map(toJobTypeKey)));
+  const changed = keys.length !== jt.length || keys.some((k, i) => k !== jt[i]);
+  return changed ? { ...v, filters: { ...v.filters, jobTypes: keys } } : v;
 }
 
 // System (source-category) views are constant: always present, always active +
@@ -173,7 +215,7 @@ function reconcileQueueViews(saved: QueueView[] | undefined): QueueView[] {
       const def = defaults.find(d => d.key === v.key);
       if (def) out.push({ ...def, order: v.order, leadDays: v.leadDays ?? def.leadDays });   // lock identity, keep order + settings
     } else {
-      out.push(v);                                       // custom view untouched
+      out.push(normalizeViewJobTypeKeys(v));             // custom view untouched (but job-type filter normalized to keys)
     }
   }
   for (const def of defaults) {
@@ -327,20 +369,97 @@ export function getBoardsForContext(companyId?: string, locationId?: string): Di
   return boards;                                                            // org / "All" → every board
 }
 
-// Does a scheduled/unscheduled item belong to a board?  Tech OR job-type match,
-// optionally narrowed by the board's service areas.
+// Item shape used by board matching — every CalendarItem and UnscheduledItem
+// carries these fields.
+type BoardMatchItem = { assignedTo?: string; jobType?: string; serviceAreaId?: string; companyId?: string; locationId?: string };
+
+// Is an item inside a board's branch scope? Location is the primary lens: a
+// location board only owns its own branch; a company board owns its company; an
+// org-wide board (no company/location) owns everything. An item with no
+// company/location set is treated as in-scope (better surfaced than hidden).
+function boardScopeOwns(item: BoardMatchItem, board: DispatchBoard): boolean {
+  if (board.locationId) return !item.locationId || item.locationId === board.locationId;
+  if (board.companyId)  return !item.companyId  || item.companyId  === board.companyId;
+  return true;
+}
+
+// A board's resolved member set, keyed by board id. Members = the board's named
+// techs PLUS everyone holding its assigned roles (the role expansion lives in the
+// user directory, so callers resolve it and pass it in). Falls back to the board's
+// raw techNames when no resolved set is supplied.
+export type BoardMembers = Record<string, Set<string>>;
+function memberSet(board: DispatchBoard, members?: BoardMembers): Set<string> {
+  return members?.[board.id] ?? new Set(board.techNames);
+}
+
+// Does a board DIRECTLY claim an UNASSIGNED item — by job type or territory, within
+// its branch scope? This is what routes new/queued work to the right board (Install
+// vs Service) before anyone is assigned. Job type and service area are OR'd: an item
+// belongs if it matches ANY. Service area is inclusive (a territory the board covers),
+// never an exclusive veto. A board naming neither relies on the branch catch-all
+// (isDefault) instead. NOTE: assigned items are NOT routed here — see itemMatchesBoard.
+function boardDirectlyClaims(item: BoardMatchItem, board: DispatchBoard): boolean {
+  if (!boardScopeOwns(item, board)) return false;
+  const typeMatch = !!item.jobType && board.jobTypes.includes(item.jobType);
+  const areaMatch = !!item.serviceAreaId && board.serviceAreaIds.includes(item.serviceAreaId);
+  return typeMatch || areaMatch;
+}
+
+// Does an item belong on a board?
+//
+// The model: a technician has ONE schedule, and a board is a lens onto a set of
+// technicians. So routing splits on whether the item is assigned yet:
+//
+//   • ASSIGNED  → it belongs to a board iff that board's MEMBERS include the
+//     assignee. The job follows the tech: if they're on three boards, it shows on
+//     all three (same single schedule). Job type is only a within-board filter here,
+//     never a claim — this is why an estimate assigned to a service tech no longer
+//     lands "unassigned" on the Sales board the tech isn't a member of.
+//   • UNASSIGNED → routed by job type / service area / scope, so queued work surfaces
+//     on the board that handles that kind of work, to be picked up and assigned.
+//
+// Pass `allBoards` (boards for the current context) to enable the branch catch-all,
+// and `members` (resolved member sets per board) so membership matches the rows the
+// board actually shows. Without `members`, membership falls back to raw techNames.
 export function itemMatchesBoard(
-  item: { assignedTo?: string; jobType?: string; serviceAreaId?: string },
+  item: BoardMatchItem,
   board: DispatchBoard,
+  allBoards?: DispatchBoard[],
+  members?: BoardMembers,
 ): boolean {
-  if (board.serviceAreaIds.length && item.serviceAreaId && !board.serviceAreaIds.includes(item.serviceAreaId)) {
+  // ── Assigned: route purely by board membership (the tech's one schedule) ──
+  if (item.assignedTo) {
+    if (!boardScopeOwns(item, board)) return false;
+    if (memberSet(board, members).has(item.assignedTo)) return true;
+    // Assignee belongs to NO board in this branch (e.g. a removed tech) → the branch
+    // default board catches the job so it stays visible in its Unassigned lane.
+    if (board.isDefault && allBoards) {
+      const inScope = allBoards.filter(b =>
+        b.active && b.companyId === board.companyId && b.locationId === board.locationId);
+      if (!inScope.some(b => memberSet(b, members).has(item.assignedTo!))) return true;
+    }
     return false;
   }
-  const techMatch = !!item.assignedTo && board.techNames.includes(item.assignedTo);
-  const typeMatch = !!item.jobType && board.jobTypes.includes(item.jobType);
-  // If the board declares neither techs nor job types, treat it as "all".
+
+  // ── Unassigned: route by job type / service area, with the branch catch-all ──
+  if (boardDirectlyClaims(item, board)) return true;
+  if (!boardScopeOwns(item, board)) return false;
+
+  // Branch catch-all — the default board for this company+location claims any
+  // unassigned item its siblings don't directly claim.
+  if (board.isDefault && allBoards) {
+    const siblings = allBoards.filter(b =>
+      b.id !== board.id && b.active &&
+      b.companyId === board.companyId && b.locationId === board.locationId,
+    );
+    if (!siblings.some(b => boardDirectlyClaims(item, b))) return true;
+  }
+
+  // Legacy: a board naming neither crew nor job types behaves as an "all in scope"
+  // board (covers the org-wide Main Board and boards still being configured).
   if (board.techNames.length === 0 && board.jobTypes.length === 0) return true;
-  return techMatch || typeMatch;
+
+  return false;
 }
 
 // ─── Agreement visit lead time ────────────────────────────

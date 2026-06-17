@@ -1,7 +1,7 @@
 "use client";
 
 import { fmt } from "@/lib/quotes/data";
-import { SECTION_LABELS, type SectionKey } from "@/lib/proposals/data";
+import { SECTION_LABELS, INTERNAL_SECTION_KEYS, type SectionKey } from "@/lib/proposals/data";
 import type { ProposalDocData } from "@/lib/quotes/proposalDoc";
 
 // Professional, paper-styled proposal document. Always renders on a white sheet
@@ -18,7 +18,9 @@ const SOFT = "#f9fafb";
 
 export default function ProposalDocument({ data, shadow = true }: { data: ProposalDocData; shadow?: boolean }) {
   const accent = data.branding.accentColor || "#4f46e5";
-  const visible = data.sections.filter(s => s.visible);
+  // Internal-only sections (e.g. the pricing worksheet) never appear on the
+  // customer-facing document — they're filtered out of preview / print / PDF.
+  const visible = data.sections.filter(s => s.visible && !INTERNAL_SECTION_KEYS.includes(s.key as SectionKey));
 
   return (
     <div
@@ -56,8 +58,8 @@ export default function ProposalDocument({ data, shadow = true }: { data: Propos
 
         {/* ── Sections ── */}
         {visible.map((s, i) => (
-          <div key={s.key} className="proposal-block" style={{ marginBottom: i === visible.length - 1 ? 0 : "24px" }}>
-            <SectionContent data={data} sectionKey={s.key} label={SECTION_LABELS[s.key as SectionKey] ?? s.label} body={s.body} accent={accent} />
+          <div key={s.id ?? `${s.key}-${i}`} className="proposal-block" style={{ marginBottom: i === visible.length - 1 ? 0 : "24px" }}>
+            <SectionContent data={data} sectionKey={s.key} label={s.label || SECTION_LABELS[s.key as SectionKey] || "Section"} body={s.body} accent={accent} />
           </div>
         ))}
 
@@ -110,6 +112,59 @@ function SectionContent({ data, sectionKey, label, body, accent }: {
     return (<div><Label accent={accent}>{label}</Label>
       <p style={{ fontSize: "13px", color: data.propertyLabel ? INK : MUTED }}>{data.propertyLabel ?? "—"}</p>
     </div>);
+  }
+  if (sectionKey === "gbb_options") {
+    const opts = data.options ?? [];
+    if (opts.length === 0) return (<div><Label accent={accent}>{label}</Label><p style={{ fontSize: "12.5px", color: FAINT, fontStyle: "italic" }}>—</p></div>);
+    return (
+      <div>
+        <Label accent={accent}>{label}</Label>
+        {body && <p style={{ fontSize: "12.5px", color: SUB, marginBottom: "12px", lineHeight: 1.6 }}>{body}</p>}
+        <div style={{ display: "flex", gap: "12px" }}>
+          {opts.map(o => {
+            const on = o.selected;
+            return (
+              <div key={o.id} style={{ flex: 1, border: `1.5px solid ${on ? accent : LINE}`, borderRadius: "8px", padding: "14px", backgroundColor: on ? `${accent}0d` : "#ffffff", breakInside: "avoid", overflow: "hidden" }}>
+                {o.image && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={o.image} alt={o.name} style={{ width: "100%", height: "108px", objectFit: "cover", borderRadius: "6px", marginBottom: "10px", display: "block" }} />
+                )}
+                {o.tier && <p style={{ fontSize: "9px", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: accent, marginBottom: "4px" }}>{o.tier}{on ? " · Selected" : ""}</p>}
+                <p style={{ fontSize: "13.5px", fontWeight: 700, color: INK, lineHeight: 1.25 }}>{o.name}</p>
+                {(o.brand || o.model) && <p style={{ fontSize: "10.5px", color: MUTED, marginTop: "2px" }}>{[o.brand, o.model].filter(Boolean).join(" · ")}</p>}
+                <p style={{ fontSize: "20px", fontWeight: 800, color: INK, marginTop: "8px" }}>${o.price.toLocaleString()}</p>
+                {o.monthlyPrice ? <p style={{ fontSize: "11px", fontWeight: 600, color: accent }}>${o.monthlyPrice}/mo financed</p> : null}
+                {(o.efficiency || o.warranty) && <p style={{ fontSize: "10.5px", color: MUTED, marginTop: "6px" }}>{[o.efficiency, o.warranty].filter(Boolean).join(" · ")}</p>}
+                {o.includes && o.includes.length > 0 && (
+                  <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0" }}>
+                    {o.includes.map((inc, i) => (
+                      <li key={i} style={{ fontSize: "11px", color: SUB, padding: "2px 0", paddingLeft: "12px", position: "relative", lineHeight: 1.4 }}>
+                        <span style={{ position: "absolute", left: 0, color: accent, fontWeight: 700 }}>✓</span>{inc}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+  if (sectionKey === "optional_addons") {
+    const addons = (data.options ?? []).filter(o => !o.tier);
+    return (
+      <div>
+        <Label accent={accent}>{label}</Label>
+        {body && <p style={{ fontSize: "12.5px", color: SUB, marginBottom: "10px", lineHeight: 1.6 }}>{body}</p>}
+        {addons.length === 0 ? <p style={{ fontSize: "12.5px", color: FAINT, fontStyle: "italic" }}>—</p> : addons.map(o => (
+          <div key={o.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: "12.5px", padding: "5px 0", borderBottom: `1px solid ${LINE}` }}>
+            <span style={{ color: INK }}><span style={{ fontWeight: 600 }}>{o.name}</span>{o.description ? <span style={{ color: MUTED }}> — {o.description}</span> : null}</span>
+            <span style={{ color: INK, fontWeight: 600, whiteSpace: "nowrap", paddingLeft: "12px" }}>${o.price.toLocaleString()}{o.monthlyPrice ? ` · $${o.monthlyPrice}/mo` : ""}</span>
+          </div>
+        ))}
+      </div>
+    );
   }
   if (sectionKey === "line_items") {
     const base = data.lineItems.filter(li => !li.optional);

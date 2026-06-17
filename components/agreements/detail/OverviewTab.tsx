@@ -19,10 +19,10 @@ export default function OverviewTab({ agreement }: { agreement: CustomerAgreemen
   const nextBill = nextBillingDate(agreement);
 
   return (
-    <div className="space-y-5">
+    <div className="flex flex-col gap-5 h-full">
       <SummaryCards agreement={agreement} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0">
         {/* Agreement details */}
         <Card className="p-4 lg:col-span-2">
           <SectionLabel>Agreement Details</SectionLabel>
@@ -41,8 +41,8 @@ export default function OverviewTab({ agreement }: { agreement: CustomerAgreemen
         </Card>
 
         {/* People + next steps */}
-        <div className="space-y-4">
-          <Card className="p-4">
+        <div className="flex flex-col gap-4">
+          <Card className="p-4 flex-1">
             <SectionLabel>People</SectionLabel>
             <div className="space-y-3 mt-3">
               <InfoRow icon={User}    label="Primary Contact" value={agreement.contactName ?? "—"} />
@@ -50,7 +50,7 @@ export default function OverviewTab({ agreement }: { agreement: CustomerAgreemen
             </div>
           </Card>
 
-          <Card className="p-4">
+          <Card className="p-4 flex-1">
             <SectionLabel>Billing &amp; Visits</SectionLabel>
             <div className="space-y-3 mt-3">
               <InfoRow icon={DollarSign}   label="Billing" value={`${formatValue(agreement)} · ${agreement.billingLabel ?? agreement.billingFrequency}`} />

@@ -1,52 +1,73 @@
 "use client";
 
 // Activity: a system-history timeline derived from the agreement snapshot. This
-// is system events (not internal notes — those live in the Notes tab).
+// is system events (not internal notes — those live in the Notes tab). Layout:
+// date column on the left, a small tinted icon on the connector line, then a clean
+// surface container with a category pill and detail. Amber is the default accent;
+// completions are green.
 
 import { useMemo } from "react";
-import { FilePlus2, PlayCircle, CalendarPlus, CalendarCheck, CheckCircle2, RefreshCw, Ban } from "lucide-react";
+import { FilePlus2, PlayCircle, CalendarPlus, CalendarCheck, CheckCircle2, RefreshCw, Ban, User } from "lucide-react";
 import { type CustomerAgreement } from "@/lib/agreements/data";
-import { Card, SectionLabel } from "./shared";
 
-interface Entry { icon: typeof FilePlus2; color: string; label: string; date?: string; }
+interface Entry { icon: typeof FilePlus2; color: string; label: string; detail?: string; date?: string; }
 
 export default function ActivityTab({ agreement }: { agreement: CustomerAgreement }) {
   const entries = useMemo<Entry[]>(() => {
     const out: Entry[] = [];
-    out.push({ icon: FilePlus2, color: "#6366f1", label: "Agreement created", date: agreement.startDate });
-    out.push({ icon: PlayCircle, color: "#10b981", label: "Agreement activated", date: agreement.startDate });
-    if ((agreement.visits ?? []).length) out.push({ icon: CalendarPlus, color: "#6366f1", label: `${agreement.visits.length} visit(s) generated`, date: agreement.startDate });
+    out.push({ icon: FilePlus2, color: "#d97706", label: "Agreement Created", date: agreement.startDate });
+    out.push({ icon: PlayCircle, color: "#059669", label: "Agreement Activated", date: agreement.startDate });
+    if ((agreement.visits ?? []).length) out.push({ icon: CalendarPlus, color: "#d97706", label: "Visits Generated", detail: `${agreement.visits.length} visit(s) added to the schedule`, date: agreement.startDate });
     for (const v of agreement.visits ?? []) {
-      if (v.status === "scheduled") out.push({ icon: CalendarCheck, color: "#6366f1", label: `Visit scheduled — ${v.label}`, date: v.scheduled });
-      if (v.status === "completed") out.push({ icon: CheckCircle2, color: "#10b981", label: `Visit completed — ${v.label}`, date: v.completedDate ?? v.scheduled });
+      if (v.status === "scheduled") out.push({ icon: CalendarCheck, color: "#d97706", label: "Visit Scheduled", detail: v.label, date: v.scheduled });
+      if (v.status === "completed") out.push({ icon: CheckCircle2, color: "#059669", label: "Visit Completed", detail: v.label, date: v.completedDate ?? v.scheduled });
     }
-    if (agreement.renewalDate) out.push({ icon: RefreshCw, color: "#f59e0b", label: "Renewal date set", date: agreement.renewalDate });
-    if (agreement.status === "canceled") out.push({ icon: Ban, color: "#ef4444", label: "Agreement canceled" });
+    if (agreement.renewalDate) out.push({ icon: RefreshCw, color: "#d97706", label: "Renewal Date Set", date: agreement.renewalDate });
+    if (agreement.status === "canceled") out.push({ icon: Ban, color: "#b91c1c", label: "Agreement Canceled" });
     return out;
   }, [agreement]);
 
+  if (entries.length === 0) {
+    return (
+      <div className="py-12 text-center rounded-xl" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+        <p className="text-sm" style={{ color: "var(--text-muted)" }}>No activity yet</p>
+      </div>
+    );
+  }
+
   return (
-    <Card className="p-5" style={{ maxWidth: 720 }}>
-      <SectionLabel>Activity</SectionLabel>
-      <div className="mt-4 space-y-0">
-        {entries.map((e, i) => {
-          const Icon = e.icon;
-          return (
-            <div key={i} className="flex gap-3">
-              <div className="flex flex-col items-center">
-                <span className="w-7 h-7 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: e.color + "20" }}>
-                  <Icon className="w-3.5 h-3.5" style={{ color: e.color }} />
-                </span>
-                {i < entries.length - 1 && <span className="w-px flex-1 my-1" style={{ backgroundColor: "var(--border-subtle)" }} />}
+    <div>
+      {entries.map((e, i) => {
+        const Icon = e.icon;
+        const last = i === entries.length - 1;
+        return (
+          <div key={i} className="flex gap-3">
+            {/* Icon + connector */}
+            <div className="flex flex-col items-center shrink-0">
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center z-10"
+                style={{ backgroundColor: e.color + "1a", border: `1px solid ${e.color}33` }}>
+                <Icon className="w-3.5 h-3.5" style={{ color: e.color }} />
               </div>
-              <div className="pb-4 min-w-0">
-                <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{e.label}</p>
-                {e.date && <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>{e.date}</p>}
+              {!last && <div className="w-px flex-1 my-1" style={{ backgroundColor: "var(--border-subtle)" }} />}
+            </div>
+
+            {/* Content container — uniform regardless of content */}
+            <div className="flex-1 min-w-0 rounded-xl px-4 py-3 mb-3 flex flex-col"
+              style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)", minHeight: 80 }}>
+              <div className="flex items-start justify-between gap-3">
+                <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-md shrink-0"
+                  style={{ backgroundColor: e.color + "1a", color: e.color }}>{e.label}</span>
+                {e.date && <span className="text-xs shrink-0" style={{ color: "var(--text-muted)" }}>{e.date}</span>}
+              </div>
+              {e.detail && <p className="text-sm font-medium mt-1.5 break-words leading-relaxed" style={{ color: "var(--text-primary)" }}>{e.detail}</p>}
+              <div className="flex items-center gap-1.5 mt-auto pt-1.5">
+                <User className="w-3 h-3 shrink-0" style={{ color: "var(--text-muted)" }} />
+                <span className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>System</span>
               </div>
             </div>
-          );
-        })}
-      </div>
-    </Card>
+          </div>
+        );
+      })}
+    </div>
   );
 }

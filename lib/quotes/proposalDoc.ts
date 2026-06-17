@@ -2,7 +2,7 @@
 // view, and the PDF generator — so all three render identical content from a
 // single source. Built from a quote's live builder state or a saved record.
 
-import type { LineItem, QuoteRecord, QuoteSection } from "./data";
+import type { LineItem, QuoteRecord, QuoteSection, QuoteOption } from "./data";
 import { getProposalBranding, SECTION_LABELS, type ProposalBranding, type SectionKey } from "@/lib/proposals/data";
 
 export interface ProposalDocData {
@@ -17,6 +17,7 @@ export interface ProposalDocData {
   expiresAt?: string;
   sections: QuoteSection[];        // ordered; only visible ones render
   lineItems: LineItem[];
+  options?: QuoteOption[];         // option cards (template/salesbook quotes)
   subtotal: number; tax: number; total: number;
   taxRatePct: number;
   customerNotes?: string;
@@ -34,6 +35,7 @@ export interface BuildProposalInput {
   expiresAt?: string;
   sections: QuoteSection[];
   lineItems: LineItem[];
+  options?: QuoteOption[];
   subtotal: number; tax: number; total: number;
   taxRatePct?: number;
   customerNotes?: string;
@@ -58,6 +60,7 @@ export function buildProposalDoc(input: BuildProposalInput): ProposalDocData {
     expiresAt: input.expiresAt,
     sections: input.sections,
     lineItems: input.lineItems,
+    options: input.options,
     subtotal: input.subtotal, tax: input.tax, total: input.total,
     taxRatePct: input.taxRatePct ?? 0,
     customerNotes: input.customerNotes,
@@ -75,7 +78,7 @@ export function proposalDocFromQuote(q: QuoteRecord): ProposalDocData {
     quoteNumber: q.quoteNumber, title: q.title,
     customerName: q.customerName, locationName: q.locationName, propertyLabel: q.propertyLabel,
     assignedTo: q.assignedTo, createdAt: q.createdAt, expiresAt: q.expiresAt,
-    sections, lineItems: q.lineItems, subtotal: q.subtotal, tax: q.tax, total: q.total,
+    sections, lineItems: q.lineItems, options: q.options, subtotal: q.subtotal, tax: q.tax, total: q.total,
     taxRatePct, customerNotes: q.customerNotes, stamp: STAMP_FOR_STATUS[q.status],
   });
 }

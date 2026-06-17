@@ -1,0 +1,334 @@
+// Salesbook Library — CRM-provided proposal content libraries the user can copy
+// into their own company workspace.
+//
+// Concept:
+//   Salesbook Template  = polished master library WE provide (read-only master).
+//   Company Salesbook   = a copy installed into the user's company. Editing the
+//                         copy never changes the master template.
+//
+// A Salesbook bundles the proposal SECTIONS (reusing the Proposal Builder section
+// keys) plus reusable OPTION CARDS (Good/Better/Best tiers, equipment, pricing,
+// financing) for a specific kind of sale. The "Proposal From Template" quote path
+// lets a rep pick one of their installed company salesbooks.
+//
+// Phase 1: mock master templates + localStorage-backed installs. No spreadsheet
+// import yet (that lands later in Settings → Salesbook Library → Import).
+// Replace with Supabase queries when ready.
+
+import type { SectionKey } from "@/lib/proposals/data";
+
+// ─── Taxonomy ─────────────────────────────────────────────
+export type SalesbookIndustry =
+  | "hvac" | "roofing" | "plumbing" | "electrical" | "property_maintenance" | "general";
+
+export type SalesbookProposalType =
+  | "good_better_best" | "repair" | "replacement" | "maintenance_plan"
+  | "commercial_pm" | "inspection" | "custom";
+
+export type SalesbookComplexity = "simple" | "standard" | "premium";
+
+export const INDUSTRY_LABELS: Record<SalesbookIndustry, string> = {
+  hvac: "HVAC", roofing: "Roofing", plumbing: "Plumbing",
+  electrical: "Electrical", property_maintenance: "Property Maintenance", general: "General Service",
+};
+
+export const PROPOSAL_TYPE_LABELS: Record<SalesbookProposalType, string> = {
+  good_better_best: "Good / Better / Best", repair: "Repair", replacement: "Replacement",
+  maintenance_plan: "Maintenance Plan", commercial_pm: "Commercial PM",
+  inspection: "Inspection", custom: "Custom",
+};
+
+export const COMPLEXITY_LABELS: Record<SalesbookComplexity, string> = {
+  simple: "Simple", standard: "Standard", premium: "Premium",
+};
+
+// Accent per industry — drives the card/preview color treatment.
+export const INDUSTRY_ACCENT: Record<SalesbookIndustry, string> = {
+  hvac: "#4f46e5", roofing: "#0891b2", plumbing: "#0d9488",
+  electrical: "#d97706", property_maintenance: "#059669", general: "#7c3aed",
+};
+
+// ─── Option / equipment cards ─────────────────────────────
+export type OptionTier = "good" | "better" | "best";
+
+export interface SalesbookOption {
+  id: string;
+  tier?: OptionTier;          // for Good/Better/Best salesbooks
+  name: string;
+  brand?: string;
+  model?: string;
+  description?: string;
+  price: number;
+  monthlyPrice?: number;      // financed monthly estimate
+  efficiency?: string;        // e.g. "16 SEER2"
+  warranty?: string;          // e.g. "10-yr parts + labor"
+  category?: string;
+  includes?: string[];        // bundled items
+  notes?: string;
+  image?: string;             // image URL or data-URL (equipment/product photo)
+}
+
+// ─── Salesbook shape (shared by master template + company copy) ──
+interface SalesbookBase {
+  name: string;
+  industry: SalesbookIndustry;
+  proposalType: SalesbookProposalType;
+  complexity: SalesbookComplexity;
+  bestFor: string;
+  styleBadge: string;          // short premium-style label, e.g. "Tiered Cards"
+  sections: SectionKey[];      // proposal section keys, in order
+  options: SalesbookOption[];  // sample option cards
+  financingNote?: string;
+  warranty?: string;
+  terms?: string;
+}
+
+export interface SalesbookTemplate extends SalesbookBase {
+  id: string;
+  proposalTemplateId?: string; // links to a Proposal Builder template structure
+}
+
+export interface CompanySalesbook extends SalesbookBase {
+  id: string;
+  companyId: string;
+  locationId?: string;
+  copiedFromTemplateId?: string;
+  active: boolean;
+  installedAt: string;
+}
+
+// ─── Master templates (CRM-provided) ──────────────────────
+const opt = (o: Omit<SalesbookOption, "id"> & { id?: string }): SalesbookOption =>
+  ({ id: o.id ?? `opt-${Math.random().toString(36).slice(2, 8)}`, ...o });
+
+// Stock equipment/product photos (Unsplash CDN, sized for option cards).
+const img = (id: string) => `https://images.unsplash.com/photo-${id}?w=800&q=70&auto=format&fit=crop`;
+
+export const SALESBOOK_TEMPLATES: SalesbookTemplate[] = [
+  {
+    id: "sb-hvac-gbb",
+    name: "HVAC Good / Better / Best Replacement",
+    industry: "hvac", proposalType: "good_better_best", complexity: "premium",
+    bestFor: "Full system replacement proposals with tiered options.",
+    styleBadge: "Tiered Cards",
+    proposalTemplateId: "ptmpl-2",
+    sections: ["cover_header", "customer_info", "problem_need", "recommended_solution", "gbb_options", "optional_addons", "warranty", "financing_note", "terms", "approval"],
+    options: [
+      opt({ tier: "good",   name: "Builder Series 14.3 SEER2", image: img("1614447413576-b346c641c128"), brand: "Goodman", model: "GLXS3BA", description: "Reliable, budget-friendly comfort.", price: 7800,  monthlyPrice: 119, efficiency: "14.3 SEER2", warranty: "10-yr parts", category: "System Replacement", includes: ["New condenser & coil", "Standard thermostat", "Permit & inspection"] }),
+      opt({ tier: "better", name: "Comfort Series 16 SEER2",   image: img("1615309662243-70f6df917b59"), brand: "Carrier", model: "CA16NA",  description: "Quieter, more efficient, smart thermostat.", price: 10400, monthlyPrice: 159, efficiency: "16 SEER2", warranty: "10-yr parts + 2-yr labor", category: "System Replacement", includes: ["2-stage condenser", "Smart thermostat", "Media air cleaner", "Permit & inspection"] }),
+      opt({ tier: "best",   name: "Infinity Series 19 SEER2",  image: img("1550998251-1e18917c975c"), brand: "Carrier", model: "24VNA9",  description: "Top efficiency, variable speed, whole-home IAQ.", price: 14900, monthlyPrice: 224, efficiency: "19 SEER2", warranty: "10-yr parts + labor", category: "System Replacement", includes: ["Variable-speed system", "Wi-Fi smart control", "Whole-home air purifier", "10-yr labor warranty", "Permit & inspection"] }),
+    ],
+    financingNote: "Financing available — as low as $119/mo with approved credit.",
+    warranty: "Manufacturer parts warranty plus our workmanship guarantee.",
+    terms: "Proposal valid 30 days. Deposit required to schedule installation.",
+  },
+  {
+    id: "sb-hvac-replace",
+    name: "HVAC System Replacement",
+    industry: "hvac", proposalType: "replacement", complexity: "standard",
+    bestFor: "Single recommended-system replacement quotes.",
+    styleBadge: "Single Solution",
+    proposalTemplateId: "ptmpl-1",
+    sections: ["cover_header", "customer_info", "property_info", "problem_need", "recommended_solution", "line_items", "warranty", "financing_note", "terms", "approval"],
+    options: [
+      opt({ name: "3 Ton 16 SEER2 Heat Pump System", image: img("1698479603408-1a66a6d9e80f"), brand: "Trane", model: "XR16", description: "Recommended replacement for the failed unit.", price: 11200, monthlyPrice: 169, efficiency: "16 SEER2", warranty: "10-yr parts + labor", category: "System Replacement", includes: ["New heat pump & air handler", "Smart thermostat", "New line set", "Permit & inspection"] }),
+    ],
+    financingNote: "Ask about 0% for 18 months on qualifying systems.",
+    warranty: "10-year manufacturer warranty with registration.",
+    terms: "Proposal valid 30 days.",
+  },
+  {
+    id: "sb-hvac-minisplit",
+    name: "Mini-Split Options",
+    industry: "hvac", proposalType: "good_better_best", complexity: "standard",
+    bestFor: "Ductless zones, additions, and garages.",
+    styleBadge: "Zone Options",
+    proposalTemplateId: "ptmpl-2",
+    sections: ["cover_header", "customer_info", "property_info", "recommended_solution", "gbb_options", "warranty", "financing_note", "terms", "approval"],
+    options: [
+      opt({ tier: "good",   name: "Single-Zone 12k BTU", image: img("1762341123870-d706f257a12e"), brand: "Mitsubishi", model: "MSZ-FS12", description: "One indoor head, one room.", price: 4200, monthlyPrice: 69, efficiency: "20 SEER2", warranty: "12-yr compressor", category: "Mini Splits", includes: ["1 indoor head", "Outdoor condenser", "Line set & install"] }),
+      opt({ tier: "better", name: "Dual-Zone 18k BTU",   image: img("1654880821975-681bd2ff42ae"), brand: "Mitsubishi", model: "MXZ-2C20", description: "Two rooms, independent control.", price: 6800, monthlyPrice: 105, efficiency: "19 SEER2", warranty: "12-yr compressor", category: "Mini Splits", includes: ["2 indoor heads", "Multi-zone condenser", "Line sets & install"] }),
+      opt({ tier: "best",   name: "Tri-Zone 24k BTU",     image: img("1759772238012-9d5ad59ae637"), brand: "Mitsubishi", model: "MXZ-3C24", description: "Three zones, hyper-heat capable.", price: 9600, monthlyPrice: 149, efficiency: "18 SEER2", warranty: "12-yr compressor", category: "Mini Splits", includes: ["3 indoor heads", "Hyper-heat condenser", "Line sets & install", "Wireless controllers"] }),
+    ],
+    financingNote: "Low monthly financing available on multi-zone systems.",
+    terms: "Proposal valid 30 days.",
+  },
+  {
+    id: "sb-roof-replace",
+    name: "Roofing Replacement",
+    industry: "roofing", proposalType: "good_better_best", complexity: "premium",
+    bestFor: "Full roof replacement with shingle tiers.",
+    styleBadge: "Shingle Tiers",
+    proposalTemplateId: "ptmpl-2",
+    sections: ["cover_header", "customer_info", "property_info", "inspection_findings", "recommended_solution", "gbb_options", "photos", "warranty", "financing_note", "terms", "approval"],
+    options: [
+      opt({ tier: "good",   name: "Architectural Shingles", image: img("1566071634551-224a639a1c7d"), brand: "GAF", model: "Timberline HDZ", description: "Durable, popular, great value.", price: 12500, monthlyPrice: 189, warranty: "25-yr limited", category: "Roofing", includes: ["Tear-off & disposal", "Synthetic underlayment", "Ridge vent", "Cleanup & magnet sweep"] }),
+      opt({ tier: "better", name: "Designer Shingles",      image: img("1590365876016-da05ac533e83"), brand: "GAF", model: "Grand Sequoia", description: "Premium look, heavier weight.", price: 16800, monthlyPrice: 254, warranty: "Lifetime limited", category: "Roofing", includes: ["Tear-off & disposal", "Ice & water shield", "Designer shingles", "Ridge vent", "Cleanup"] }),
+      opt({ tier: "best",   name: "Standing Seam Metal",    image: img("1602193230480-7840a38eb0c3"), brand: "—", model: "24-gauge", description: "50+ year lifespan, energy efficient.", price: 28500, monthlyPrice: 429, warranty: "30-yr finish", category: "Roofing", includes: ["Tear-off & disposal", "Full underlayment", "Standing seam panels", "Custom flashing", "Cleanup"] }),
+    ],
+    financingNote: "Roofing financing available with low monthly payments.",
+    warranty: "Manufacturer material warranty plus 10-yr workmanship.",
+    terms: "Proposal valid 30 days. Subject to deck inspection on tear-off.",
+  },
+  {
+    id: "sb-roof-repair",
+    name: "Roofing Repair",
+    industry: "roofing", proposalType: "repair", complexity: "simple",
+    bestFor: "Targeted leak and storm-damage repairs.",
+    styleBadge: "Quick Repair",
+    proposalTemplateId: "ptmpl-1",
+    sections: ["cover_header", "customer_info", "property_info", "inspection_findings", "photos", "line_items", "terms", "approval"],
+    options: [
+      opt({ name: "Leak Repair & Flashing", image: img("1634853982486-c06f0e17940f"), description: "Repair active leak and reseal flashing.", price: 850, category: "Roofing", includes: ["Replace damaged shingles", "Reseal flashing", "Repair underlayment"] }),
+    ],
+    terms: "Repairs warrantied 1 year. Proposal valid 30 days.",
+  },
+  {
+    id: "sb-hvac-commercial-pm",
+    name: "Commercial HVAC PM",
+    industry: "hvac", proposalType: "commercial_pm", complexity: "premium",
+    bestFor: "Commercial preventive-maintenance agreements.",
+    styleBadge: "Service Contract",
+    proposalTemplateId: "ptmpl-4",
+    sections: ["cover_header", "customer_info", "property_info", "scope_of_work", "recommended_solution", "line_items", "terms", "approval"],
+    options: [
+      opt({ name: "Quarterly PM — Up to 10 RTUs", image: img("1704022632400-79aab2ddb9f6"), description: "4 visits/yr, filter changes, full inspection.", price: 4800, monthlyPrice: 400, category: "Maintenance", includes: ["Quarterly inspections", "Filter changes", "Coil cleaning", "Priority response", "15% repair discount"] }),
+    ],
+    terms: "12-month agreement, auto-renewing. Billed monthly.",
+  },
+  {
+    id: "sb-plumbing-membership",
+    name: "Plumbing Membership",
+    industry: "plumbing", proposalType: "maintenance_plan", complexity: "standard",
+    bestFor: "Recurring plumbing membership / service plan.",
+    styleBadge: "Membership",
+    proposalTemplateId: "ptmpl-4",
+    sections: ["cover_header", "customer_info", "recommended_solution", "scope_of_work", "line_items", "warranty", "terms", "approval"],
+    options: [
+      opt({ tier: "good",   name: "Essential Plan", image: img("1676210134188-4c05dd172f89"), description: "Annual inspection + priority booking.", price: 144, monthlyPrice: 12, category: "Membership", includes: ["Annual plumbing inspection", "Priority scheduling", "10% repair discount"] }),
+      opt({ tier: "better", name: "Total Care Plan", image: img("1542013936693-884638332954"), description: "Two visits + water heater flush.", price: 264, monthlyPrice: 22, category: "Membership", includes: ["2 inspections/yr", "Water heater flush", "Priority scheduling", "15% repair discount", "Waived diagnostic fees"] }),
+    ],
+    terms: "Membership renews annually. Cancel anytime.",
+  },
+  {
+    id: "sb-property-maintenance",
+    name: "Property Maintenance",
+    industry: "property_maintenance", proposalType: "maintenance_plan", complexity: "standard",
+    bestFor: "Recurring property / facility maintenance contracts.",
+    styleBadge: "Contract",
+    proposalTemplateId: "ptmpl-4",
+    sections: ["cover_header", "customer_info", "property_info", "scope_of_work", "line_items", "terms", "approval"],
+    options: [
+      opt({ name: "Monthly Property Care", image: img("1486406146926-c627a92ad1ab"), description: "Recurring maintenance across the property.", price: 9600, monthlyPrice: 800, category: "Maintenance", includes: ["Monthly site visit", "Preventive checklist", "Minor repairs included", "Priority dispatch", "Quarterly reporting"] }),
+    ],
+    terms: "12-month contract, billed monthly. 30-day cancellation notice.",
+  },
+];
+
+// ─── Storage (company-installed copies) ───────────────────
+const CS_KEY = "crm-company-salesbooks";
+let _company: CompanySalesbook[] | null = null;
+
+function read(): CompanySalesbook[] {
+  if (_company) return _company;
+  if (typeof window === "undefined") return [];
+  try { const r = localStorage.getItem(CS_KEY); _company = r ? JSON.parse(r) : []; }
+  catch { _company = []; }
+  return _company!;
+}
+function write(list: CompanySalesbook[]): void {
+  _company = list;
+  try { localStorage.setItem(CS_KEY, JSON.stringify(list)); } catch { /* ignore */ }
+}
+
+function nowStamp(): string {
+  return new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+// ─── Master template reads ────────────────────────────────
+export function getSalesbookTemplates(): SalesbookTemplate[] { return SALESBOOK_TEMPLATES; }
+export function getSalesbookTemplate(id: string): SalesbookTemplate | undefined {
+  return SALESBOOK_TEMPLATES.find(t => t.id === id);
+}
+
+// ─── Company salesbook reads ──────────────────────────────
+export function getCompanySalesbooks(): CompanySalesbook[] { return read().filter(s => s.active); }
+export function getCompanySalesbook(id: string): CompanySalesbook | undefined {
+  return read().find(s => s.id === id);
+}
+export function getInstalledForCompany(companyId?: string): CompanySalesbook[] {
+  return getCompanySalesbooks().filter(s => !companyId || s.companyId === companyId);
+}
+
+// A master template is "installed" if any active company copy points back to it.
+export function isTemplateInstalled(templateId: string, companyId?: string): boolean {
+  return getCompanySalesbooks().some(s =>
+    s.copiedFromTemplateId === templateId && (!companyId || s.companyId === companyId));
+}
+
+// ─── Install / uninstall ──────────────────────────────────
+export interface InstallSalesbookOptions {
+  companyId: string;
+  locationId?: string;
+  name?: string;              // optional rename
+  includeOptions?: boolean;   // include sample option cards (default true)
+  includeImages?: boolean;    // include sample option images (default true)
+  includeTerms?: boolean;     // include default terms (default true)
+}
+
+// Copy a master template into the company workspace. The copy is independent —
+// editing it never changes the master template.
+export function installSalesbook(templateId: string, opts: InstallSalesbookOptions): CompanySalesbook | undefined {
+  const tmpl = getSalesbookTemplate(templateId);
+  if (!tmpl) return;
+  const includeOptions = opts.includeOptions ?? true;
+  const includeImages = opts.includeImages ?? true;
+  const includeTerms = opts.includeTerms ?? true;
+  const copy: CompanySalesbook = {
+    id: `csb-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+    companyId: opts.companyId,
+    locationId: opts.locationId,
+    copiedFromTemplateId: tmpl.id,
+    active: true,
+    installedAt: nowStamp(),
+    name: opts.name?.trim() || tmpl.name,
+    industry: tmpl.industry,
+    proposalType: tmpl.proposalType,
+    complexity: tmpl.complexity,
+    bestFor: tmpl.bestFor,
+    styleBadge: tmpl.styleBadge,
+    sections: [...tmpl.sections],
+    options: includeOptions ? tmpl.options.map((o, i) => ({ ...o, id: `${o.id}-c${i}`, image: includeImages ? o.image : undefined })) : [],
+    financingNote: tmpl.financingNote,
+    warranty: tmpl.warranty,
+    terms: includeTerms ? tmpl.terms : undefined,
+  };
+  write([copy, ...read()]);
+  return copy;
+}
+
+export function renameCompanySalesbook(id: string, name: string): void {
+  write(read().map(s => s.id === id ? { ...s, name: name.trim() || s.name } : s));
+}
+
+// Save edits to a company salesbook (sections, options, terms, etc.). Never
+// touches the CRM master template the copy came from.
+export function updateCompanySalesbook(id: string, patch: Partial<CompanySalesbook>): CompanySalesbook | undefined {
+  let updated: CompanySalesbook | undefined;
+  write(read().map(s => {
+    if (s.id !== id) return s;
+    updated = { ...s, ...patch, id: s.id, copiedFromTemplateId: s.copiedFromTemplateId };
+    return updated;
+  }));
+  return updated;
+}
+
+// Fresh blank option for the company-salesbook editor.
+export function blankSalesbookOption(): SalesbookOption {
+  return { id: `opt-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, name: "New option", price: 0 };
+}
+
+// Soft-remove (active=false) so it drops out of lists without losing the record.
+export function uninstallSalesbook(id: string): void {
+  write(read().map(s => s.id === id ? { ...s, active: false } : s));
+}

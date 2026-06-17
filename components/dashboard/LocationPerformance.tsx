@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo } from "react";
 import { MapPin } from "lucide-react";
-import { companies, locations } from "@/lib/hierarchy/data";
+import { getAllCompanies, getAllLocations } from "@/lib/hierarchy/data";
 import { ALL_JOBS } from "@/lib/jobs/data";
 import { ALL_LEADS } from "@/lib/leads/data";
 import { ALL_INVOICES, fmt } from "@/lib/quotes/data";
@@ -11,12 +12,14 @@ import { useHierarchy } from "@/components/providers/HierarchyProvider";
 export default function LocationPerformance() {
   const { effectiveCompanyId } = useHierarchy();
 
-  const visibleLocations = locations.filter(l =>
-    l.status === "active" &&
-    (!effectiveCompanyId || l.companyId === effectiveCompanyId)
-  );
+  const stats = useMemo(() => {
+    const companies = getAllCompanies();
+    const visibleLocations = getAllLocations().filter(l =>
+      l.status === "active" &&
+      (!effectiveCompanyId || l.companyId === effectiveCompanyId)
+    );
 
-  const stats = visibleLocations.map(loc => {
+    return visibleLocations.map(loc => {
     const co = companies.find(c => c.id === loc.companyId);
     const jobs = ALL_JOBS.filter(j => j.locationId === loc.id);
     const openLeads = ALL_LEADS.filter(l =>
@@ -29,7 +32,8 @@ export default function LocationPerformance() {
       j.status === "in_progress" || j.status === "en_route" || j.status === "scheduled"
     ).length;
     return { loc, co, activeJobs, openLeads, outstanding };
-  });
+    });
+  }, [effectiveCompanyId]);
 
   return (
     <div className="rounded-xl overflow-hidden h-full min-h-0 flex flex-col"

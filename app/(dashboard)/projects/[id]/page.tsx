@@ -18,7 +18,7 @@ import { QUOTE_STATUS_STYLE, INVOICE_STATUS_STYLE } from "@/lib/quotes/types";
 import InvoiceWizard from "@/components/quotes/InvoiceWizard";
 import { useRouter, useSearchParams } from "next/navigation";
 import Commentable from "@/components/comments/Commentable";
-import QuickCreateQuoteModal from "@/components/quotes/QuickCreateQuoteModal";
+import QuoteTypeChooser from "@/components/quotes/create/QuoteTypeChooser";
 import PhotoGallery from "@/components/files/PhotoGallery";
 import DetailTabs from "@/components/shared/DetailTabs";
 
@@ -273,18 +273,15 @@ function StubContent({ label }: { label: string }) {
 
 // ─── Estimates (quotes) tab ───────────────────────────────
 function ProjectEstimatesTab({ projectId }: { projectId: string }) {
-  const router = useRouter();
   const [wizard, setWizard] = useState(false);
-  const [, forceRefresh] = useState(0);
   const project = getProject(projectId)!;
   const quotes  = getQuotesForProject(projectId);
 
   return (
     <div className="rounded-xl overflow-hidden max-w-3xl" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
       {wizard && (
-        <QuickCreateQuoteModal preset={{ customerId: project.accountId, projectId, lockCustomer: true }}
-          onClose={() => setWizard(false)}
-          onContinue={(qid) => { setWizard(false); router.push(`/quotes/${qid}/builder`); }} />
+        <QuoteTypeChooser preset={{ customerId: project.accountId, projectId, lockCustomer: true }}
+          onClose={() => setWizard(false)} />
       )}
       <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
         <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Estimates ({quotes.length})</p>

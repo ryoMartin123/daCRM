@@ -15,7 +15,7 @@ import NewCustomerModal from "@/components/customers/NewCustomerModal";
 import JobWizard from "@/components/jobs/JobWizard";
 import LeadWizard from "@/components/leads/LeadWizard";
 import ProjectWizard from "@/components/projects/ProjectWizard";
-import QuickCreateQuoteModal from "@/components/quotes/QuickCreateQuoteModal";
+import QuoteTypeChooser from "@/components/quotes/create/QuoteTypeChooser";
 import InvoiceWizard from "@/components/quotes/InvoiceWizard";
 
 type ModalKind = "customer" | "lead" | "job" | "project" | "quote" | "invoice";
@@ -107,7 +107,7 @@ export default function GlobalCreateMenu() {
         <ProjectWizard onClose={() => setActive(null)} onCreated={(id) => { setActive(null); router.push(`/projects/${id}`); }} />
       )}
       {active === "quote" && (
-        <QuickCreateQuoteModal onClose={() => setActive(null)} onContinue={(id) => { setActive(null); router.push(`/quotes/${id}/builder`); }} />
+        <QuoteTypeChooser onClose={() => setActive(null)} />
       )}
       {active === "invoice" && (
         <InvoiceWizard onClose={() => setActive(null)} onCreated={(id) => { setActive(null); router.push(`/invoices/${id}`); }} />

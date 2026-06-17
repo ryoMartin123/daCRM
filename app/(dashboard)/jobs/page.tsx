@@ -11,7 +11,7 @@ import UiSelect from "@/components/ui/Select";
 import PageTitle from "@/components/shared/PageTitle";
 import { ALL_PROJECTS, getSessionProjects, getProjectProgress, type Project } from "@/lib/projects/data";
 import { getProjectStages, projectTypeLabel } from "@/lib/projects/settings";
-import { getJobStatuses } from "@/lib/job-config/data";
+import { getJobStatuses, jobTypeLabel } from "@/lib/job-config/data";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
 import { usePermissions } from "@/components/providers/PermissionProvider";
 import ModuleSummaryCards, { type SummaryCard } from "@/components/shared/ModuleSummaryCards";
@@ -53,11 +53,12 @@ function tabsFor(today: string): { key: string; label: string; fn: (j: Job) => b
 }
 
 // Job types (the Job.type enum) with readable labels for the Type filter.
+// "Maintenance" is keyed agreement_visit (the canonical maintenance key); labels
+// come from the configured Job Types via jobTypeLabel.
 const JOB_TYPE_VALUES: JobType[] = [
-  "maintenance", "repair", "installation", "inspection",
+  "agreement_visit", "repair", "installation", "inspection",
   "emergency", "estimate", "warranty", "replacement", "other",
 ];
-function jobTypeLabel(t: JobType): string { return t.charAt(0).toUpperCase() + t.slice(1); }
 
 // ─── Time (scheduled-date) filter ─────────────────────────
 type TimeFilter = "any" | "today" | "week" | "month" | "overdue" | "unscheduled";
@@ -129,7 +130,7 @@ function ProjectsInline({ projects, companyId, locationId }: { projects: Project
             style={{ gridTemplateColumns: "2.5fr 1fr 1fr 1fr 1fr 1fr", borderBottom: i < filtered.length - 1 ? "1px solid var(--border-subtle)" : "none", textDecoration: "none" }}
           >
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-600 shrink-0">{p.customerInitials}</div>
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "var(--bg-input)" }}><FolderKanban className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} /></div>
               <div className="min-w-0">
                 <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{p.name}</p>
                 <p className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>{p.customerName}</p>
@@ -394,7 +395,7 @@ export default function JobsPage() {
                     style={{ gridTemplateColumns: gridCols, borderBottom: i < displayed.length - 1 ? "1px solid var(--border-subtle)" : "none", textDecoration: "none" }}>
                     {/* Job / Customer */}
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-600 shrink-0">{job.customerInitials}</div>
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "var(--bg-input)" }}><Calendar className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} /></div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
                           <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{job.title}</p>

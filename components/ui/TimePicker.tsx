@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Clock, Check } from "lucide-react";
 
-// Themed time picker — a scrollable list of slots matching the Select dropdown.
-// Value is an "HH:MM" 24h string (drop-in for a native <input type="time">).
+// Themed time picker — type a time (e.g. "3pm", "3:30 pm", "15:30") to filter/jump,
+// or pick from the scrollable list. Value is an "HH:MM" 24h string (drop-in for a
+// native <input type="time">).
 interface Props {
   value: string;
   onChange: (value: string) => void;
@@ -25,52 +26,134 @@ function fmt12(hhmm: string): string {
   return `${h12}:${String(m ?? 0).padStart(2, "0")} ${period}`;
 }
 
+// "HH:MM" -> its 12-hour parts, for matching typed input against the option list.
+function parts12(hhmm: string) {
+  const [h, m] = hhmm.split(":").map(Number);
+  return { h12: h % 12 === 0 ? 12 : h % 12, m, period: h >= 12 ? "pm" : "am" };
+}
+
+// Free-form time entry -> "HH:MM" (or null). Accepts "3", "3pm", "3:30 pm",
+// "330pm", "15:30", etc. Used to commit a time that isn't one of the list slots.
+function parseTime(raw: string): string | null {
+  let s = raw.trim().toLowerCase().replace(/\s+/g, "");
+  if (!s) return null;
+  const ampm = s.endsWith("am") ? "am" : s.endsWith("pm") ? "pm" : s.endsWith("a") ? "am" : s.endsWith("p") ? "pm" : "";
+  if (ampm) s = s.replace(/(a|p)m?$/, "");
+  let h: number, m = 0;
+  if (s.includes(":")) {
+    const [hp, mp] = s.split(":");
+    h = parseInt(hp, 10); m = parseInt(mp || "0", 10);
+  } else if (s.length <= 2) {
+    h = parseInt(s, 10);
+  } else {
+    m = parseInt(s.slice(-2), 10);
+    h = parseInt(s.slice(0, -2), 10);
+  }
+  if (isNaN(h) || isNaN(m)) return null;
+  if (ampm === "pm" && h < 12) h += 12;
+  if (ampm === "am" && h === 12) h = 0;
+  if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+// Does an option ("HH:MM") match what the user has typed so far?
+function matches(opt: string, q: string): boolean {
+  const t = q.trim().toLowerCase();
+  if (!t) return true;
+  const mm = t.match(/^(\d{1,2})(?::?(\d{0,2}))?\s*(am?|pm?)?$/);
+  const { h12, m, period } = parts12(opt);
+  if (mm) {
+    if (parseInt(mm[1], 10) !== h12) return false;
+    if (mm[2] && !String(m).padStart(2, "0").startsWith(mm[2])) return false;
+    if (mm[3] && (mm[3].startsWith("p") ? "pm" : "am") !== period) return false;
+    return true;
+  }
+  return fmt12(opt).toLowerCase().includes(t);
+}
+
 export default function TimePicker({ value, onChange, placeholder = "Select time", size = "md", className, minuteStep = 15, startHour = 6, endHour = 21 }: Props) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const wrapRef = useRef<HTMLDivElement>(null);
   const selRef = useRef<HTMLButtonElement>(null);
 
+  const options = useMemo(() => {
+    const out: string[] = [];
+    for (let h = startHour; h <= endHour; h++) {
+      for (let m = 0; m < 60; m += minuteStep) {
+        if (h === endHour && m > 0) break;
+        out.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+      }
+    }
+    return out;
+  }, [minuteStep, startHour, endHour]);
+
+  const filtered = useMemo(() => options.filter(o => matches(o, query)), [options, query]);
+
   useEffect(() => {
     if (!open) return;
-    const onDoc = (e: MouseEvent) => { if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false); };
+    const onDoc = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) { setOpen(false); setQuery(""); }
+    };
     document.addEventListener("mousedown", onDoc);
-    // Bring the selected slot into view.
-    requestAnimationFrame(() => selRef.current?.scrollIntoView({ block: "center" }));
+    // Bring the selected slot into view when opening without a query.
+    if (!query) requestAnimationFrame(() => selRef.current?.scrollIntoView({ block: "center" }));
     return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
+  }, [open, query]);
 
-  const options: string[] = [];
-  for (let h = startHour; h <= endHour; h++) {
-    for (let m = 0; m < 60; m += minuteStep) {
-      if (h === endHour && m > 0) break;
-      options.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
-    }
-  }
+  const select = (o: string) => { onChange(o); setOpen(false); setQuery(""); };
+
+  // Commit whatever's typed: prefer the top filtered slot, fall back to a parsed
+  // free-form time, clear the value on an empty field, otherwise keep the old value.
+  const commit = () => {
+    const t = query.trim();
+    if (!open) return;
+    if (t === "") onChange("");
+    else if (filtered.length) onChange(filtered[0]);
+    else { const p = parseTime(t); if (p) onChange(p); }
+    setOpen(false);
+    setQuery("");
+  };
 
   const pad = size === "sm" ? "px-2.5 py-1.5 text-xs" : "px-3 py-2 text-sm";
 
   return (
     <div ref={wrapRef} className={`relative ${className ?? "w-full"}`}>
-      <button type="button" onClick={() => setOpen(o => !o)}
-        className={`w-full flex items-center justify-between gap-2 rounded-lg outline-none transition-colors ${pad}`}
+      <div className={`w-full flex items-center justify-between gap-2 rounded-lg transition-colors ${pad}`}
         style={{
           border: `1px solid ${open ? "#a5b4fc" : "var(--border)"}`,
           backgroundColor: "var(--bg-surface)",
-          color: value ? "var(--text-primary)" : "var(--text-muted)",
           boxShadow: open ? "0 0 0 3px rgba(99,102,241,0.12)" : "none",
         }}>
-        <span className="truncate text-left">{value ? fmt12(value) : placeholder}</span>
+        <input
+          type="text"
+          value={open ? query : fmt12(value)}
+          placeholder={placeholder}
+          onFocus={() => { setOpen(true); setQuery(fmt12(value)); }}
+          onChange={e => { setQuery(e.target.value); if (!open) setOpen(true); }}
+          onKeyDown={e => {
+            if (e.key === "Enter") { e.preventDefault(); commit(); }
+            else if (e.key === "Escape") { setOpen(false); setQuery(""); (e.target as HTMLInputElement).blur(); }
+          }}
+          onBlur={commit}
+          className="flex-1 min-w-0 bg-transparent outline-none"
+          style={{ color: value || query ? "var(--text-primary)" : "var(--text-muted)" }}
+        />
         <Clock className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted)" }} />
-      </button>
+      </div>
 
       {open && (
         <div className="absolute left-0 right-0 z-50 mt-1.5 p-1 rounded-xl overflow-y-auto thin-scroll-y"
           style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "0 12px 32px rgba(0,0,0,0.16)", maxHeight: "240px" }}
           role="listbox">
-          {options.map(o => {
+          {filtered.length === 0 ? (
+            <p className="px-2.5 py-2 text-sm" style={{ color: "var(--text-muted)" }}>No matching time</p>
+          ) : filtered.map(o => {
             const isSel = o === value;
             return (
-              <button key={o} ref={isSel ? selRef : undefined} type="button" onClick={() => { onChange(o); setOpen(false); }}
+              <button key={o} ref={isSel ? selRef : undefined} type="button"
+                // onMouseDown so the click registers before the input's onBlur fires.
+                onMouseDown={e => { e.preventDefault(); select(o); }}
                 className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg text-left text-sm transition-colors ${isSel ? "" : "hover:bg-[var(--bg-surface-2)]"}`}
                 style={{ backgroundColor: isSel ? "var(--bg-surface-2)" : undefined, color: isSel ? "#4f46e5" : "var(--text-secondary)", fontWeight: isSel ? 600 : 400 }}>
                 <span>{fmt12(o)}</span>

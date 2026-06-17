@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ProjectWizard from "@/components/projects/ProjectWizard";
-import { Search, Plus, SlidersHorizontal, ChevronUp, ChevronDown, PlayCircle, PauseCircle, CheckCircle2, DollarSign, LayoutList, BarChart3, Columns3, CalendarDays, ChevronLeft, ChevronRight, MapPin } from "lucide-react";
+import { Search, Plus, SlidersHorizontal, ChevronUp, ChevronDown, PlayCircle, PauseCircle, CheckCircle2, DollarSign, LayoutList, BarChart3, Columns3, CalendarDays, ChevronLeft, ChevronRight, MapPin, FolderKanban } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ALL_PROJECTS, getSessionProjects, updateProject, getProjectProgress, type Project } from "@/lib/projects/data";
 import { getProjectStages, projectTypeLabel, type ProjectStage } from "@/lib/projects/settings";
@@ -235,7 +235,7 @@ export default function ProjectsPage() {
                 className="grid px-4 py-3 items-center hover:bg-[var(--bg-surface-2)] transition-colors"
                 style={{ gridTemplateColumns: "2.5fr 1fr 1fr 1fr 1fr 1fr 1.5fr", borderBottom: i < displayed.length - 1 ? "1px solid var(--border-subtle)" : "none", textDecoration: "none" }}>
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-600 shrink-0">{p.customerInitials}</div>
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "var(--bg-input)" }}><FolderKanban className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} /></div>
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{p.name}</p>
                     <p className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>{p.locationName}</p>
@@ -347,9 +347,6 @@ function ProjectCard({ project }: { project: Project }) {
       {/* Customer + progress */}
       <div className="flex items-start justify-between gap-2 mb-1.5">
         <div className="flex items-center gap-2 min-w-0">
-          <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-[9px] font-bold text-indigo-600 shrink-0">
-            {project.customerInitials}
-          </div>
           <p className="text-sm font-semibold truncate" style={{ color: "var(--text-primary)" }}>{project.customerName}</p>
         </div>
         <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: "var(--accent-soft-bg)", color: "var(--accent-text)" }}>{pct}%</span>

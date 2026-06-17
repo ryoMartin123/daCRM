@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   Inbox, Search, SlidersHorizontal, Eye, EyeOff,
   ChevronLeft, ChevronRight, ChevronUp, ChevronDown, LayoutGrid, LayoutList, CalendarDays, CalendarRange, CalendarClock,
-  Plus, Briefcase, X, Users, MapPin, Building2,
+  Plus, Briefcase, X, Users, MapPin, Building2, Check, Globe,
 } from "lucide-react";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
 import PageTitle from "@/components/shared/PageTitle";
@@ -34,12 +34,13 @@ import {
 } from "@/lib/calendar/types";
 import {
   resolveDispatchSettings, defaultDispatchSettings, getBoardsForContext, itemMatchesBoard,
-  getVisibleQueueViews, getAgreementLeadDays,
-  type DispatchSettings, type SettingsServiceBlock, type DispatchBoard,
+  getVisibleQueueViews, getAgreementLeadDays, BOARD_TYPE_LABELS,
+  type DispatchSettings, type SettingsServiceBlock, type DispatchBoard, type BoardMembers,
 } from "@/lib/calendar/settings";
 import {
   matchesQueueView, countForView, defaultQueueViews, type QueueView,
 } from "@/lib/calendar/queueViews";
+import { jobTypeLabel } from "@/lib/job-config/data";
 
 type CalendarView = "dispatch" | "day" | "week" | "month";
 
@@ -66,7 +67,7 @@ function jobTimeStr(d: Date): string { return d.toLocaleTimeString("en-US", { ho
 type SourceJobMap = { dispatchType: "job" | "sales_appointment" | "agreement_visit" | "task"; jobType: JobType };
 const SOURCE_TO_JOB: Record<string, SourceJobMap> = {
   approved_quote:   { dispatchType: "job",              jobType: "installation" },
-  agreement_visit:  { dispatchType: "agreement_visit",  jobType: "maintenance" },
+  agreement_visit:  { dispatchType: "agreement_visit",  jobType: "agreement_visit" },
   task_follow_up:   { dispatchType: "task",             jobType: "other" },
   sales_appointment:{ dispatchType: "sales_appointment", jobType: "estimate" },
 };
@@ -132,6 +133,7 @@ export default function CalendarPage() {
   const [availability, setAvailability] = useState<AvailabilityEvent[]>([]);
   const [timeOffOpen, setTimeOffOpen]   = useState(false);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [boardMenuOpen, setBoardMenuOpen]   = useState(false);
   const [showJobWizard, setShowJobWizard]   = useState(false);
   const [showVisitScheduler, setShowVisitScheduler] = useState(false);
   const [visitSchedErr, setVisitSchedErr] = useState<string | null>(null);
@@ -222,7 +224,31 @@ export default function CalendarPage() {
   // Dispatch board / team selector — boards belong to a company + location and
   // are scoped to the current context. Selecting a board filters the technician
   // rows, scheduled items, and the unscheduled queue to that board.
-  const boardOptions = [{ value: "all", label: "All Boards" }, ...boards.map(b => ({ value: b.id, label: b.name }))];
+  // Board is the primary lens, scoped to the active location/branch. When a single
+  // location is in view the "all" option names it ("All Augusta Boards") so it's
+  // clear you're switching crews within that branch, not across branches.
+  const activeLocationName = effectiveLocationId ? allLocations.find(l => l.id === effectiveLocationId)?.name : undefined;
+  const allBoardsLabel = activeLocationName ? `All ${activeLocationName} Boards` : "All Boards";
+  // Each board's hierarchy layer (org / company / location) and its lane (board
+  // type), shown under the name in the picker so it's clear what a board covers.
+  // Location is the most specific; an org-wide board (no company/location) claims
+  // everything. The lane prefix is dropped for "custom" boards (no meaningful type).
+  type ScopeLevel = "org" | "company" | "location";
+  function boardScopeMeta(b: DispatchBoard): { level: ScopeLevel; scope: string } {
+    if (b.locationId) return { level: "location", scope: allLocations.find(l => l.id === b.locationId)?.name ?? "Location" };
+    if (b.companyId)  return { level: "company",  scope: allCompanies.find(c => c.id === b.companyId)?.name ?? "Company" };
+    return { level: "org", scope: "Organization-wide" };
+  }
+  function boardSubline(b: DispatchBoard): string {
+    const { scope } = boardScopeMeta(b);
+    const lane = b.boardType !== "custom" ? BOARD_TYPE_LABELS[b.boardType] : "";
+    return lane ? `${lane} · ${scope}` : scope;
+  }
+  const boardOptions = [
+    { value: "all", label: allBoardsLabel, level: (activeLocationName ? "location" : "org") as ScopeLevel, sub: activeLocationName ? "Every board in this branch" : "Every board across the org" },
+    ...boards.map(b => ({ value: b.id, label: b.name, level: boardScopeMeta(b).level, sub: boardSubline(b) })),
+  ];
+  const SCOPE_ICON: Record<ScopeLevel, typeof Globe> = { org: Globe, company: Building2, location: MapPin };
   // When the chosen board is narrower than the current viewing scope (e.g. org-wide
   // viewer picks Augusta's board), surface a quiet reminder that they're looking at
   // a location/company-specific board even though their global scope is broader.
@@ -239,26 +265,41 @@ export default function CalendarPage() {
     }
     return null;
   })();
-  // Board rows are the board's EXPLICIT members only — people added by name plus
-  // holders of the board's assigned roles (within that board's scope). There's no
-  // implicit "everyone", so e.g. dispatchers don't show unless they're members.
-  // "All Boards" shows the union of members across every board in the view.
-  const boardRoster = (() => {
-    const membersOf = (b: (typeof boards)[number]): string[] => {
-      const bCo = b.companyId || undefined;
-      const bLoc = b.locationId || undefined;
+  // A board's members = people added by name PLUS holders of its assigned roles
+  // (within the board's scope). This one resolver feeds BOTH the board rows and the
+  // item-routing (itemMatchesBoard), so "who shows up" and "whose jobs land here"
+  // can't drift apart. Keyed by board id; an assigned job follows its tech onto
+  // every board whose member set includes them.
+  const membersByBoard = useMemo<BoardMembers>(() => {
+    const map: BoardMembers = {};
+    for (const b of boards) {
       const names = new Set<string>(b.techNames);
-      getUsersByRoles(b.roleKeys ?? [], bCo, bLoc).forEach(u => names.add(u.fullName));
-      return Array.from(names);
-    };
+      getUsersByRoles(b.roleKeys ?? [], b.companyId || undefined, b.locationId || undefined)
+        .forEach(u => names.add(u.fullName));
+      map[b.id] = names;
+    }
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boards, refreshKey]);
+
+  // Board rows are the board's EXPLICIT members only — there's no implicit
+  // "everyone", so e.g. dispatchers don't show unless they're members. "All Boards"
+  // shows the union of members across every board in the view.
+  const boardRoster = (() => {
     const names = new Set<string>();
-    if (activeBoardDef) membersOf(activeBoardDef).forEach(n => names.add(n));
-    else boards.forEach(b => membersOf(b).forEach(n => names.add(n)));
+    const collect = (b: DispatchBoard) => (membersByBoard[b.id] ?? new Set<string>()).forEach(n => names.add(n));
+    if (activeBoardDef) collect(activeBoardDef);
+    else boards.forEach(collect);
     return Array.from(names).map(name =>
       roster.find(r => r.name === name) ?? { name, initials: initials(name), status: "available" as const },
     );
   })();
   const activeDispatcherLabel = activeBoardDef?.dispatchers.join(", ");
+  // Primary/secondary text for the board switcher control (header, top-right).
+  const boardMenuLabel = activeBoardDef ? activeBoardDef.name : "All Boards";
+  const boardMenuSub   = activeBoardDef
+    ? (activeDispatcherLabel || activeLocationName || "Dispatch board")
+    : (activeLocationName || "All branches");
 
   // Selecting a board seeds its default view/mode (still overridable afterward).
   function selectBoard(id: string) {
@@ -287,15 +328,17 @@ export default function CalendarPage() {
     [rawItems, sessionItems, edits, hidden, fTech, fType, fPrio]);
 
   // Narrow scheduled items + queue to the selected board (All Boards = no narrowing).
-  const boardItems  = activeBoardDef ? items.filter(i => itemMatchesBoard(i, activeBoardDef)) : items;
+  const boardItems  = activeBoardDef ? items.filter(i => itemMatchesBoard(i, activeBoardDef, boards, membersByBoard)) : items;
   const unscheduled = [...allUnscheduled, ...sessionUnscheduled]
     .filter(u => !removed.has(u.id))
-    .filter(u => !activeBoardDef || itemMatchesBoard(u, activeBoardDef));
+    .filter(u => !activeBoardDef || itemMatchesBoard(u, activeBoardDef, boards, membersByBoard));
   const jobTypes = useMemo(() => Array.from(new Set(rawItems.map(i => i.jobType).filter(Boolean))) as string[], [rawItems]);
   const availableLayers = CALENDAR_LAYERS.filter(t => ["job","agreement_visit","task","project_milestone"].includes(t) && rawItems.some(i => i.type === t));
   const activeLayerCount = availableLayers.filter(t => !hidden.has(t)).length;
   const layersFiltered = activeLayerCount < availableLayers.length;
-  const activeFilters = [fTech !== "all", fType !== "all", fPrio !== "all", boardId !== "all", layersFiltered].filter(Boolean).length;
+  // Board selection is a primary lens (its own toolbar control), not a narrowing
+  // filter, so it no longer counts toward the Filters badge.
+  const activeFilters = [fTech !== "all", fType !== "all", fPrio !== "all", layersFiltered].filter(Boolean).length;
 
   function toggleLayer(t: CalendarItemType) { setHidden(p => { const n = new Set(p); n.has(t) ? n.delete(t) : n.add(t); return n; }); }
   function showAllLayers() { setHidden(p => { const n = new Set(p); availableLayers.forEach(t => n.delete(t)); return n; }); }
@@ -477,21 +520,56 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        {/* Right: Hourly / Service Blocks toggle */}
-        <div className="flex-1 flex justify-end min-w-0">
-          {view === "dispatch" && (
-            <div className="flex items-center rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
-              {([{ key: "hourly", label: "Hourly View" }, { key: "blocks", label: "Service Blocks" }] as const).map(m => {
-                const active = dispatchMode === m.key;
-                return (
-                  <button key={m.key} onClick={() => setMode(m.key)} className="px-3 py-1.5 text-xs font-medium transition-colors"
-                    style={{ backgroundColor: active ? "#4f46e5" : "var(--bg-surface)", color: active ? "#fff" : "var(--text-muted)" }}>
-                    {m.label}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+        {/* Right: board switcher — the primary lens (Hourly / Service Blocks now
+            lives in the Filters popover). */}
+        <div className="flex-1 flex justify-end items-center gap-2 min-w-0">
+          {/* Board switcher — the main control. Styled as a primary context picker
+              (icon tile · board name · context sub-line · chevron), not a bare
+              dropdown, so it reads as "which board am I dispatching?". */}
+          <div className="relative shrink-0">
+            <button onClick={() => setBoardMenuOpen(o => !o)}
+              title="Switch dispatch board"
+              className="flex items-center gap-2.5 pl-1.5 pr-2.5 py-1 rounded-lg transition-colors hover:bg-[var(--bg-surface-2)]"
+              style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)" }}
+              aria-haspopup="menu" aria-expanded={boardMenuOpen}>
+              <div className="w-8 h-8 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: "var(--accent-soft-bg)" }}>
+                <LayoutGrid className="w-4 h-4" style={{ color: "var(--accent-text)" }} />
+              </div>
+              <div className="min-w-0 text-left max-w-[180px]">
+                <p className="text-sm font-semibold leading-tight truncate" style={{ color: "var(--text-primary)" }}>{boardMenuLabel}</p>
+                <p className="text-[10px] leading-tight truncate" style={{ color: "var(--text-muted)" }}>{boardMenuSub}</p>
+              </div>
+              <ChevronDown className="w-4 h-4 shrink-0 transition-transform" style={{ color: "var(--text-muted)", transform: boardMenuOpen ? "rotate(180deg)" : "none" }} />
+            </button>
+            {boardMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setBoardMenuOpen(false)} />
+                <div role="menu" className="absolute right-0 mt-1.5 w-60 rounded-xl overflow-hidden z-50 p-1"
+                  style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "0 12px 32px rgba(0,0,0,0.18)" }}>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest px-2.5 pt-1.5 pb-1" style={{ color: "var(--text-muted)" }}>Dispatch board</p>
+                  {boardOptions.map(o => {
+                    const sel = o.value === boardId;
+                    const ScopeIcon = SCOPE_ICON[o.level];
+                    return (
+                      <button key={o.value} role="menuitemradio" aria-checked={sel}
+                        onClick={() => { selectBoard(o.value); setBoardMenuOpen(false); }}
+                        className="w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg text-left transition-colors hover:bg-[var(--bg-surface-2)]">
+                        <span className="min-w-0">
+                          <span className="block text-sm truncate" style={{ color: sel ? "#4f46e5" : "var(--text-secondary)", fontWeight: sel ? 600 : 400 }}>{o.label}</span>
+                          <span className="flex items-center gap-1 text-[10px] mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>
+                            <ScopeIcon className="w-2.5 h-2.5 shrink-0" />
+                            <span className="truncate">{o.sub}</span>
+                          </span>
+                        </span>
+                        {sel && <Check className="w-3.5 h-3.5 shrink-0" style={{ color: "#4f46e5" }} />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+
         </div>
       </div>
 
@@ -568,15 +646,28 @@ export default function CalendarPage() {
               <div className="absolute right-0 top-full mt-2 z-50 rounded-xl p-4 w-72" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "0 12px 32px rgba(0,0,0,0.18)" }}>
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Filters</p>
-                  {activeFilters > 0 && <button onClick={() => { setBoardId("all"); setFTech("all"); setFType("all"); setFPrio("all"); showAllLayers(); }} className="text-xs" style={{ color: "var(--accent-text)" }}>Clear all</button>}
+                  {activeFilters > 0 && <button onClick={() => { setFTech("all"); setFType("all"); setFPrio("all"); showAllLayers(); }} className="text-xs" style={{ color: "var(--accent-text)" }}>Clear all</button>}
                 </div>
                 <div className="space-y-2.5">
-                  <FilterField label="Dispatch Board">
-                    <Select size="sm" value={boardId} onChange={selectBoard} options={boardOptions} />
-                    {activeDispatcherLabel && <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>Dispatcher: {activeDispatcherLabel}</p>}
-                  </FilterField>
+                  {/* Board moved out to its own toolbar control; these narrow WITHIN the selected board. */}
+                  {/* Dispatch layout — hourly grid vs service blocks (dispatch view only). */}
+                  {view === "dispatch" && (
+                    <FilterField label="Dispatch Layout">
+                      <div className="flex items-center rounded-lg overflow-hidden w-full" style={{ border: "1px solid var(--border)" }}>
+                        {([{ key: "hourly", label: "Hourly" }, { key: "blocks", label: "Service Blocks" }] as const).map(m => {
+                          const active = dispatchMode === m.key;
+                          return (
+                            <button key={m.key} onClick={() => setMode(m.key)} className="flex-1 px-3 py-1.5 text-xs font-medium transition-colors"
+                              style={{ backgroundColor: active ? "#4f46e5" : "var(--bg-surface)", color: active ? "#fff" : "var(--text-muted)" }}>
+                              {m.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </FilterField>
+                  )}
                   <FilterField label="Technician"><Select size="sm" value={fTech} onChange={setFTech} options={[{ value: "all", label: "All Technicians" }, ...technicians.map(t => ({ value: t, label: t }))]} /></FilterField>
-                  <FilterField label="Job Type"><Select size="sm" value={fType} onChange={setFType} options={[{ value: "all", label: "All Types" }, ...jobTypes.map(t => ({ value: t, label: t }))]} /></FilterField>
+                  <FilterField label="Job Type"><Select size="sm" value={fType} onChange={setFType} options={[{ value: "all", label: "All Types" }, ...jobTypes.map(t => ({ value: t, label: jobTypeLabel(t) }))]} /></FilterField>
                   <FilterField label="Priority"><Select size="sm" value={fPrio} onChange={setFPrio} options={[{ value: "all", label: "Any Priority" }, { value: "urgent", label: "Urgent" }, { value: "high", label: "High" }, { value: "normal", label: "Normal" }, { value: "low", label: "Low" }]} /></FilterField>
 
                   {/* Layers — show/hide item types on the board */}
@@ -962,7 +1053,7 @@ function DispatchBoard({ focus, mode, items, roster, availability, dayStart, day
                         {!movingAway && prio && <span className="text-[8px] font-bold px-1 rounded shrink-0" style={{ backgroundColor: prio.bg, color: prio.color }}>{prio.label}</span>}
                       </div>
                       <p className="text-[9px] truncate leading-tight" style={{ color: "var(--text-muted)" }}>
-                        {p ? `${minToTime(sm)} · ${dur}m` : `${fmtTime(i.start)} · ${i.jobType ?? ""}${i.city ? ` · ${i.city}` : ""}`}
+                        {p ? `${minToTime(sm)} · ${dur}m` : `${fmtTime(i.start)} · ${i.jobType ? jobTypeLabel(i.jobType) : ""}${i.city ? ` · ${i.city}` : ""}`}
                       </p>
                     </div>
                     {/* Resize handle (right edge) */}
