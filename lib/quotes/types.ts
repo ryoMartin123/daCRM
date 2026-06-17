@@ -111,6 +111,20 @@ export interface Quote {
   updatedAt: string;
 }
 
+// ─── Proposal section (copied from a proposal template) ──
+// Snapshot of a template section on the quote. Editing the template later does
+// not change existing quotes — each quote owns its section copy. Lives here (a
+// leaf module) so both lib/quotes/data.ts and lib/quotes/blocks.ts can reference
+// it without forming an import cycle.
+export interface QuoteSection {
+  id?: string;          // stable unique identity (lets a quote hold duplicates of a type)
+  key: string;          // section TYPE — proposal SectionKey (e.g. "recommended_solution")
+  label: string;        // editable display title (renaming a section edits this)
+  body: string;         // editable customer-facing wording
+  visible: boolean;
+  locked?: boolean;     // structural section that shouldn't be deleted (e.g. cover)
+}
+
 export interface Invoice {
   id: string;
   organizationId: string;

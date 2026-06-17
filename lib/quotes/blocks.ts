@@ -12,7 +12,7 @@
 // No mock data here. localStorage persistence is handled by lib/quotes/data.ts
 // (the `blocks` field on QuoteRecord); swap for Supabase later.
 
-import type { QuoteSection } from "./data";
+import type { QuoteSection } from "./types";
 
 export type BlockType =
   | "heading"

@@ -11,7 +11,11 @@ import {
 } from "lucide-react";
 import UiSelect from "@/components/ui/Select";
 import OptionImageInput from "@/components/quotes/OptionImageInput";
-import { SECTION_CATALOG, SECTION_LABELS, type SectionKey } from "@/lib/proposals/data";
+import ProposalDocument from "@/components/quotes/ProposalDocument";
+import { SECTION_CATALOG, SECTION_LABELS, buildSectionsFromKeys, type SectionKey } from "@/lib/proposals/data";
+import { buildProposalDoc, type ProposalDocData } from "@/lib/quotes/proposalDoc";
+import { getActiveDesign } from "@/lib/proposals/designs";
+import type { QuoteOption } from "@/lib/quotes/data";
 import {
   getCompanySalesbook, updateCompanySalesbook, blankSalesbookOption,
   INDUSTRY_LABELS, PROPOSAL_TYPE_LABELS, INDUSTRY_ACCENT, type SalesbookOption,
@@ -28,6 +32,26 @@ export default function CompanySalesbookEditor({ sbId, onBack }: { sbId: string;
   const [sections, setSections] = useState<SectionKey[]>(original?.sections ?? []);
   const [options, setOptions] = useState<SalesbookOption[]>(original?.options ?? []);
   const [saved, setSaved] = useState(false);
+
+  const design = useMemo(() => getActiveDesign(), []);
+  // Live preview: render exactly what a quote built from this salesbook will look
+  // like — its sections (with the book's own financing / warranty / terms wording)
+  // and option cards, in the company's active quote design.
+  const previewDoc = useMemo<ProposalDocData>(() => {
+    const secs = buildSectionsFromKeys(sections).map(s => ({
+      ...s,
+      body: s.key === "financing_note" ? (financingNote || s.body)
+        : s.key === "warranty" ? (warranty || s.body)
+        : s.key === "terms" ? (terms || s.body)
+        : s.body,
+    }));
+    return buildProposalDoc({
+      quoteNumber: "Q-PREVIEW", title: name || original?.name || "Proposal",
+      customerName: "Sample Customer", expiresAt: "Valid 30 days",
+      sections: secs, lineItems: [], options: options as unknown as QuoteOption[],
+      subtotal: 0, tax: 0, total: 0, taxRatePct: 0,
+    });
+  }, [sections, options, financingNote, warranty, terms, name, original]);
 
   if (!original) {
     return (
@@ -74,6 +98,8 @@ export default function CompanySalesbookEditor({ sbId, onBack }: { sbId: string;
         </button>
       </div>
 
+      <div className="flex gap-5 items-start">
+        <div className="flex-1 min-w-0 space-y-5">
       {/* Details */}
       <Card title="Details" icon={FileText}>
         <Field label="Salesbook name"><input value={name} onChange={e => setName(e.target.value)} className="w-full rounded-lg px-3 py-2 text-sm outline-none" style={inputStyle} /></Field>
@@ -123,6 +149,22 @@ export default function CompanySalesbookEditor({ sbId, onBack }: { sbId: string;
         <button onClick={save} className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors" style={{ backgroundColor: saved ? "#10b981" : accent }}>
           {saved ? "Saved ✓" : "Save Changes"}
         </button>
+      </div>
+        </div>
+
+        {/* Live preview — what a quote built from this salesbook looks like */}
+        <aside className="hidden lg:block shrink-0 sticky self-start" style={{ width: "440px", top: "8px" }}>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Live preview</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: accent + "1a", color: accent }}>{design.name}</span>
+          </div>
+          <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "#e5e7eb", border: "1px solid var(--border-subtle)", maxHeight: "calc(100vh - 120px)", overflowY: "auto" }}>
+            <div className="p-4"><ProposalDocument data={previewDoc} design={design} /></div>
+          </div>
+          <p className="text-[10px] mt-2 leading-relaxed" style={{ color: "var(--text-muted)" }}>
+            Customers see this exact layout. Pricing comes from the option cards; the quote design is set in <span style={{ fontWeight: 600 }}>Quote Designs</span>.
+          </p>
+        </aside>
       </div>
     </div>
   );

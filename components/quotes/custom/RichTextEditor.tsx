@@ -17,8 +17,11 @@ import {
 interface ActiveState { bold: boolean; italic: boolean; underline: boolean; ul: boolean; ol: boolean; block: string }
 const EMPTY: ActiveState = { bold: false, italic: false, underline: false, ul: false, ol: false, block: "" };
 
-export default function RichTextEditor({ value, onChange, placeholder, minHeight = 320 }: {
+export default function RichTextEditor({ value, onChange, placeholder, minHeight = 320, seamless = false }: {
   value: string; onChange: (html: string) => void; placeholder?: string; minHeight?: number;
+  // seamless: no surrounding box — the surface blends into the page (flowing
+  // document feel) and the toolbar floats above the text only while focused.
+  seamless?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -26,6 +29,7 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
   const savedRange = useRef<Range | null>(null);
   const selImgRef = useRef<HTMLImageElement | null>(null);
   const [active, setActive] = useState<ActiveState>(EMPTY);
+  const [focused, setFocused] = useState(false);
   // Bounding box of the currently selected inline image (for the resize overlay).
   const [imgBox, setImgBox] = useState<{ left: number; top: number; w: number; h: number } | null>(null);
 
@@ -117,10 +121,17 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
   const headingActive = (tag: string) => active.block === tag;
   const paragraphActive = !["h1", "h2", "h3"].includes(active.block);
 
+  const showToolbar = !seamless || focused;
   return (
-    <div ref={wrapRef} className="rounded-xl overflow-hidden relative" style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)" }}>
-      {/* Toolbar */}
-      <div className="flex items-center gap-0.5 flex-wrap px-2 py-1.5 border-b" style={{ borderColor: "var(--border-subtle)", backgroundColor: "var(--bg-surface-2)" }}
+    <div ref={wrapRef} className={seamless ? "relative" : "rounded-xl overflow-hidden relative"} style={seamless ? undefined : { border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)" }}>
+      {/* Toolbar — fixed at top in boxed mode; floats above the text on focus in seamless mode */}
+      {showToolbar && (
+      <div className={seamless
+          ? "absolute left-0 -top-2 z-30 flex items-center gap-0.5 flex-wrap px-1.5 py-1 rounded-xl -translate-y-full"
+          : "flex items-center gap-0.5 flex-wrap px-2 py-1.5 border-b"}
+        style={seamless
+          ? { backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "0 8px 24px rgba(0,0,0,0.18)" }
+          : { borderColor: "var(--border-subtle)", backgroundColor: "var(--bg-surface-2)" }}
         onMouseDown={e => e.preventDefault() /* keep selection */}>
         <Tb title="Heading 1" on={headingActive("h1")} onClick={() => exec("formatBlock", "h1")}><Heading1 className="w-4 h-4" /></Tb>
         <Tb title="Heading 2" on={headingActive("h2")} onClick={() => exec("formatBlock", "h2")}><Heading2 className="w-4 h-4" /></Tb>
@@ -147,23 +158,25 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
         <Tb title="Redo" onClick={() => exec("redo")}><Redo2 className="w-4 h-4" /></Tb>
         <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onPickFile} />
       </div>
+      )}
 
       {/* Editable surface */}
       <div
         ref={ref}
-        className="rte px-4 py-3 text-sm outline-none leading-relaxed"
+        className={seamless ? "rte text-sm outline-none leading-relaxed" : "rte px-4 py-3 text-sm outline-none leading-relaxed"}
         contentEditable
         suppressContentEditableWarning
         role="textbox"
         aria-multiline="true"
         data-placeholder={placeholder ?? "Start writing…"}
         onClick={onEditorClick}
+        onFocus={() => setFocused(true)}
         onInput={() => { emit(); refreshActive(); if (selImgRef.current) measureImg(); }}
         onKeyUp={refreshActive}
         onMouseUp={() => { saveSelection(); refreshActive(); }}
-        onBlur={() => { saveSelection(); emit(); }}
+        onBlur={() => { saveSelection(); emit(); setFocused(false); }}
         onDrop={e => { onDrop(e); if (selImgRef.current) setTimeout(measureImg, 0); }}
-        style={{ minHeight, color: "var(--text-primary)" }}
+        style={{ minHeight: seamless ? Math.min(minHeight, 48) : minHeight, color: "var(--text-primary)" }}
       />
 
       {/* Selected-image overlay: outline + corner resize handle */}

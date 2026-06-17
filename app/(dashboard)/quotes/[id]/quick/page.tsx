@@ -18,6 +18,7 @@ import CatalogPicker from "@/components/quotes/CatalogPicker";
 import ProposalDocument from "@/components/quotes/ProposalDocument";
 import { buildProposalDoc } from "@/lib/quotes/proposalDoc";
 import { downloadProposalPdf } from "@/lib/quotes/proposalPdf";
+import { getActiveDesign } from "@/lib/proposals/designs";
 import {
   getQuote, autosaveQuote, updateQuoteStatus, computeTotals, fmt,
   type QuoteRecord, type QuoteSection, type LineItem,
@@ -62,6 +63,7 @@ export default function QuickQuotePage({ params }: { params: Promise<{ id: strin
   const { id } = use(params);
   const router = useRouter();
   const branding = useMemo(() => getProposalBranding(), []);
+  const design = useMemo(() => getActiveDesign(), []);
   const itemDefaults = useMemo(() => getItemDefaults(), []);
 
   const [loading, setLoading] = useState(true);
@@ -165,7 +167,7 @@ export default function QuickQuotePage({ params }: { params: Promise<{ id: strin
     window.addEventListener("afterprint", restore);
     window.print();
   }
-  function downloadPdf() { setMoreOpen(false); if (docData) downloadProposalPdf(docData); }
+  function downloadPdf() { setMoreOpen(false); if (docData) downloadProposalPdf(docData, design); }
 
   if (loading) return <div className="p-10 text-sm" style={{ color: "var(--text-muted)" }}>Loading…</div>;
   if (!quote) return (
@@ -225,7 +227,7 @@ export default function QuickQuotePage({ params }: { params: Promise<{ id: strin
       {/* Body */}
       <div className="flex-1 overflow-y-auto thin-scroll-y p-6" style={{ backgroundColor: preview ? "#e5e7eb" : undefined }}>
         {preview && docData ? (
-          <ProposalDocument data={docData} />
+          <ProposalDocument data={docData} design={design} />
         ) : (
           <div className="mx-auto space-y-4" style={{ maxWidth: "760px" }}>
             {/* Customer / property summary */}
@@ -333,7 +335,7 @@ export default function QuickQuotePage({ params }: { params: Promise<{ id: strin
       {showCatalog && <CatalogPicker items={catalog} showCost={showCost} onAdd={addCatalogItems} onClose={() => setShowCatalog(false)} />}
 
       {/* Hidden printable document */}
-      {docData && <div className="print-doc" aria-hidden><ProposalDocument data={docData} shadow={false} /></div>}
+      {docData && <div className="print-doc" aria-hidden><ProposalDocument data={docData} shadow={false} design={design} /></div>}
     </div>
   );
 }

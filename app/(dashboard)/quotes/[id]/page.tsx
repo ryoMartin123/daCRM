@@ -16,6 +16,7 @@ import {
   createInvoiceFromQuote, type QuoteRecord, type QuoteActivityKind,
 } from "@/lib/quotes/data";
 import { downloadProposalPdf } from "@/lib/quotes/proposalPdf";
+import { getActiveDesign } from "@/lib/proposals/designs";
 import { proposalDocFromQuote } from "@/lib/quotes/proposalDoc";
 import { QUOTE_STATUS_STYLE, type QuoteStatus } from "@/lib/quotes/types";
 import { getCustomer } from "@/lib/customers/data";
@@ -461,9 +462,10 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
   // The full customer-facing proposal used by Preview, instant PDF, and Print —
   // includes every section the quote carries, not just line items.
   const docData = proposalDocFromQuote(quote);
+  const design = getActiveDesign();
 
   // Instant PDF: builds and saves "<quote-number>.pdf" — no print dialog.
-  function downloadPdf() { downloadProposalPdf(docData); }
+  function downloadPdf() { downloadProposalPdf(docData, design); }
 
   // Print = open the system print dialog showing only the quote document.
   function printQuote() {
@@ -525,7 +527,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
               onCreateInvoice={doCreateInvoice}
               onDownloadPdf={downloadPdf}
               onPrint={printQuote}
-              onEdit={() => router.push(`/quotes/${id}/${quote.quoteMode === "quick" ? "quick" : "proposal"}`)}
+              onEdit={() => router.push(`/quotes/${id}/${quote.quoteMode === "quick" ? "quick" : "custom"}`)}
               onArchive={doArchive}
               onUnarchive={doUnarchive}
               onDelete={doDelete}
@@ -552,7 +554,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
               <button onClick={() => setShowPreview(false)} style={{ color: "var(--text-muted)" }}><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4" style={{ backgroundColor: "#e5e7eb" }}>
-              <ProposalDocument data={docData} />
+              <ProposalDocument data={docData} design={design} />
             </div>
           </div>
         </div>
@@ -560,7 +562,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
 
       {/* Hidden printable document — the only thing shown when Print triggers. */}
       <div className="print-doc" aria-hidden>
-        <ProposalDocument data={docData} shadow={false} />
+        <ProposalDocument data={docData} shadow={false} design={design} />
       </div>
     </div>
   );

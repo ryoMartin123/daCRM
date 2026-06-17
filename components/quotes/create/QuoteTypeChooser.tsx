@@ -41,7 +41,7 @@ const CUSTOM_SECTIONS = ["cover_header", "customer_info", "property_info", "reco
 
 const CARDS: { mode: QuoteMode; title: string; subtitle: string; bestFor: string; icon: typeof Zap; accent: string }[] = [
   { mode: "quick",    title: "Quick Quote",            subtitle: "Simple branded quote from catalog items.",        bestFor: "Repairs, add-ons, standard services, simple line-item quotes.", icon: Zap,              accent: "#4f46e5" },
-  { mode: "template", title: "Proposal From Template", subtitle: "Use a saved proposal template or salesbook.",      bestFor: "Good/Better/Best options, equipment replacements, packages, maintenance plans.", icon: LayoutTemplate, accent: "#0891b2" },
+  { mode: "template", title: "Proposal from Salesbook",  subtitle: "Pick a salesbook — the quote is built and opened instantly.", bestFor: "Good/Better/Best options, equipment replacements, packages, maintenance plans.", icon: LayoutTemplate, accent: "#0891b2" },
   { mode: "custom",   title: "Custom Proposal",        subtitle: "Build pricing, scope, photos, and layout from scratch.", bestFor: "Complex jobs, custom scopes, margin-based pricing, large installs, commercial.", icon: SlidersHorizontal, accent: "#7c3aed" },
 ];
 
@@ -56,7 +56,11 @@ export default function QuoteTypeChooser({ preset, onClose }: {
   const [mode, setMode] = useState<QuoteMode>("quick");
 
   const [customerId, setCustomerId] = useState(preset?.customerId ?? customers[0]?.id ?? "");
-  const [propertyId, setPropertyId] = useState(preset?.propertyId ?? "");
+  // A quote is anchored to a property by default — auto-select the account's first
+  // property (the rep can change it). Falls back to none only when the account has
+  // no properties at all (new lead, B2B/no site).
+  const [propertyId, setPropertyId] = useState(
+    preset?.propertyId ?? getProperties(preset?.customerId ?? customers[0]?.id ?? "")[0]?.id ?? "");
   const [relatedKind, setRelatedKind] = useState<RelatedKind>(
     preset?.leadId ? "lead" : preset?.jobId ? "job" : preset?.projectId ? "project" : "none");
   const [relatedId, setRelatedId] = useState(preset?.leadId ?? preset?.jobId ?? preset?.projectId ?? "");
@@ -113,9 +117,11 @@ export default function QuoteTypeChooser({ preset, onClose }: {
     return null;
   }
 
-  const canContinue = mode === "template"
-    ? Boolean(customerId && sourceKey)
-    : Boolean(customerId);
+  // A quote depends on a property whenever the account has one; only accounts with
+  // no properties at all may continue without one.
+  const hasProperties = properties.length > 0;
+  const canContinue = (mode === "template" ? Boolean(customerId && sourceKey) : Boolean(customerId))
+    && (!hasProperties || Boolean(propertyId));
 
   function defaultExpiry(days: number): string {
     const exp = new Date(); exp.setDate(exp.getDate() + days);
@@ -144,7 +150,7 @@ export default function QuoteTypeChooser({ preset, onClose }: {
         salesbookId: src.salesbookId, proposalTemplateId: src.proposalTemplateId,
       });
       onClose();
-      router.push(`/quotes/${q.id}/proposal`);
+      router.push(`/quotes/${q.id}`);
       return;
     }
 
@@ -218,17 +224,25 @@ export default function QuoteTypeChooser({ preset, onClose }: {
               <div>
                 <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Customer / Account *</label>
                 <AccountSearchSelect customers={customers} value={customerId}
-                  onChange={v => { setCustomerId(v); setPropertyId(""); setRelatedId(""); setSourceKey(""); }} disabled={Boolean(preset?.lockCustomer)} />
+                  onChange={v => { setCustomerId(v); setPropertyId(getProperties(v)[0]?.id ?? ""); setRelatedId(""); setSourceKey(""); }} disabled={Boolean(preset?.lockCustomer)} />
               </div>
-              {/* Property */}
+              {/* Property — the quote is anchored to it. Required when the account has one. */}
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Property <span style={{ color: "var(--text-muted)" }}>(optional)</span></label>
-                <UiSelect value={propertyId} onChange={setPropertyId} placeholder="No specific property"
-                  options={[{ value: "", label: "No specific property" }, ...properties.map(p => ({ value: p.id, label: `${p.label ? p.label + " — " : ""}${p.address}, ${p.city}` }))]} />
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>
+                  Property{hasProperties ? " *" : <span style={{ color: "var(--text-muted)" }}> (optional)</span>}
+                </label>
+                {hasProperties ? (
+                  <UiSelect value={propertyId} onChange={setPropertyId} placeholder="Select a property…"
+                    options={properties.map(p => ({ value: p.id, label: `${p.label ? p.label + " — " : ""}${p.address}, ${p.city}` }))} />
+                ) : (
+                  <div className="rounded-lg px-3 py-2 text-xs" style={{ border: "1px dashed var(--border)", color: "var(--text-muted)" }}>
+                    This account has no properties yet — the quote won&apos;t be tied to a specific property.
+                  </div>
+                )}
               </div>
-              {/* Related */}
+              {/* Optional extra pipeline link — the property is the primary anchor. */}
               <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>Related to <span style={{ color: "var(--text-muted)" }}>(optional)</span></label>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>Also link to <span style={{ color: "var(--text-muted)" }}>(optional)</span></label>
                 <div className="flex items-center rounded-lg overflow-hidden w-fit mb-2" style={{ border: "1px solid var(--border)" }}>
                   {(["none", "lead", "job", "project"] as RelatedKind[]).map(k => {
                     const active = relatedKind === k;
@@ -270,7 +284,7 @@ export default function QuoteTypeChooser({ preset, onClose }: {
           <div className="px-6 py-4 flex items-center justify-between shrink-0" style={{ borderTop: "1px solid var(--border-subtle)" }}>
             <span className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
               <activeCard.icon className="w-3.5 h-3.5" />
-              {mode === "quick" ? "Opens the Quick Quote editor" : mode === "template" ? "Opens the proposal workspace, prefilled" : "Opens the Pricing Wizard"}
+              {mode === "quick" ? "Opens the Quick Quote editor" : mode === "template" ? "Builds the quote from your salesbook and opens it" : "Opens the Pricing Wizard"}
             </span>
             <button onClick={handleCreate} disabled={!canContinue}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-40" style={{ backgroundColor: activeCard.accent }}>

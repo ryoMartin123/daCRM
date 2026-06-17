@@ -1,24 +1,31 @@
 "use client";
 
 // ─── EditingScopeHeader ───────────────────────────────────
-// The "you are here" banner at the top of a settings section: spells out the
-// active scope (Organization → Company → Branch), states plainly who a change
-// here affects, and warns clearly when editing a single branch. Changing the
-// layer is done through a popup (ScopeSwitcherModal) — kept out of the banner so
-// it stays clean. Global ("any") settings get a simpler note; not all is layered.
+// Compact "you are here" scope bar at the top of a settings section: one scope
+// badge, the scope name, a one-line path summary, a short plain-English note, and
+// a Change scope button (opens ScopeSwitcherModal). Scope/inheritance logic is
+// unchanged — this is presentation only. Global ("any") settings get a one-liner.
 
 import { useState } from "react";
-import { AlertTriangle, Layers, SlidersHorizontal } from "lucide-react";
+import { Layers, SlidersHorizontal } from "lucide-react";
 import { useSettingsScope } from "@/components/providers/SettingsScopeProvider";
 import { effectiveLayers, LAYER_META, LAYER_ORDER, type Layer, type SectionLayers } from "@/lib/settings-scope/types";
 import ScopeSwitcherModal from "@/components/settings/ScopeSwitcherModal";
 
-// What a lower (not-yet-narrowed) layer reads as on each line.
+// How a lower (not-yet-narrowed) layer reads in the path summary.
 const ALL_LABEL: Record<Layer, string> = {
   org: "Entire organization",
   company: "All companies",
   location: "All branches",
   service_area: "All service areas",
+};
+
+// The single scope badge label per active layer.
+const SCOPE_BADGE: Record<Layer, string> = {
+  org: "Organization-wide",
+  company: "Company",
+  location: "Branch",
+  service_area: "Service Area",
 };
 
 export default function EditingScopeHeader({ sectionLayers }: { sectionLayers: SectionLayers }) {
@@ -31,7 +38,7 @@ export default function EditingScopeHeader({ sectionLayers }: { sectionLayers: S
   // Global setting — scope doesn't apply.
   if (sectionLayers === "any") {
     return (
-      <div className="rounded-xl px-4 py-3 mb-5 flex items-center gap-2.5"
+      <div className="rounded-xl px-4 py-2.5 mb-5 flex items-center gap-2.5"
         style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border-subtle)" }}>
         <Layers className="w-4 h-4 shrink-0" style={{ color: "var(--text-muted)" }} />
         <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
@@ -44,9 +51,9 @@ export default function EditingScopeHeader({ sectionLayers }: { sectionLayers: S
   const eff = effectiveLayers(sectionLayers, available);
   const meta = LAYER_META[activeLayer];
   const activeIdx = LAYER_ORDER.indexOf(activeLayer);
+  const scopeName = nodeName(activeLayer);
 
-  // Is there anything to switch between (more than one layer, or a layer with
-  // multiple nodes to pick)? Only then is the "Change scope" button useful.
+  // Is there anything to switch between? Only then is "Change scope" useful.
   const effArr = (eff === "any" ? [] : eff) as Layer[];
   const canSwitch =
     effArr.length > 1 ||
@@ -54,66 +61,42 @@ export default function EditingScopeHeader({ sectionLayers }: { sectionLayers: S
     (effArr.includes("location") && locationOptions.length > 1) ||
     (effArr.includes("service_area") && areaOptions.length > 1);
 
-  const lines = available.map(l => {
-    const idx = LAYER_ORDER.indexOf(l);
-    return {
-      layer: l,
-      label: LAYER_META[l].label,
-      color: LAYER_META[l].color,
-      value: idx <= activeIdx ? nodeName(l) : ALL_LABEL[l],
-      isActive: l === activeLayer,
-    };
-  });
+  // One-line path summary across the layers below the org (e.g.
+  // "All companies · All branches · All service areas").
+  const pathSummary = available
+    .filter(l => l !== "org")
+    .map(l => (LAYER_ORDER.indexOf(l) <= activeIdx ? nodeName(l) : ALL_LABEL[l]))
+    .join(" · ");
 
-  const node = nodeName(activeLayer);
-  const helper =
-    activeLayer === "org"      ? "Changes made here apply to the entire organization — every company and branch — unless one overrides them." :
-    activeLayer === "company"  ? `Changes made here apply to all branches under ${node} unless a branch has an override.` :
-    activeLayer === "location" ? `Changes made here apply to ${node} only and won't affect other branches.` :
-                                 `Changes made here apply to ${node} only.`;
-
-  const isNarrow = activeLayer === "location" || activeLayer === "service_area";
+  const explain =
+    activeLayer === "org"      ? "Applies everywhere unless a lower level overrides it." :
+    activeLayer === "company"  ? `Applies to all branches of ${scopeName} unless one overrides it.` :
+                                 `Applies to ${scopeName} only — won't affect other ${activeLayer === "service_area" ? "service areas" : "branches"}.`;
 
   return (
     <>
-      <div className="rounded-xl overflow-hidden mb-5" style={{ border: `1px solid ${meta.color}40`, backgroundColor: meta.color + "0a" }}>
-        <div className="px-4 py-3.5">
-          <div className="flex items-center justify-between gap-3 mb-2.5">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full" style={{ backgroundColor: meta.color + "1f", color: meta.color }}>
-                Editing Scope
-              </span>
-              <span className="text-sm font-semibold" style={{ color: meta.color }}>{meta.label} Level</span>
-            </div>
-            {canSwitch && (
-              <button onClick={() => setSwitcherOpen(true)}
-                className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors shrink-0"
-                style={{ border: `1px solid ${meta.color}66`, color: meta.color }}>
-                <SlidersHorizontal className="w-3 h-3" /> Change scope
-              </button>
-            )}
-          </div>
-
-          <div className="space-y-1">
-            {lines.map(ln => (
-              <div key={ln.layer} className="flex items-center gap-2 text-xs">
-                <span className="w-24 shrink-0" style={{ color: "var(--text-muted)" }}>{ln.label}</span>
-                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: ln.isActive ? ln.color : "var(--border)" }} />
-                <span style={{ color: ln.isActive ? "var(--text-primary)" : "var(--text-secondary)", fontWeight: ln.isActive ? 600 : 400 }}>{ln.value}</span>
-              </div>
-            ))}
-          </div>
-
-          <p className="text-xs mt-3 leading-relaxed" style={{ color: "var(--text-secondary)" }}>{helper}</p>
+      <div className="rounded-xl mb-5 flex items-center gap-3 px-4 py-2.5"
+        style={{ border: `1px solid ${meta.color}40`, backgroundColor: meta.color + "0a" }}>
+        {/* Badge + scope name + path */}
+        <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full shrink-0"
+          style={{ backgroundColor: meta.color + "1f", color: meta.color }}>{SCOPE_BADGE[activeLayer]}</span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm truncate" style={{ color: "var(--text-primary)" }}>
+            Editing defaults for <span className="font-semibold">{scopeName}</span>
+          </p>
+          {pathSummary && <p className="text-[11px] truncate mt-0.5" style={{ color: "var(--text-muted)" }}>{pathSummary}</p>}
         </div>
 
-        {isNarrow && (
-          <div className="flex items-center gap-2 px-4 py-2" style={{ backgroundColor: "var(--warning-soft-bg)", borderTop: `1px solid ${meta.color}30` }}>
-            <AlertTriangle className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--warning-icon)" }} />
-            <p className="text-xs font-medium" style={{ color: "var(--warning-text)" }}>
-              You are editing {node} only. This will not affect other {activeLayer === "service_area" ? "service areas" : "branches"}.
-            </p>
-          </div>
+        {/* Short explanation (secondary) */}
+        <p className="hidden lg:block text-[11px] leading-snug text-right shrink-0" style={{ color: "var(--text-secondary)", maxWidth: "260px" }}>{explain}</p>
+
+        {/* Change scope */}
+        {canSwitch && (
+          <button onClick={() => setSwitcherOpen(true)}
+            className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-colors shrink-0"
+            style={{ border: `1px solid ${meta.color}66`, color: meta.color }}>
+            <SlidersHorizontal className="w-3 h-3" /> Change scope
+          </button>
         )}
       </div>
 

@@ -1,15 +1,22 @@
 "use client";
 
-// Custom Proposal Builder — a flexible, block-based document editor (distinct
-// from the structured, salesbook-driven /proposal workspace). The rep builds the
-// proposal from content blocks: rich text, images, line items, price summary,
-// options, etc. — reorder, add, duplicate, hide/show.
+// Custom Proposal Builder — a flowing, document-first editor.
 //
-// Pricing math from the wizard stays available as an INTERNAL pin at the top of
-// the canvas. It is never shown to the customer; a customer-facing number only
-// appears if the rep adds a Price Summary or Line Items block.
+// The rep builds the proposal as ONE continuous sheet that looks like the thing
+// the customer will receive: an editable letterhead, then content that flows
+// top-to-bottom with no card chrome. Modules ("blocks") still exist — line items,
+// price summary, options, images, rich text — but they live in the document.
 //
-// Reached via: chooser → /pricing (wizard) → /custom.  Never the old builder.
+// EDITING a section (or adding one) opens a large, resizable editor modal: the
+// left pane holds that section's full editor (formatting, add image, fields, plus
+// visibility / duplicate / delete in the header), and the right pane shows the
+// live proposal document updating in real time.
+//
+// Internal pricing math from the /pricing wizard lives in a rep-only panel to the
+// LEFT of the sheet. It is never shown to the customer — a number only reaches the
+// proposal if the rep adds a Price Summary or Line Items section.
+//
+// Reached via: chooser → /pricing (wizard) → /custom.
 
 import { use, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -17,11 +24,10 @@ import { useRouter } from "next/navigation";
 import {
   ArrowLeft, Eye, EyeOff, Send, FileText, MoreHorizontal, Cloud, CloudOff,
   Plus, Trash2, Copy, Link2, RotateCcw, Archive, GripVertical, Monitor, Pencil,
-  Printer, Download, Check, SlidersHorizontal, User, MapPin, TrendingUp, Lock,
-  Package, Tag, Search, ChevronDown, Image as ImageIcon,
+  Printer, Download, Check, SlidersHorizontal, Lock,
+  Package, Tag, ChevronLeft, ChevronRight, Image as ImageIcon,
 } from "lucide-react";
 import UiSelect from "@/components/ui/Select";
-import DatePicker from "@/components/ui/DatePicker";
 import CatalogPicker from "@/components/quotes/CatalogPicker";
 import OptionImageInput from "@/components/quotes/OptionImageInput";
 import RichTextEditor from "@/components/quotes/custom/RichTextEditor";
@@ -39,6 +45,11 @@ import {
 import { getAllItems, itemToQuoteLine, getItemDefaults, type Item } from "@/lib/items/data";
 import { LINE_ITEM_CATEGORIES, QUOTE_STATUS_STYLE, type LineItemCategory, type QuoteStatus } from "@/lib/quotes/types";
 import { getProposalBranding, getProposalTerms } from "@/lib/proposals/data";
+import { getActiveDesign, type ProposalDesignStyle } from "@/lib/proposals/designs";
+
+// Structural blocks have no free-form body — auto-opening the editor on insert is
+// skipped for them (they can still be opened by click for delete/move).
+const isEditable = (t: BlockType) => t !== "divider" && t !== "page_break";
 
 // ─── Draft line item (string-backed) ──────────────────────
 interface DraftItem {
@@ -64,6 +75,8 @@ export default function CustomProposalBuilder({ params }: { params: Promise<{ id
   const { id } = use(params);
   const router = useRouter();
   const branding = useMemo(() => getProposalBranding(), []);
+  const design = useMemo(() => getActiveDesign(), []);
+  const ds = design.style;
   const itemDefaults = useMemo(() => getItemDefaults(), []);
   const accent = branding.accentColor || "#7c3aed";
 
@@ -76,21 +89,16 @@ export default function CustomProposalBuilder({ params }: { params: Promise<{ id
   const [taxRate, setTaxRate] = useState("0");
   const [customerNotes, setCustomerNotes] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
-  const [selected, setSelected] = useState<string>("");
+  const [editingId, setEditingId] = useState<string>("");   // block open in the section editor modal
   const [preview, setPreview] = useState(false);
   const [showCatalog, setShowCatalog] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [moreOpen, setMoreOpen] = useState(false);
-  const [addOpen, setAddOpen] = useState(false);
-  const [renamingId, setRenamingId] = useState("");
-  const [dragId, setDragId] = useState("");
-  const [overId, setOverId] = useState("");
   const [copied, setCopied] = useState(false);
-  const [pricingOpen, setPricingOpen] = useState(true);
+  const [dragId, setDragId] = useState("");
 
   const hydratedRef = useRef(false);
   const moreRef = useRef<HTMLDivElement>(null);
-  const addRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const q = getQuote(id);
@@ -101,7 +109,6 @@ export default function CustomProposalBuilder({ params }: { params: Promise<{ id
       setOptions(q.options ?? []);
       setTaxRate(q.subtotal > 0 ? String(Math.round((q.tax / q.subtotal) * 1000) / 10) : "0");
       setCustomerNotes(q.customerNotes ?? ""); setExpiresAt(q.expiresAt ?? "");
-      setSelected((blks.find(b => b.visible) ?? blks[0])?.id ?? "");
     }
     setLoading(false);
   }, [id]);
@@ -140,26 +147,43 @@ export default function CustomProposalBuilder({ params }: { params: Promise<{ id
   }, [title, blocks, lineItems, options, taxRate, customerNotes, expiresAt, loading, quote, id, totals.subtotal, totals.tax, totals.total]);
 
   useCloseOnOutside(moreRef, moreOpen, () => setMoreOpen(false));
-  useCloseOnOutside(addRef, addOpen, () => setAddOpen(false));
 
   // ─── Block ops ──────────────────────────────────────────
   const patchBlock = (bid: string, patch: Partial<QuoteBlock>) => setBlocks(p => p.map(b => b.id === bid ? { ...b, ...patch } : b));
   const setBlockSettings = (bid: string, patch: Record<string, unknown>) => setBlocks(p => p.map(b => b.id === bid ? { ...b, settings: { ...b.settings, ...patch } } : b));
-  const renameBlock = (bid: string, t: string) => patchBlock(bid, { title: t });
   const toggleVisible = (bid: string) => setBlocks(p => p.map(b => b.id === bid ? { ...b, visible: !b.visible } : b));
   function removeBlock(bid: string) {
-    setBlocks(prev => { const next = prev.filter(b => b.id !== bid); if (selected === bid) setSelected(next.find(b => b.visible)?.id ?? next[0]?.id ?? ""); return next; });
+    setBlocks(prev => prev.filter(b => b.id !== bid));
+    if (editingId === bid) setEditingId("");
   }
   function duplicateBlock(bid: string) {
     setBlocks(prev => { const i = prev.findIndex(b => b.id === bid); if (i < 0) return prev;
       const copy: QuoteBlock = { ...prev[i], id: blockId(), title: `${prev[i].title} (Copy)`, locked: false, images: prev[i].images?.map(im => ({ ...im, id: imageId() })) };
-      const next = [...prev]; next.splice(i + 1, 0, copy); setSelected(copy.id); return next; });
+      const next = [...prev]; next.splice(i + 1, 0, copy); return next; });
   }
-  function addBlock(type: BlockType) { const b = defaultBlock(type); setBlocks(prev => [...prev, b]); setSelected(b.id); setAddOpen(false); }
-  function reorder(fromId: string, targetId: string) {
-    if (!fromId || fromId === targetId) return;
-    setBlocks(prev => { const from = prev.findIndex(b => b.id === fromId); if (from < 0) return prev;
-      const arr = [...prev]; const [m] = arr.splice(from, 1); const to = arr.findIndex(b => b.id === targetId); arr.splice(to < 0 ? arr.length : to, 0, m); return arr; });
+  // Insert a fresh block at a given index in the flow, then open its editor.
+  function insertBlock(type: BlockType, index: number) {
+    const b = defaultBlock(type);
+    setBlocks(prev => { const next = [...prev]; next.splice(index, 0, b); return next; });
+    if (isEditable(type)) setEditingId(b.id);
+  }
+  // Live drag-reorder: as the cursor moves over a block, slot the dragged block
+  // before/after it so the whole list reflows in real time (the hovered block
+  // moves to take the dragged block's old place).
+  function liveMove(targetId: string, bottomHalf: boolean) {
+    if (!dragId || dragId === targetId) return;
+    setBlocks(prev => {
+      const from = prev.findIndex(b => b.id === dragId);
+      const tIdx = prev.findIndex(b => b.id === targetId);
+      if (from < 0 || tIdx < 0) return prev;
+      let dest = bottomHalf ? tIdx + 1 : tIdx;
+      const arr = [...prev]; const [m] = arr.splice(from, 1);
+      if (from < dest) dest -= 1;
+      dest = Math.max(0, Math.min(dest, arr.length));
+      arr.splice(dest, 0, m);
+      if (arr.every((b, i) => b.id === prev[i].id)) return prev; // no change → skip re-render
+      return arr;
+    });
   }
 
   // ─── Line item ops ──────────────────────────────────────
@@ -185,9 +209,9 @@ export default function CustomProposalBuilder({ params }: { params: Promise<{ id
     const restore = () => { document.title = prev; window.removeEventListener("afterprint", restore); };
     window.addEventListener("afterprint", restore); window.print();
   }
-  function handleDuplicate() { setMoreOpen(false); persist(); const c = duplicateQuote(id); if (c) router.push(`/quotes/${c.id}/${c.quoteMode === "quick" ? "quick" : c.quoteMode === "template" ? "proposal" : "custom"}`); }
+  function handleDuplicate() { setMoreOpen(false); persist(); const c = duplicateQuote(id); if (c) router.push(`/quotes/${c.id}${c.quoteMode === "quick" ? "/quick" : c.quoteMode === "custom" ? "/custom" : ""}`); }
   function copyLink() { setMoreOpen(false); try { navigator.clipboard?.writeText(`${window.location.origin}/quotes/${id}`); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* ignore */ } }
-  function resetLayout() { setMoreOpen(false); if (!window.confirm("Reset to the starter proposal structure? This replaces the current blocks (line items, options and pricing are kept).")) return; const b = starterBlocks(); setBlocks(b); setSelected(b[0].id); }
+  function resetLayout() { setMoreOpen(false); if (!window.confirm("Reset to the starter proposal structure? This replaces the current sections (line items, options and pricing are kept).")) return; const b = starterBlocks(); setBlocks(b); setEditingId(""); }
   function handleArchive() { setMoreOpen(false); persist(); archiveQuote(id); router.push(`/quotes/${id}`); }
   function handleDelete() { setMoreOpen(false); if (!window.confirm("Delete this quote?")) return; deleteQuote(id); router.push("/quotes"); }
 
@@ -200,9 +224,16 @@ export default function CustomProposalBuilder({ params }: { params: Promise<{ id
   );
 
   const statusStyle = QUOTE_STATUS_STYLE[quote.status as QuoteStatus];
-  const sel = blocks.find(b => b.id === selected);
-  const visibleBlocks = blocks.filter(b => b.visible);
   const showCost = itemDefaults.showCostField;
+  const settingsCtx: SettingsCtx = {
+    accent, setBlockSettings, patchBlock, savedTerms,
+    items, setItem, addItem, removeItem, taxRate, setTaxRate, totals,
+    customerNotes, setCustomerNotes, showCatalog: () => setShowCatalog(true), showCost,
+    options, setOption, removeOption, addOption, selectTier,
+  };
+  const editingBlock = blocks.find(b => b.id === editingId) ?? null;
+  const editingIdx = editingBlock ? blocks.findIndex(b => b.id === editingId) : -1;
+  const goEdit = (dir: -1 | 1) => { if (editingIdx < 0) return; const j = editingIdx + dir; if (j >= 0 && j < blocks.length) setEditingId(blocks[j].id); };
 
   return (
     <div className="flex flex-col h-full" style={{ backgroundColor: "var(--bg-page)" }}>
@@ -239,384 +270,617 @@ export default function CustomProposalBuilder({ params }: { params: Promise<{ id
         </div>
       </div>
 
-      {/* ── Workspace ── */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left: outline */}
-        {!preview && (
-          <div className="w-[270px] shrink-0 flex flex-col" style={{ backgroundColor: "var(--bg-surface)", borderRight: "1px solid var(--border-subtle)" }}>
-            <div className="p-3 shrink-0" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-              <div className="rounded-xl p-3 space-y-2.5" style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border-subtle)" }}>
-                <SummaryRow icon={User} label="Customer" value={quote.customerName} />
-                <SummaryRow icon={MapPin} label="Property" value={quote.propertyLabel ?? "—"} muted={!quote.propertyLabel} />
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto thin-scroll-y px-2 py-3">
-              <div className="flex items-center justify-between px-2 mb-2">
-                <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Document Outline</p>
-                <span className="text-[10px] tabular-nums" style={{ color: "var(--text-muted)" }}>{visibleBlocks.length}/{blocks.length}</span>
-              </div>
-              <div className="space-y-0.5">
-                {blocks.map(b => {
-                  const active = selected === b.id;
-                  const isOver = overId === b.id && dragId && dragId !== b.id;
-                  return (
-                    <div key={b.id}
-                      draggable={renamingId !== b.id}
-                      onDragStart={e => { setDragId(b.id); e.dataTransfer.effectAllowed = "move"; }}
-                      onDragOver={e => { e.preventDefault(); setOverId(b.id); }}
-                      onDrop={e => { e.preventDefault(); reorder(dragId, b.id); setDragId(""); setOverId(""); }}
-                      onDragEnd={() => { setDragId(""); setOverId(""); }}
-                      onClick={() => setSelected(b.id)}
-                      className="group relative flex items-center gap-1 rounded-lg pr-1 transition-colors cursor-pointer"
-                      style={{ backgroundColor: active ? "var(--accent-soft-bg)" : "transparent", boxShadow: active ? "inset 0 0 0 1px " + accent + "66" : "none", opacity: dragId === b.id ? 0.4 : 1, borderTop: isOver ? `2px solid ${accent}` : "2px solid transparent" }}>
-                      <span className="pl-1.5 py-2 cursor-grab active:cursor-grabbing" style={{ color: "var(--text-muted)" }} onClick={e => e.stopPropagation()}><GripVertical className="w-3.5 h-3.5" /></span>
-                      {renamingId === b.id ? (
-                        <input autoFocus value={b.title} onChange={e => renameBlock(b.id, e.target.value)} onBlur={() => setRenamingId("")} onKeyDown={e => { if (e.key === "Enter" || e.key === "Escape") setRenamingId(""); }} onClick={e => e.stopPropagation()} className="flex-1 min-w-0 rounded px-1.5 py-1 text-sm outline-none" style={inputStyle} />
-                      ) : (
-                        <button onDoubleClick={e => { e.stopPropagation(); setRenamingId(b.id); }} className="flex-1 flex items-center gap-1.5 py-2 text-left min-w-0">
-                          <span className="text-sm truncate" style={{ color: active ? "var(--accent-text)" : b.visible ? "var(--text-primary)" : "var(--text-muted)", fontWeight: active ? 600 : 400 }}>{b.title || BLOCK_LABELS[b.type]}</span>
-                          <span className="text-[9px] uppercase tracking-wide shrink-0" style={{ color: "var(--text-muted)" }}>{BLOCK_LABELS[b.type]}</span>
-                        </button>
-                      )}
-                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" style={{ opacity: active ? 1 : undefined }}>
-                        <IconBtn title="Duplicate" onClick={e => { e.stopPropagation(); duplicateBlock(b.id); }}><Copy className="w-3 h-3" /></IconBtn>
-                        <IconBtn title="Delete" onClick={e => { e.stopPropagation(); removeBlock(b.id); }}><Trash2 className="w-3 h-3" /></IconBtn>
-                      </div>
-                      <IconBtn title={b.visible ? "Hide" : "Show"} onClick={e => { e.stopPropagation(); toggleVisible(b.id); }} active={b.visible} accent={accent}>{b.visible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}</IconBtn>
+      {/* ── Canvas ── */}
+      <div className="flex-1 overflow-y-auto thin-scroll-y" style={{ backgroundColor: preview ? "#e5e7eb" : "var(--bg-canvas, #eef0f4)" }}>
+        {preview && docData ? (
+          <div className="p-6"><CustomProposalDocument data={docData} design={design} /></div>
+        ) : (
+          <div className="mx-auto px-4 py-6 flex gap-5 items-start" style={{ maxWidth: quote.pricing ? "1180px" : "880px" }}>
+            {/* Internal pricing — rep-only panel to the left of the sheet (never part of the document). */}
+            {quote.pricing && <PricingSidebar pricing={quote.pricing} accent={accent} onEdit={() => router.push(`/quotes/${id}/pricing`)} />}
+
+            <div className="flex-1 min-w-0">
+              {/* The proposal sheet — click any section to edit it in the focused editor. */}
+              <div className="relative mx-auto" style={{ maxWidth: "816px", backgroundColor: "#fff", borderRadius: "10px", boxShadow: "0 10px 40px rgba(0,0,0,0.14)" }}>
+                {ds.header === "band" && <div style={{ height: "6px", backgroundColor: accent, borderTopLeftRadius: "10px", borderTopRightRadius: "10px" }} />}
+                <div style={{ padding: "40px 56px 56px", fontFamily: ds.fontFamily }}>
+                  <Letterhead branding={branding} quote={quote} title={title} setTitle={setTitle} expiresAt={expiresAt} setExpiresAt={setExpiresAt} accent={accent} ds={ds} />
+
+                  <InsertGap index={0} onInsert={insertBlock} accent={accent} />
+
+                  {blocks.length === 0 && (
+                    <div className="py-10 text-center">
+                      <p className="text-sm" style={{ color: "#9ca3af" }}>Empty proposal — use a <span style={{ color: accent, fontWeight: 600 }}>＋</span> above to add your first section.</p>
                     </div>
-                  );
-                })}
-              </div>
+                  )}
 
-              {/* Add block */}
-              <div className="relative mt-2 px-1" ref={addRef}>
-                <button onClick={() => setAddOpen(o => !o)} className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors hover:bg-[var(--bg-surface-2)]" style={{ border: "1px dashed var(--border)", color: "var(--text-secondary)" }}><Plus className="w-3.5 h-3.5" /> Add block</button>
-                {addOpen && (
-                  <div className="absolute left-1 right-1 bottom-full mb-1.5 z-40 rounded-xl p-1.5 max-h-80 overflow-y-auto thin-scroll-y" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "0 -8px 28px rgba(0,0,0,0.28)" }}>
-                    {BLOCK_GROUPS.map(group => (
-                      <div key={group} className="mb-1">
-                        <p className="text-[9px] font-semibold uppercase tracking-widest px-2 py-1" style={{ color: "var(--text-muted)" }}>{group}</p>
-                        {BLOCK_LIBRARY.filter(d => d.group === group).map(d => (
-                          <button key={d.type} onClick={() => addBlock(d.type)} className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-sm transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-secondary)" }}>
-                            <Plus className="w-3 h-3 shrink-0" style={{ color: "var(--text-muted)" }} /><span className="truncate">{d.label}</span>
-                          </button>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Center canvas */}
-        <div className="flex-1 overflow-y-auto thin-scroll-y" style={{ backgroundColor: preview ? "#e5e7eb" : "var(--bg-page)" }}>
-          {preview && docData ? (
-            <div className="p-6"><CustomProposalDocument data={docData} /></div>
-          ) : (
-            <div className="mx-auto px-6 py-6 space-y-3" style={{ maxWidth: "860px" }}>
-              {/* Internal pricing pin */}
-              {quote.pricing && <InternalPricingPin pricing={quote.pricing} open={pricingOpen} onToggle={() => setPricingOpen(o => !o)} onEdit={() => router.push(`/quotes/${id}/pricing`)} />}
-
-              {visibleBlocks.length === 0 ? (
-                <div className="rounded-2xl px-8 py-20 text-center" style={{ backgroundColor: "var(--bg-surface)", border: "1px dashed var(--border)" }}>
-                  <p className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>No visible blocks</p>
-                  <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>Add a block from the left to start building.</p>
-                </div>
-              ) : visibleBlocks.map(b => {
-                const isSel = selected === b.id;
-                return (
-                  <div key={b.id} onClick={() => setSelected(b.id)}
-                    className="rounded-2xl cursor-pointer transition-shadow"
-                    style={{ backgroundColor: b.type === "divider" || b.type === "page_break" ? "transparent" : "var(--bg-surface)", border: b.type === "divider" || b.type === "page_break" ? "none" : "1px solid var(--border-subtle)", boxShadow: isSel ? `0 0 0 2px ${accent}, var(--shadow-card)` : (b.type === "divider" || b.type === "page_break" ? "none" : "var(--shadow-card)") }}>
-                    <div className={b.type === "divider" || b.type === "page_break" ? "px-7 py-2" : "px-7 py-5"}>
-                      <CanvasBlock b={b} selected={isSel} accent={accent} title={title}
+                  {blocks.map((b, i) => (
+                    <div key={b.id}>
+                      <BlockRow
+                        b={b} accent={accent} ds={ds}
                         lineItems={lineItems} totals={totals} taxRate={taxRate} options={options} monthly={quote.pricing?.monthly}
-                        onContent={html => patchBlock(b.id, { content: html })} onSelectTier={selectTier} />
+                        dragging={dragId === b.id} dragActive={!!dragId}
+                        onEdit={() => setEditingId(b.id)}
+                        onDragStart={() => setDragId(b.id)}
+                        onDragEnd={() => setDragId("")}
+                        onDragOverBlock={bottom => liveMove(b.id, bottom)}
+                      />
+                      <InsertGap index={i + 1} onInsert={insertBlock} accent={accent} />
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Right inspector */}
-        {!preview && (
-          <div className="w-[340px] shrink-0 overflow-y-auto thin-scroll-y" style={{ backgroundColor: "var(--bg-surface)", borderLeft: "1px solid var(--border-subtle)" }}>
-            {!sel ? (
-              <div className="p-6 text-center"><Search className="w-5 h-5 mx-auto mb-2" style={{ color: "var(--text-muted)" }} /><p className="text-sm" style={{ color: "var(--text-muted)" }}>Select a block to edit it here.</p></div>
-            ) : (
-              <div>
-                <div className="sticky top-0 z-10 px-4 py-3 space-y-2" style={{ backgroundColor: "var(--bg-surface)", borderBottom: "1px solid var(--border-subtle)" }}>
-                  <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>{BLOCK_LABELS[sel.type]}</p>
-                  <div className="flex items-center gap-2">
-                    <input value={sel.title} onChange={e => renameBlock(sel.id, e.target.value)} placeholder="Block label" className="flex-1 min-w-0 rounded-lg px-2.5 py-1.5 text-sm font-medium outline-none focus:ring-2" style={inputStyle} />
-                    <button onClick={() => toggleVisible(sel.id)} title={sel.visible ? "Visible" : "Hidden"} className="flex items-center gap-1 text-[11px] font-medium px-2 py-1.5 rounded-lg shrink-0 transition-colors" style={{ border: "1px solid var(--border)", color: sel.visible ? "var(--accent-text)" : "var(--text-muted)", backgroundColor: sel.visible ? "var(--accent-soft-bg)" : "var(--bg-surface)" }}>{sel.visible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}</button>
-                  </div>
-                </div>
-                <div className="p-4 space-y-4">
-                  <Inspector sel={sel} accent={accent} quote={quote} expiresAt={expiresAt} setExpiresAt={setExpiresAt}
-                    title={title} setTitle={setTitle}
-                    setBlockSettings={setBlockSettings} patchBlock={patchBlock} savedTerms={savedTerms}
-                    items={items} setItem={setItem} addItem={addItem} removeItem={removeItem} taxRate={taxRate} setTaxRate={setTaxRate} totals={totals}
-                    customerNotes={customerNotes} setCustomerNotes={setCustomerNotes} showCatalog={() => setShowCatalog(true)} showCost={showCost}
-                    options={options} setOption={setOption} removeOption={removeOption} addOption={addOption} selectTier={selectTier} />
+                  ))}
                 </div>
               </div>
-            )}
+              <p className="text-center text-[11px] mt-3" style={{ color: "var(--text-muted)" }}>Click any section to edit it · drag the handle to reorder.</p>
+            </div>
           </div>
         )}
       </div>
 
       {showCatalog && <CatalogPicker items={catalog} showCost={showCost} onAdd={addCatalogItems} onClose={() => setShowCatalog(false)} />}
-      {docData && <div className="print-doc" aria-hidden><CustomProposalDocument data={docData} shadow={false} /></div>}
-    </div>
-  );
-}
-
-// ─── Internal pricing pin (rep-only) ──────────────────────
-function InternalPricingPin({ pricing, open, onToggle, onEdit }: { pricing: NonNullable<QuoteRecord["pricing"]>; open: boolean; onToggle: () => void; onEdit: () => void }) {
-  return (
-    <div className="rounded-2xl overflow-hidden" style={{ border: "1px dashed #d9770066", backgroundColor: "#d977060d" }}>
-      <button onClick={onToggle} className="w-full flex items-center gap-2 px-4 py-2.5 text-left">
-        <Lock className="w-3.5 h-3.5" style={{ color: "#d97706" }} />
-        <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "#d97706" }}>Internal Pricing</span>
-        <span className="text-sm font-bold tabular-nums ml-1" style={{ color: "var(--text-primary)" }}>{fmt(pricing.sellPrice)}</span>
-        <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>sell · {(pricing.grossMargin * 100).toFixed(0)}% GM</span>
-        <span className="ml-auto flex items-center gap-2">
-          <span onClick={e => { e.stopPropagation(); onEdit(); }} className="flex items-center gap-1 text-[11px] font-medium" style={{ color: "var(--accent-text)" }}><Pencil className="w-3 h-3" /> Edit</span>
-          <ChevronDown className="w-4 h-4 transition-transform" style={{ color: "var(--text-muted)", transform: open ? "rotate(180deg)" : "none" }} />
-        </span>
-      </button>
-      {open && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-px" style={{ backgroundColor: "var(--border-subtle)" }}>
-          <Metric label="Total cost" value={fmt(pricing.totalCost)} />
-          <Metric label="Gross profit" value={fmt(pricing.grossProfit)} sub={`${(pricing.grossMargin * 100).toFixed(1)}%`} />
-          <Metric label="Net profit (est.)" value={fmt(pricing.netProfit)} sub={`${(pricing.netMargin * 100).toFixed(1)}%`} />
-          <Metric label="Financing" value={`${fmt(pricing.monthly)}/mo`} sub={`${pricing.financeMonths} mo`} />
-        </div>
+      {editingBlock && docData && (
+        <SectionEditorModal
+          block={editingBlock} index={editingIdx} count={blocks.length} accent={accent} ctx={settingsCtx} docData={docData} design={design}
+          onClose={() => setEditingId("")}
+          onPrev={() => goEdit(-1)} onNext={() => goEdit(1)}
+          onToggleVisible={() => toggleVisible(editingBlock.id)}
+          onDuplicate={() => { duplicateBlock(editingBlock.id); }}
+          onRemove={() => removeBlock(editingBlock.id)}
+        />
       )}
-      <div className="px-4 py-1.5 flex items-center gap-1.5" style={{ borderTop: "1px solid var(--border-subtle)" }}>
-        <TrendingUp className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
-        <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Internal only — add a Price Summary or Line Items block to show a number to the customer.</p>
-      </div>
+      {docData && <div className="print-doc" aria-hidden><CustomProposalDocument data={docData} shadow={false} design={design} /></div>}
     </div>
   );
 }
-function Metric({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (<div className="px-3 py-2.5" style={{ backgroundColor: "var(--bg-surface)" }}><p className="text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{label}</p><p className="text-sm font-bold leading-tight mt-0.5 truncate tabular-nums" style={{ color: "var(--text-primary)" }}>{value}</p>{sub && <p className="text-[10px] mt-0.5 tabular-nums" style={{ color: "var(--text-muted)" }}>{sub}</p>}</div>);
+
+// ─── Internal pricing panel (rep-only, left of the sheet) ──
+function PricingSidebar({ pricing, accent, onEdit }: { pricing: NonNullable<QuoteRecord["pricing"]>; accent: string; onEdit: () => void }) {
+  return (
+    <aside className="shrink-0 sticky self-start" style={{ width: "250px", top: "8px" }}>
+      <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+        <div className="flex items-center gap-2 px-3.5 py-3" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+          <Lock className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
+          <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>Internal Pricing</span>
+          <span className="ml-auto text-[9px] font-semibold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "var(--bg-surface-2)", color: "var(--text-muted)" }}>Rep only</span>
+        </div>
+        <div className="px-3.5 pt-3.5 pb-3">
+          <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>Sell price</p>
+          <p className="text-2xl font-bold tabular-nums leading-tight" style={{ color: "var(--text-primary)" }}>{fmt(pricing.sellPrice)}</p>
+          <p className="text-[11px] font-medium tabular-nums mt-0.5" style={{ color: accent }}>{(pricing.grossMargin * 100).toFixed(0)}% gross margin</p>
+        </div>
+        <div className="px-3.5 pb-3.5 space-y-2">
+          <MetricRow label="Total cost" value={fmt(pricing.totalCost)} />
+          <MetricRow label="Gross profit" value={fmt(pricing.grossProfit)} sub={`${(pricing.grossMargin * 100).toFixed(1)}%`} />
+          <MetricRow label="Net profit" value={fmt(pricing.netProfit)} sub={`${(pricing.netMargin * 100).toFixed(1)}%`} />
+          <MetricRow label="Financing" value={`${fmt(pricing.monthly)}/mo`} sub={`${pricing.financeMonths} mo`} />
+        </div>
+        <div className="px-3.5 pb-3.5">
+          <button onClick={onEdit} className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors hover:bg-[var(--bg-surface-2)]" style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}><Pencil className="w-3.5 h-3.5" /> Edit pricing</button>
+        </div>
+        <div className="px-3.5 py-2.5" style={{ borderTop: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-surface-2)" }}>
+          <p className="text-[10px] leading-relaxed" style={{ color: "var(--text-muted)" }}>Never shown to the customer. Add a <span style={{ fontWeight: 600 }}>Price Summary</span> or <span style={{ fontWeight: 600 }}>Line Items</span> section to show a number.</p>
+        </div>
+      </div>
+    </aside>
+  );
+}
+function MetricRow({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-xs" style={{ color: "var(--text-muted)" }}>{label}</span>
+      <span className="text-xs font-semibold tabular-nums" style={{ color: "var(--text-primary)" }}>{value}{sub && <span className="font-normal ml-1" style={{ color: "var(--text-muted)" }}>{sub}</span>}</span>
+    </div>
+  );
 }
 
-// ─── Canvas block (document representation; rich edits in place) ──
-function CanvasBlock({ b, selected, accent, title, lineItems, totals, taxRate, options, monthly, onContent, onSelectTier }: {
-  b: QuoteBlock; selected: boolean; accent: string; title: string;
-  lineItems: LineItem[]; totals: { subtotal: number; tax: number; total: number }; taxRate: string;
-  options: QuoteOption[]; monthly?: number; onContent: (html: string) => void; onSelectTier: (id: string) => void;
+// ─── Editable letterhead — mirrors the active design's header ─────
+function Letterhead({ branding, quote, title, setTitle, expiresAt, setExpiresAt, accent, ds }: {
+  branding: ReturnType<typeof getProposalBranding>; quote: QuoteRecord;
+  title: string; setTitle: (v: string) => void; expiresAt: string; setExpiresAt: (v: string) => void; accent: string; ds: ProposalDesignStyle;
 }) {
-  if (b.type === "divider") return <div className="h-px" style={{ backgroundColor: "var(--border)" }} />;
-  if (b.type === "page_break") return <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}><div className="flex-1 h-px" style={{ backgroundColor: "var(--border)" }} /> Page break <div className="flex-1 h-px" style={{ backgroundColor: "var(--border)" }} /></div>;
+  const hf = ds.headingFamily;
+  const logo = branding.logoUrl, company = branding.companyName;
+  // Editable "valid until" chip, themed light/dark for the header background.
+  const validUntil = (dim: string, align: "left" | "right" = "right") => (
+    <span className="inline-flex items-center gap-1.5" style={{ justifyContent: align === "right" ? "flex-end" : "flex-start" }}>
+      <span style={{ fontSize: "11px", color: dim }}>Valid until</span>
+      <input value={expiresAt} onChange={e => setExpiresAt(e.target.value)} placeholder="e.g. Jul 15, 2026"
+        className="bg-transparent outline-none rounded px-1 focus:bg-black/5"
+        style={{ fontSize: "11px", color: dim, width: "104px", textAlign: align }} />
+    </span>
+  );
+  const titleInput = (align: "left" | "center" = "left", color = "#111827") => (
+    <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Untitled Proposal"
+      className="w-full bg-transparent outline-none"
+      style={{ fontSize: "27px", fontWeight: 800, color, lineHeight: 1.15, fontFamily: hf, textAlign: align, marginTop: "16px" }} />
+  );
+  const Logo = ({ white }: { white?: boolean }) => logo
+    // eslint-disable-next-line @next/next/no-img-element
+    ? <img src={logo} alt={company} style={{ maxHeight: "44px", marginBottom: "6px", filter: white ? "brightness(0) invert(1)" : undefined }} />
+    : <p style={{ fontSize: "20px", fontWeight: 800, color: white ? "#fff" : accent, lineHeight: 1.1, fontFamily: hf }}>{company}</p>;
+  const metaBlock = (color: string, dim: string) => (
+    <div style={{ textAlign: "right" }}>
+      <p style={{ fontSize: "13px", fontWeight: 700, letterSpacing: "0.08em", color }}>PROPOSAL</p>
+      <p style={{ fontSize: "11px", color: dim, marginTop: "2px" }}>{quote.quoteNumber}</p>
+      <p style={{ fontSize: "11px", color: dim }}>Prepared for {quote.customerName}</p>
+      <div className="mt-1">{validUntil(dim)}</div>
+    </div>
+  );
 
-  if (b.type === "heading") {
-    const lvl = b.settings?.level ?? 2;
-    const cls = lvl === 1 ? "text-2xl" : lvl === 2 ? "text-xl" : "text-base";
-    if (selected) return <input value={b.content} onChange={e => onContent(e.target.value)} onClick={e => e.stopPropagation()} placeholder="Heading text" className={`${cls} font-bold w-full bg-transparent outline-none`} style={{ color: "var(--text-primary)", textAlign: b.settings?.align ?? "left" }} />;
-    return <p className={`${cls} font-bold`} style={{ color: "var(--text-primary)", textAlign: b.settings?.align ?? "left" }}>{b.content || <span style={{ color: "var(--text-muted)" }}>Heading</span>}</p>;
-  }
-
-  if (RICH_BLOCK_TYPES.includes(b.type)) {
+  if (ds.header === "bold") {
     return (
-      <>
-        {b.title && <SecLabel>{b.title}</SecLabel>}
-        {selected ? (
-          <div onClick={e => e.stopPropagation()}><RichTextEditor key={b.id} value={b.content} onChange={onContent} placeholder="Write or paste text here…" /></div>
-        ) : hasHtml(b.content)
-          ? <div className="rte text-sm" style={{ color: "var(--text-secondary)" }} dangerouslySetInnerHTML={{ __html: b.content }} />
-          : <p className="text-sm italic" style={{ color: "var(--text-muted)" }}>Click to select, then write or paste text…</p>}
-      </>
+      <div>
+        <div style={{ background: accent, margin: "-40px -56px 0", padding: "30px 56px 26px", borderTopLeftRadius: "10px", borderTopRightRadius: "10px" }}>
+          <div className="flex items-start justify-between" style={{ gap: "16px" }}>
+            <div><Logo white /><p style={{ fontSize: "11px", color: "rgba(255,255,255,0.85)", marginTop: "6px" }}>{branding.companyInfo}</p><p style={{ fontSize: "11px", color: "rgba(255,255,255,0.85)" }}>{branding.contactInfo}</p></div>
+            {metaBlock("#fff", "rgba(255,255,255,0.85)")}
+          </div>
+        </div>
+        {titleInput("left")}
+      </div>
     );
   }
 
-  if (b.type === "image") {
-    const img = b.images?.[0];
-    return (<>{b.title && <SecLabel>{b.title}</SecLabel>}
-      {img?.src ? (<figure className="m-0" style={{ textAlign: b.settings?.align ?? "center" }}>{/* eslint-disable-next-line @next/next/no-img-element */}<img src={img.src} alt={img.alt ?? b.title} className="inline-block rounded-lg" style={{ width: `${b.settings?.width ?? 100}%` }} />{img.caption && <figcaption className="text-[11px] mt-1.5" style={{ color: "var(--text-muted)" }}>{img.caption}</figcaption>}</figure>)
-        : <Placeholder icon={ImageIcon} text="Add an image from the inspector →" />}</>);
+  if (ds.header === "centered") {
+    return (
+      <div style={{ textAlign: "center" }}>
+        <div style={{ display: "inline-block" }}><Logo /></div>
+        <p style={{ fontSize: "11px", color: "#6b7280", marginTop: "4px" }}>{branding.companyInfo} · {branding.contactInfo}</p>
+        <div style={{ width: "56px", height: "3px", backgroundColor: accent, borderRadius: "2px", margin: "16px auto" }} />
+        <p style={{ fontSize: "13px", fontWeight: 700, letterSpacing: "0.18em", color: "#111827" }}>PROPOSAL</p>
+        <p style={{ fontSize: "11px", color: "#6b7280", marginTop: "2px" }}>{quote.quoteNumber} · Prepared for {quote.customerName}</p>
+        <div className="flex justify-center mt-1">{validUntil("#374151", "left")}</div>
+        {titleInput("center")}
+      </div>
+    );
   }
 
-  if (b.type === "image_gallery") {
-    const imgs = (b.images ?? []).filter(i => i.src);
-    return (<>{b.title && <SecLabel>{b.title}</SecLabel>}
-      {imgs.length ? (<div className="grid grid-cols-2 gap-2.5">{imgs.map(im => (<figure key={im.id} className="m-0">{/* eslint-disable-next-line @next/next/no-img-element */}<img src={im.src} alt={im.alt ?? ""} className="w-full rounded-lg" style={{ height: "130px", objectFit: "cover" }} />{im.caption && <figcaption className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>{im.caption}</figcaption>}</figure>))}</div>)
-        : <Placeholder icon={ImageIcon} text="Add photos from the inspector →" />}</>);
-  }
-
-  if (b.type === "equipment_card") {
-    const s = b.settings ?? {}; const img = b.images?.[0];
-    return (<><SecLabel>{b.title}</SecLabel>
-      <div className="flex gap-3 rounded-xl p-3" style={{ border: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-surface-2)" }}>
-        {img?.src && (/* eslint-disable-next-line @next/next/no-img-element */<img src={img.src} alt={b.title} className="rounded-lg" style={{ width: "96px", height: "96px", objectFit: "cover" }} />)}
-        <div className="min-w-0">
-          <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{b.title}</p>
-          {(s.brand || s.model) && <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>{[s.brand, s.model].filter(Boolean).join(" · ")}</p>}
-          {s.specs && <p className="text-xs mt-1 whitespace-pre-wrap" style={{ color: "var(--text-secondary)" }}>{s.specs}</p>}
-          {typeof s.price === "number" && s.price > 0 && <p className="text-base font-bold mt-1 tabular-nums" style={{ color: "var(--text-primary)" }}>{fmt(s.price)}</p>}
+  if (ds.header === "serif") {
+    return (
+      <div>
+        <div className="flex items-start justify-between" style={{ gap: "16px" }}>
+          <div><Logo /><p style={{ fontSize: "11px", color: "#6b7280", marginTop: "4px", fontFamily: hf }}>{branding.companyInfo}</p><p style={{ fontSize: "11px", color: "#6b7280", fontFamily: hf }}>{branding.contactInfo}</p></div>
+          <div style={{ fontFamily: hf }}>{metaBlock("#111827", "#6b7280")}</div>
         </div>
-      </div></>);
+        <div style={{ borderTop: `1px solid ${accent}`, marginTop: "18px" }} />
+        <div style={{ borderTop: `1px solid ${accent}`, marginTop: "3px", opacity: 0.5 }} />
+        {titleInput("left")}
+      </div>
+    );
   }
 
-  if (b.type === "option_cards") {
-    return (<><SecLabel>{b.title}</SecLabel>
-      {options.length === 0 ? <Placeholder icon={Package} text="Add option cards from the inspector →" /> : (
-        <div className="grid sm:grid-cols-3 gap-2.5">{options.map(o => (
-          <button key={o.id} onClick={e => { e.stopPropagation(); onSelectTier(o.id); }} className="text-left rounded-xl p-3 transition-all overflow-hidden" style={{ border: `1.5px solid ${o.selected ? accent : "var(--border-subtle)"}`, backgroundColor: o.selected ? accent + "0f" : "var(--bg-surface)" }}>
-            {o.image && (/* eslint-disable-next-line @next/next/no-img-element */<img src={o.image} alt={o.name} className="w-full rounded-lg mb-2" style={{ height: "92px", objectFit: "cover" }} />)}
-            <div className="flex items-center justify-between">{o.tier && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase" style={{ backgroundColor: accent + "1a", color: accent }}>{o.tier}</span>}{o.selected && <Check className="w-3.5 h-3.5" style={{ color: accent }} />}</div>
-            <p className="text-sm font-semibold mt-1.5 leading-snug" style={{ color: "var(--text-primary)" }}>{o.name}</p>
-            <p className="text-lg font-bold mt-1 tabular-nums" style={{ color: "var(--text-primary)" }}>${o.price.toLocaleString()}</p>
-            {o.monthlyPrice ? <p className="text-[11px] tabular-nums" style={{ color: accent }}>${o.monthlyPrice}/mo</p> : null}
-          </button>))}</div>)}</>);
+  if (ds.header === "minimal") {
+    return (
+      <div>
+        <div className="flex items-baseline justify-between" style={{ gap: "16px" }}>
+          {logo ? <Logo /> : <p style={{ fontSize: "12px", fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color: "#111827", fontFamily: hf }}>{company}</p>}
+          <p style={{ fontSize: "10px", letterSpacing: "0.16em", textTransform: "uppercase", color: "#9ca3af" }}>Proposal · {quote.quoteNumber}</p>
+        </div>
+        <div style={{ borderTop: "1px solid #e5e7eb", marginTop: "12px" }} />
+        <div className="flex items-center justify-between mt-2.5">
+          <p style={{ fontSize: "11px", color: "#6b7280" }}>Prepared for {quote.customerName}</p>
+          {validUntil("#374151", "right")}
+        </div>
+        {titleInput("left")}
+      </div>
+    );
   }
 
-  if (b.type === "line_items" || b.type === "price_summary") {
-    const base = lineItems.filter(li => !li.optional);
-    const itemized = b.type === "line_items" || (b.settings?.itemized ?? true);
-    return (<><SecLabel>{b.title}</SecLabel>
-      {base.length === 0 ? <Placeholder icon={Tag} text="Add line items from the inspector →" /> : (
-        <div className="space-y-1.5">
-          {itemized && base.map(li => (<div key={li.id} className="flex items-center justify-between gap-3 text-sm"><span className="min-w-0 truncate" style={{ color: "var(--text-primary)" }}>{li.name ?? li.description} <span style={{ color: "var(--text-muted)" }}>×{li.quantity}</span></span><span className="shrink-0 font-medium tabular-nums" style={{ color: "var(--text-primary)" }}>{fmt(li.total)}</span></div>))}
-          <div className="pt-2 mt-1 space-y-1" style={{ borderTop: "1px solid var(--border-subtle)" }}>
-            <Row label="Subtotal" value={fmt(totals.subtotal)} />
-            <Row label={`Tax (${taxRate}%)`} value={fmt(totals.tax)} />
-            <div className="flex items-center justify-between pt-1" style={{ borderTop: "1px solid var(--border-subtle)" }}><span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Total</span><span className="text-lg font-bold tabular-nums" style={{ color: accent }}>{fmt(totals.total)}</span></div>
-            {b.type === "price_summary" && b.settings?.showMonthly && monthly ? <p className="text-[11px] text-right tabular-nums" style={{ color: accent }}>≈ {fmt(monthly)}/mo financed</p> : null}
-          </div>
-        </div>)}</>);
-  }
-
-  if (b.type === "approval_signature") {
-    return (<><SecLabel>{b.title}</SecLabel>{b.content && <p className="text-sm mb-3" style={{ color: "var(--text-secondary)" }}>{b.content}</p>}
-      <div className="grid grid-cols-2 gap-6">{["Customer Signature", "Date"].map(l => (<div key={l}><div className="h-9 rounded-lg" style={{ border: "1px dashed var(--border)", backgroundColor: "var(--bg-surface-2)" }} /><p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>{l}</p></div>))}</div></>);
-  }
-  return null;
+  // band (default)
+  return (
+    <div>
+      <div className="flex items-start justify-between" style={{ marginBottom: "18px" }}>
+        <div><Logo /><p style={{ fontSize: "11px", color: "#6b7280", marginTop: "4px" }}>{branding.companyInfo}</p><p style={{ fontSize: "11px", color: "#6b7280" }}>{branding.contactInfo}</p></div>
+        {metaBlock("#111827", "#6b7280")}
+      </div>
+      <div style={{ height: "2px", backgroundColor: accent, opacity: 0.85 }} />
+      {titleInput("left")}
+    </div>
+  );
 }
 
-// ─── Inspector ────────────────────────────────────────────
-function Inspector(props: {
-  sel: QuoteBlock; accent: string; quote: QuoteRecord; expiresAt: string; setExpiresAt: (v: string) => void;
-  title: string; setTitle: (v: string) => void;
+// ─── Inline insert affordance (between blocks) ──
+function InsertGap({ index, onInsert, accent }: {
+  index: number; onInsert: (type: BlockType, index: number) => void; accent: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [hover, setHover] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useCloseOnOutside(ref, open, () => setOpen(false));
+  const lit = open || hover;
+
+  return (
+    <div ref={ref} className="relative" style={{ height: "16px" }}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+      <button onClick={() => setOpen(o => !o)} title="Add a section here"
+        className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex items-center gap-2 w-full">
+        <span className="flex-1 h-px transition-colors" style={{ backgroundColor: lit ? accent : "transparent" }} />
+        <span className="flex items-center justify-center rounded-full transition-opacity"
+          style={{ width: "20px", height: "20px", backgroundColor: open ? accent : "#fff", color: open ? "#fff" : accent, border: `1px solid ${accent}`, opacity: lit ? 1 : 0 }}>
+          <Plus className="w-3 h-3" />
+        </span>
+        <span className="flex-1 h-px transition-colors" style={{ backgroundColor: lit ? accent : "transparent" }} />
+      </button>
+      {open && (
+        <div className="absolute left-1/2 -translate-x-1/2 top-full z-40 mt-1 rounded-xl p-1.5 w-64 max-h-80 overflow-y-auto thin-scroll-y"
+          style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "0 12px 32px rgba(0,0,0,0.26)" }}>
+          {BLOCK_GROUPS.map(group => (
+            <div key={group} className="mb-1">
+              <p className="text-[9px] font-semibold uppercase tracking-widest px-2 py-1" style={{ color: "var(--text-muted)" }}>{group}</p>
+              {BLOCK_LIBRARY.filter(d => d.group === group).map(d => (
+                <button key={d.type} onClick={() => { onInsert(d.type, index); setOpen(false); }}
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-sm transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-secondary)" }}>
+                  <Plus className="w-3 h-3 shrink-0" style={{ color: "var(--text-muted)" }} /><span className="truncate">{d.label}</span>
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── A single block in the flowing sheet (display + click-to-edit + drag) ──
+function BlockRow(props: {
+  b: QuoteBlock; accent: string; ds: ProposalDesignStyle;
+  lineItems: LineItem[]; totals: { subtotal: number; tax: number; total: number }; taxRate: string; options: QuoteOption[]; monthly?: number;
+  dragging: boolean; dragActive: boolean;
+  onEdit: () => void; onDragStart: () => void; onDragEnd: () => void; onDragOverBlock: (bottomHalf: boolean) => void;
+}) {
+  const { b, accent, dragging, dragActive } = props;
+
+  return (
+    <div
+      onClick={() => props.onEdit()}
+      onDragOver={dragActive ? (e => { e.preventDefault(); const r = e.currentTarget.getBoundingClientRect(); props.onDragOverBlock(e.clientY > r.top + r.height / 2); }) : undefined}
+      onDrop={dragActive ? (e => { e.preventDefault(); props.onDragEnd(); }) : undefined}
+      className="group relative transition-all cursor-pointer"
+      style={{
+        padding: "10px 12px",
+        marginLeft: "-12px", marginRight: "-12px",
+        borderRadius: "8px",
+        opacity: dragging ? 0.5 : b.visible ? 1 : 0.5,
+        outline: dragging ? `2px dashed ${accent}` : undefined,
+        outlineOffset: dragging ? "-2px" : undefined,
+        backgroundColor: dragging ? accent + "0d" : undefined,
+      }}
+    >
+      {/* Hover tint to signal the whole section is clickable (suppressed while dragging) */}
+      {!dragActive && <div className="absolute inset-0 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" style={{ backgroundColor: accent + "0a", boxShadow: `inset 0 0 0 1px ${accent}33` }} />}
+
+      {/* Hidden tag */}
+      {!b.visible && (
+        <span className="absolute left-1/2 -translate-x-1/2 -top-2 z-10 text-[9px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full" style={{ backgroundColor: "#6b7280", color: "#fff" }}>Hidden</span>
+      )}
+
+      {/* Drag handle (left gutter, on hover) — the only inline control; drags the section to reorder. */}
+      <span
+        draggable
+        onDragStart={e => { e.stopPropagation(); props.onDragStart(); e.dataTransfer.effectAllowed = "move"; }}
+        onDragEnd={() => props.onDragEnd()}
+        onClick={e => e.stopPropagation()}
+        title="Drag to reorder"
+        className="absolute -left-7 top-3 flex items-center justify-center rounded cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity hover:bg-[var(--bg-surface-2)]"
+        style={{ width: "20px", height: "24px", color: "#9ca3af" }}
+      ><GripVertical className="w-4 h-4" /></span>
+
+      {/* The block content, rendered as it appears in the document (borderless, display-only) */}
+      <CanvasBlock b={b} accent={accent} ds={props.ds}
+        lineItems={props.lineItems} totals={props.totals} taxRate={props.taxRate} options={props.options} monthly={props.monthly} />
+    </div>
+  );
+}
+
+function ToolBtn({ children, title, onClick, active, accent, danger, disabled }: { children: React.ReactNode; title: string; onClick: () => void; active?: boolean; accent?: string; danger?: boolean; disabled?: boolean }) {
+  return (
+    <button title={title} disabled={disabled} onClick={onClick}
+      className="p-1.5 rounded-md transition-colors hover:bg-[var(--bg-surface-2)] disabled:opacity-30 disabled:cursor-default"
+      style={{ color: danger ? "#ef4444" : active ? (accent ?? "var(--accent-text)") : "var(--text-secondary)", backgroundColor: active ? "var(--accent-soft-bg)" : undefined }}>
+      {children}
+    </button>
+  );
+}
+
+// ─── Section editor modal (resizable: focused editor + live document preview) ──
+interface SettingsCtx {
+  accent: string;
   setBlockSettings: (id: string, patch: Record<string, unknown>) => void; patchBlock: (id: string, patch: Partial<QuoteBlock>) => void;
   savedTerms: { id: string; title: string; body: string }[];
   items: DraftItem[]; setItem: (id: string, patch: Partial<DraftItem>) => void; addItem: () => void; removeItem: (id: string) => void;
   taxRate: string; setTaxRate: (v: string) => void; totals: { subtotal: number; tax: number; total: number };
   customerNotes: string; setCustomerNotes: (v: string) => void; showCatalog: () => void; showCost: boolean;
   options: QuoteOption[]; setOption: (id: string, patch: Partial<QuoteOption>) => void; removeOption: (id: string) => void; addOption: () => void; selectTier: (id: string) => void;
+}
+
+const PREVIEW_MIN = 460;   // px — the live preview never shrinks past this
+const EDITOR_MIN = 380;    // px — the editor pane minimum
+
+function SectionEditorModal(props: {
+  block: QuoteBlock; index: number; count: number; accent: string; ctx: SettingsCtx; docData: CustomDocData;
+  design: ReturnType<typeof getActiveDesign>;
+  onClose: () => void; onPrev: () => void; onNext: () => void;
+  onToggleVisible: () => void; onDuplicate: () => void; onRemove: () => void;
 }) {
-  const { sel, accent } = props; const s = sel.settings ?? {};
-  const setImages = (imgs: BlockImage[]) => props.patchBlock(sel.id, { images: imgs });
+  const { block, accent, ctx, docData } = props;
+  const previewRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [editorW, setEditorW] = useState(560);   // left editor pane width (px); user-resizable
+
+  // Keep the section being edited scrolled into view in the live preview.
+  useEffect(() => {
+    const el = previewRef.current?.querySelector(`[data-blk="${block.id}"]`);
+    if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [block.id]);
+
+  // Esc closes the editor.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") props.onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [props]);
+
+  function startResize(e: React.PointerEvent) {
+    e.preventDefault();
+    const onMove = (me: PointerEvent) => {
+      const r = bodyRef.current?.getBoundingClientRect(); if (!r) return;
+      const w = Math.max(EDITOR_MIN, Math.min(me.clientX - r.left, r.width - PREVIEW_MIN));
+      setEditorW(w);
+    };
+    const onUp = () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); };
+    window.addEventListener("pointermove", onMove); window.addEventListener("pointerup", onUp);
+  }
+
+  const showLabelField = block.type !== "heading" && isEditable(block.type);
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-3" style={{ backgroundColor: "rgba(15,18,25,0.55)" }} onClick={props.onClose}>
+      <div className="flex flex-col rounded-2xl overflow-hidden" style={{ width: "min(1560px, 98vw)", height: "94vh", backgroundColor: "var(--bg-surface)", boxShadow: "0 24px 80px rgba(0,0,0,0.5)" }} onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center gap-3 px-4 py-2.5 shrink-0" style={{ borderBottom: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-surface)" }}>
+          <span className="flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1 rounded-lg shrink-0" style={{ backgroundColor: accent + "1a", color: accent }}>{BLOCK_LABELS[block.type]}</span>
+          {showLabelField ? (
+            <input value={block.title} onChange={e => ctx.patchBlock(block.id, { title: e.target.value })} placeholder="Section label (shown above the section)"
+              className="flex-1 min-w-0 rounded-lg px-3 py-1.5 text-sm font-medium outline-none focus:ring-2" style={inputStyle} />
+          ) : <div className="flex-1" />}
+          <div className="flex items-center gap-1 shrink-0">
+            <ToolBtn title="Previous section" disabled={props.index === 0} onClick={props.onPrev}><ChevronLeft className="w-4 h-4" /></ToolBtn>
+            <span className="text-[11px] tabular-nums px-1" style={{ color: "var(--text-muted)" }}>{props.index + 1}/{props.count}</span>
+            <ToolBtn title="Next section" disabled={props.index === props.count - 1} onClick={props.onNext}><ChevronRight className="w-4 h-4" /></ToolBtn>
+          </div>
+          <div className="w-px h-5" style={{ backgroundColor: "var(--border)" }} />
+          <ToolBtn title={block.visible ? "Hide from proposal" : "Show on proposal"} active={!block.visible} onClick={props.onToggleVisible}>{block.visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}</ToolBtn>
+          <ToolBtn title="Duplicate" onClick={props.onDuplicate}><Copy className="w-4 h-4" /></ToolBtn>
+          <ToolBtn title="Delete section" danger onClick={props.onRemove}><Trash2 className="w-4 h-4" /></ToolBtn>
+          <button onClick={props.onClose} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium ml-1" style={{ backgroundColor: accent, color: "#fff" }}><Check className="w-3.5 h-3.5" /> Done</button>
+        </div>
+
+        {/* Body: editor | resizer | live preview */}
+        <div ref={bodyRef} className="flex-1 flex overflow-hidden">
+          <div className="overflow-y-auto thin-scroll-y p-5 space-y-5 shrink-0" style={{ width: `${editorW}px`, minWidth: `${EDITOR_MIN}px` }}>
+            <SectionContentEditor block={block} ctx={ctx} />
+            <BlockSettings sel={block} ctx={ctx} />
+          </div>
+          {/* Resizer */}
+          <div onPointerDown={startResize} title="Drag to resize" className="shrink-0 flex items-center justify-center cursor-col-resize group/resize" style={{ width: "8px", backgroundColor: "var(--bg-surface-2)", borderLeft: "1px solid var(--border-subtle)", borderRight: "1px solid var(--border-subtle)" }}>
+            <span className="rounded-full transition-colors group-hover/resize:bg-[var(--accent-text)]" style={{ width: "3px", height: "36px", backgroundColor: "var(--border)" }} />
+          </div>
+          <div ref={previewRef} className="flex-1 overflow-y-auto thin-scroll-y" style={{ backgroundColor: "#e5e7eb", minWidth: 0 }}>
+            <div className="px-6 py-6">
+              <p className="text-center text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: "#6b7280" }}>Live preview — what your customer sees</p>
+              <CustomProposalDocument data={docData} highlightId={block.id} design={props.design} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Content surface for a section (the editable body). Structured blocks have no
+// free-form body — they're configured entirely through BlockSettings below.
+function SectionContentEditor({ block, ctx }: { block: QuoteBlock; ctx: SettingsCtx }) {
+  if (block.type === "heading") {
+    return <Field label="Heading text"><input value={block.content} onChange={e => ctx.patchBlock(block.id, { content: e.target.value })} placeholder="Heading text" className="w-full rounded-lg px-3 py-2 text-base font-semibold outline-none focus:ring-2" style={inputStyle} /></Field>;
+  }
+  if (RICH_BLOCK_TYPES.includes(block.type)) {
+    return (
+      <Field label="Content" hint="format, add images, links">
+        <RichTextEditor key={block.id} value={block.content} onChange={html => ctx.patchBlock(block.id, { content: html })} minHeight={280} placeholder="Write or paste text here…" />
+      </Field>
+    );
+  }
+  return null;
+}
+
+// ─── Canvas block (document representation — display-only on the sheet) ──
+function CanvasBlock({ b, accent, ds, lineItems, totals, taxRate, options, monthly }: {
+  b: QuoteBlock; accent: string; ds: ProposalDesignStyle;
+  lineItems: LineItem[]; totals: { subtotal: number; tax: number; total: number }; taxRate: string;
+  options: QuoteOption[]; monthly?: number;
+}) {
+  if (b.type === "divider") return <div className="h-px" style={{ backgroundColor: "#e5e7eb" }} />;
+  if (b.type === "page_break") return <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest" style={{ color: "#9ca3af" }}><div className="flex-1 h-px" style={{ backgroundColor: "#e5e7eb" }} /> Page break <div className="flex-1 h-px" style={{ backgroundColor: "#e5e7eb" }} /></div>;
+
+  if (b.type === "heading") {
+    const lvl = b.settings?.level ?? 2;
+    const cls = lvl === 1 ? "text-2xl" : lvl === 2 ? "text-xl" : "text-base";
+    return <p className={`${cls} font-bold`} style={{ color: "#111827", textAlign: b.settings?.align ?? "left", fontFamily: ds.headingFamily }}>{b.content || <span style={{ color: "#9ca3af" }}>Heading</span>}</p>;
+  }
+
+  if (RICH_BLOCK_TYPES.includes(b.type)) {
+    return (
+      <>
+        {b.title && <SecLabel accent={accent} ds={ds}>{b.title}</SecLabel>}
+        {hasHtml(b.content)
+          ? <div className="rte-doc text-sm" style={{ color: "#374151" }} dangerouslySetInnerHTML={{ __html: b.content }} />
+          : <p className="text-sm italic" style={{ color: "#9ca3af" }}>Click to write or paste text…</p>}
+      </>
+    );
+  }
+
+  if (b.type === "image") {
+    const img = b.images?.[0];
+    return (<>{b.title && <SecLabel accent={accent} ds={ds}>{b.title}</SecLabel>}
+      {img?.src ? (<figure className="m-0" style={{ textAlign: b.settings?.align ?? "center" }}>{/* eslint-disable-next-line @next/next/no-img-element */}<img src={img.src} alt={img.alt ?? b.title} className="inline-block rounded-lg" style={{ width: `${b.settings?.width ?? 100}%` }} />{img.caption && <figcaption className="text-[11px] mt-1.5" style={{ color: "#6b7280" }}>{img.caption}</figcaption>}</figure>)
+        : <Placeholder icon={ImageIcon} text="Click to add an image" />}</>);
+  }
+
+  if (b.type === "image_gallery") {
+    const imgs = (b.images ?? []).filter(i => i.src);
+    return (<>{b.title && <SecLabel accent={accent} ds={ds}>{b.title}</SecLabel>}
+      {imgs.length ? (<div className="grid grid-cols-2 gap-2.5">{imgs.map(im => (<figure key={im.id} className="m-0">{/* eslint-disable-next-line @next/next/no-img-element */}<img src={im.src} alt={im.alt ?? ""} className="w-full rounded-lg" style={{ height: "130px", objectFit: "cover" }} />{im.caption && <figcaption className="text-[10px] mt-1" style={{ color: "#6b7280" }}>{im.caption}</figcaption>}</figure>))}</div>)
+        : <Placeholder icon={ImageIcon} text="Click to add photos" />}</>);
+  }
+
+  if (b.type === "equipment_card") {
+    const s = b.settings ?? {}; const img = b.images?.[0];
+    return (<><SecLabel accent={accent} ds={ds}>{b.title}</SecLabel>
+      <div className="flex gap-3 rounded-xl p-3" style={{ border: "1px solid #e5e7eb", backgroundColor: "#f9fafb" }}>
+        {img?.src && (/* eslint-disable-next-line @next/next/no-img-element */<img src={img.src} alt={b.title} className="rounded-lg" style={{ width: "96px", height: "96px", objectFit: "cover" }} />)}
+        <div className="min-w-0">
+          <p className="text-sm font-semibold" style={{ color: "#111827" }}>{b.title}</p>
+          {(s.brand || s.model) && <p className="text-[11px]" style={{ color: "#6b7280" }}>{[s.brand, s.model].filter(Boolean).join(" · ")}</p>}
+          {s.specs && <p className="text-xs mt-1 whitespace-pre-wrap" style={{ color: "#374151" }}>{s.specs}</p>}
+          {typeof s.price === "number" && s.price > 0 && <p className="text-base font-bold mt-1 tabular-nums" style={{ color: "#111827" }}>{fmt(s.price)}</p>}
+        </div>
+      </div></>);
+  }
+
+  if (b.type === "option_cards") {
+    return (<><SecLabel accent={accent} ds={ds}>{b.title}</SecLabel>
+      {options.length === 0 ? <Placeholder icon={Package} text="Click to add option cards" /> : (
+        <div className="grid sm:grid-cols-3 gap-2.5">{options.map(o => (
+          <div key={o.id} className="text-left rounded-xl p-3 overflow-hidden" style={{ border: `1.5px solid ${o.selected ? accent : "#e5e7eb"}`, backgroundColor: o.selected ? accent + "0f" : "#fff" }}>
+            {o.image && (/* eslint-disable-next-line @next/next/no-img-element */<img src={o.image} alt={o.name} className="w-full rounded-lg mb-2" style={{ height: "92px", objectFit: "cover" }} />)}
+            <div className="flex items-center justify-between">{o.tier && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase" style={{ backgroundColor: accent + "1a", color: accent }}>{o.tier}</span>}{o.selected && <Check className="w-3.5 h-3.5" style={{ color: accent }} />}</div>
+            <p className="text-sm font-semibold mt-1.5 leading-snug" style={{ color: "#111827" }}>{o.name}</p>
+            <p className="text-lg font-bold mt-1 tabular-nums" style={{ color: "#111827" }}>${o.price.toLocaleString()}</p>
+            {o.monthlyPrice ? <p className="text-[11px] tabular-nums" style={{ color: accent }}>${o.monthlyPrice}/mo</p> : null}
+          </div>))}</div>)}</>);
+  }
+
+  if (b.type === "line_items" || b.type === "price_summary") {
+    const base = lineItems.filter(li => !li.optional);
+    const itemized = b.type === "line_items" || (b.settings?.itemized ?? true);
+    return (<><SecLabel accent={accent} ds={ds}>{b.title}</SecLabel>
+      {base.length === 0 ? <Placeholder icon={Tag} text="Click to add line items" /> : (
+        <div className="space-y-1.5">
+          {itemized && base.map(li => (<div key={li.id} className="flex items-center justify-between gap-3 text-sm"><span className="min-w-0 truncate" style={{ color: "#111827" }}>{li.name ?? li.description} <span style={{ color: "#9ca3af" }}>×{li.quantity}</span></span><span className="shrink-0 font-medium tabular-nums" style={{ color: "#111827" }}>{fmt(li.total)}</span></div>))}
+          <div className="pt-2 mt-1"><CanvasTotals totals={totals} taxRate={taxRate} accent={accent} ds={ds} /></div>
+          {b.type === "price_summary" && b.settings?.showMonthly && monthly ? <p className="text-[11px] text-right tabular-nums mt-1" style={{ color: accent }}>≈ {fmt(monthly)}/mo financed</p> : null}
+        </div>)}</>);
+  }
+
+  if (b.type === "approval_signature") {
+    return (<><SecLabel accent={accent} ds={ds}>{b.title}</SecLabel>{b.content && <p className="text-sm mb-3" style={{ color: "#374151" }}>{b.content}</p>}
+      <div className="grid grid-cols-2 gap-6">{["Customer Signature", "Date"].map(l => (<div key={l}><div className="h-9 rounded-lg" style={{ border: "1px dashed #d1d5db", backgroundColor: "#f9fafb" }} /><p className="text-[10px] mt-1" style={{ color: "#6b7280" }}>{l}</p></div>))}</div></>);
+  }
+  return null;
+}
+
+// ─── Block settings (type-specific fields, in the editor's left pane) ──
+function BlockSettings({ sel, ctx }: { sel: QuoteBlock; ctx: SettingsCtx }) {
+  const { accent } = ctx; const s = sel.settings ?? {};
+  const setImages = (imgs: BlockImage[]) => ctx.patchBlock(sel.id, { images: imgs });
+
+  if (sel.type === "divider") return <ReadOnlyNote>A thin horizontal line that separates sections. No settings — drag it to reposition, or delete it from the header above.</ReadOnlyNote>;
+  if (sel.type === "page_break") return <ReadOnlyNote>Forces a new page when the proposal is printed or exported to PDF. No settings.</ReadOnlyNote>;
 
   if (sel.type === "heading") return (<>
-    <Field label="Heading text"><input value={sel.content} onChange={e => props.patchBlock(sel.id, { content: e.target.value })} className="w-full rounded-lg px-3 py-2 text-sm outline-none focus:ring-2" style={inputStyle} /></Field>
-    <Field label="Size"><UiSelect value={String(s.level ?? 2)} onChange={v => props.setBlockSettings(sel.id, { level: Number(v) })} options={[{ value: "1", label: "Large (H1)" }, { value: "2", label: "Medium (H2)" }, { value: "3", label: "Small (H3)" }]} /></Field>
-    <Field label="Alignment"><AlignPicker value={s.align ?? "left"} onChange={a => props.setBlockSettings(sel.id, { align: a })} accent={accent} /></Field>
+    <Field label="Size"><UiSelect value={String(s.level ?? 2)} onChange={v => ctx.setBlockSettings(sel.id, { level: Number(v) })} options={[{ value: "1", label: "Large (H1)" }, { value: "2", label: "Medium (H2)" }, { value: "3", label: "Small (H3)" }]} /></Field>
+    <Field label="Alignment"><AlignPicker value={s.align ?? "left"} onChange={a => ctx.setBlockSettings(sel.id, { align: a })} accent={accent} /></Field>
   </>);
 
-  if (RICH_BLOCK_TYPES.includes(sel.type) && sel.type !== "terms") return (<>
-    <ReadOnlyNote>Edit this text directly on the proposal — select the block and use its toolbar to format, paste, add lists, links, and a divider.</ReadOnlyNote>
-  </>);
+  if (RICH_BLOCK_TYPES.includes(sel.type) && sel.type !== "terms") return null;
 
   if (sel.type === "terms") return (<>
-    {props.savedTerms.length > 0 && (
-      <Field label="Insert a saved terms block"><UiSelect value="" placeholder="Choose saved terms…" onChange={v => { const t = props.savedTerms.find(x => x.id === v); if (t) props.patchBlock(sel.id, { content: `<p>${t.body.replace(/\n/g, "</p><p>")}</p>` }); }} options={props.savedTerms.map(t => ({ value: t.id, label: t.title }))} /></Field>
+    {ctx.savedTerms.length > 0 && (
+      <Field label="Insert a saved terms block"><UiSelect value="" placeholder="Choose saved terms…" onChange={v => { const t = ctx.savedTerms.find(x => x.id === v); if (t) ctx.patchBlock(sel.id, { content: `<p>${t.body.replace(/\n/g, "</p><p>")}</p>` }); }} options={ctx.savedTerms.map(t => ({ value: t.id, label: t.title }))} /></Field>
     )}
-    <ReadOnlyNote>Then edit the terms directly on the proposal with the block toolbar.</ReadOnlyNote>
+    <ReadOnlyNote>Pick a saved terms block to drop it in, then fine-tune the wording in the content editor above.</ReadOnlyNote>
   </>);
 
   if (sel.type === "image") return (<>
     <Field label="Image"><OptionImageInput value={sel.images?.[0]?.src} onChange={src => setImages(src ? [{ id: sel.images?.[0]?.id ?? imageId(), src, caption: sel.images?.[0]?.caption, alt: sel.images?.[0]?.alt }] : [])} accent={accent} /></Field>
     <Field label="Caption"><input value={sel.images?.[0]?.caption ?? ""} onChange={e => setImages([{ id: sel.images?.[0]?.id ?? imageId(), src: sel.images?.[0]?.src ?? "", caption: e.target.value, alt: sel.images?.[0]?.alt }])} placeholder="Optional caption" className="w-full rounded-lg px-3 py-2 text-sm outline-none focus:ring-2" style={inputStyle} /></Field>
     <Field label="Alt text" hint="accessibility"><input value={sel.images?.[0]?.alt ?? ""} onChange={e => setImages([{ id: sel.images?.[0]?.id ?? imageId(), src: sel.images?.[0]?.src ?? "", caption: sel.images?.[0]?.caption, alt: e.target.value }])} className="w-full rounded-lg px-3 py-2 text-sm outline-none focus:ring-2" style={inputStyle} /></Field>
-    <Field label={`Width (${s.width ?? 100}%)`}><input type="range" min={25} max={100} step={5} value={s.width ?? 100} onChange={e => props.setBlockSettings(sel.id, { width: Number(e.target.value) })} className="w-full accent-indigo-600" /></Field>
-    <Field label="Alignment"><AlignPicker value={s.align ?? "center"} onChange={a => props.setBlockSettings(sel.id, { align: a })} accent={accent} /></Field>
+    <Field label={`Width (${s.width ?? 100}%)`}><input type="range" min={25} max={100} step={5} value={s.width ?? 100} onChange={e => ctx.setBlockSettings(sel.id, { width: Number(e.target.value) })} className="w-full accent-indigo-600" /></Field>
+    <Field label="Alignment"><AlignPicker value={s.align ?? "center"} onChange={a => ctx.setBlockSettings(sel.id, { align: a })} accent={accent} /></Field>
   </>);
 
   if (sel.type === "image_gallery") {
     const imgs = sel.images ?? [];
-    return (<>
-      <div className="space-y-3">
-        {imgs.map((im, i) => (
-          <div key={im.id} className="rounded-lg p-2.5 space-y-2" style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border-subtle)" }}>
-            <div className="flex items-center justify-between"><span className="text-[11px]" style={{ color: "var(--text-muted)" }}>Photo {i + 1}</span><button onClick={() => setImages(imgs.filter(x => x.id !== im.id))} className="p-1 rounded" style={{ color: "var(--text-muted)" }}><Trash2 className="w-3.5 h-3.5" /></button></div>
-            <OptionImageInput value={im.src} onChange={src => setImages(imgs.map(x => x.id === im.id ? { ...x, src: src ?? "" } : x))} accent={accent} />
-            <input value={im.caption ?? ""} onChange={e => setImages(imgs.map(x => x.id === im.id ? { ...x, caption: e.target.value } : x))} placeholder="Caption" className="w-full rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-2" style={inputStyle} />
-          </div>
-        ))}
-        <button onClick={() => setImages([...imgs, { id: imageId(), src: "" }])} className="w-full flex items-center justify-center gap-1 text-xs font-medium py-2 rounded-lg" style={{ border: "1px dashed var(--border)", color: accent }}><Plus className="w-3.5 h-3.5" /> Add photo</button>
-      </div>
-    </>);
+    return (<div className="space-y-3">
+      <p className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>Photos</p>
+      {imgs.map((im, i) => (
+        <div key={im.id} className="rounded-lg p-2.5 space-y-2" style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border-subtle)" }}>
+          <div className="flex items-center justify-between"><span className="text-[11px]" style={{ color: "var(--text-muted)" }}>Photo {i + 1}</span><button onClick={() => setImages(imgs.filter(x => x.id !== im.id))} className="p-1 rounded" style={{ color: "var(--text-muted)" }}><Trash2 className="w-3.5 h-3.5" /></button></div>
+          <OptionImageInput value={im.src} onChange={src => setImages(imgs.map(x => x.id === im.id ? { ...x, src: src ?? "" } : x))} accent={accent} />
+          <input value={im.caption ?? ""} onChange={e => setImages(imgs.map(x => x.id === im.id ? { ...x, caption: e.target.value } : x))} placeholder="Caption" className="w-full rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-2" style={inputStyle} />
+        </div>
+      ))}
+      <button onClick={() => setImages([...imgs, { id: imageId(), src: "" }])} className="w-full flex items-center justify-center gap-1 text-xs font-medium py-2 rounded-lg" style={{ border: "1px dashed var(--border)", color: accent }}><Plus className="w-3.5 h-3.5" /> Add photo</button>
+    </div>);
   }
 
   if (sel.type === "equipment_card") return (<>
     <Field label="Image"><OptionImageInput value={sel.images?.[0]?.src} onChange={src => setImages(src ? [{ id: imageId(), src }] : [])} accent={accent} /></Field>
-    <div className="flex gap-2"><Field label="Brand"><input value={s.brand ?? ""} onChange={e => props.setBlockSettings(sel.id, { brand: e.target.value })} className="w-full rounded-lg px-2.5 py-1.5 text-sm outline-none focus:ring-2" style={inputStyle} /></Field>
-      <Field label="Model"><input value={s.model ?? ""} onChange={e => props.setBlockSettings(sel.id, { model: e.target.value })} className="w-full rounded-lg px-2.5 py-1.5 text-sm outline-none focus:ring-2" style={inputStyle} /></Field></div>
-    <Field label="Specs"><textarea value={s.specs ?? ""} onChange={e => props.setBlockSettings(sel.id, { specs: e.target.value })} rows={3} placeholder="Key specs / features" className="w-full rounded-lg px-3 py-2 text-sm outline-none resize-none focus:ring-2" style={inputStyle} /></Field>
-    <Field label="Price" hint="customer-facing"><div className="flex items-center gap-1"><span className="text-sm" style={{ color: "var(--text-muted)" }}>$</span><input type="number" min={0} value={s.price ?? ""} onChange={e => props.setBlockSettings(sel.id, { price: e.target.value === "" ? undefined : parseFloat(e.target.value) || 0 })} className="w-32 rounded-lg px-2.5 py-1.5 text-sm outline-none tabular-nums focus:ring-2" style={inputStyle} /></div></Field>
+    <div className="flex gap-2"><Field label="Brand"><input value={s.brand ?? ""} onChange={e => ctx.setBlockSettings(sel.id, { brand: e.target.value })} className="w-full rounded-lg px-2.5 py-1.5 text-sm outline-none focus:ring-2" style={inputStyle} /></Field>
+      <Field label="Model"><input value={s.model ?? ""} onChange={e => ctx.setBlockSettings(sel.id, { model: e.target.value })} className="w-full rounded-lg px-2.5 py-1.5 text-sm outline-none focus:ring-2" style={inputStyle} /></Field></div>
+    <Field label="Specs"><textarea value={s.specs ?? ""} onChange={e => ctx.setBlockSettings(sel.id, { specs: e.target.value })} rows={3} placeholder="Key specs / features" className="w-full rounded-lg px-3 py-2 text-sm outline-none resize-none focus:ring-2" style={inputStyle} /></Field>
+    <Field label="Price" hint="customer-facing"><div className="flex items-center gap-1"><span className="text-sm" style={{ color: "var(--text-muted)" }}>$</span><input type="number" min={0} value={s.price ?? ""} onChange={e => ctx.setBlockSettings(sel.id, { price: e.target.value === "" ? undefined : parseFloat(e.target.value) || 0 })} className="w-32 rounded-lg px-2.5 py-1.5 text-sm outline-none tabular-nums focus:ring-2" style={inputStyle} /></div></Field>
   </>);
 
-  if (sel.type === "line_items") return <LineItemsEditor {...props} />;
+  if (sel.type === "line_items") return <LineItemsEditor ctx={ctx} />;
 
   if (sel.type === "price_summary") return (<>
-    <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: "var(--text-secondary)" }}><input type="checkbox" checked={s.itemized ?? true} onChange={e => props.setBlockSettings(sel.id, { itemized: e.target.checked })} className="accent-indigo-600" /> Itemized (list each line)</label>
-    <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: "var(--text-secondary)" }}><input type="checkbox" checked={s.showMonthly ?? false} onChange={e => props.setBlockSettings(sel.id, { showMonthly: e.target.checked })} className="accent-indigo-600" /> Show monthly financing estimate</label>
-    <div className="rounded-lg p-3" style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border-subtle)" }}><div className="flex items-center justify-between"><span className="text-xs" style={{ color: "var(--text-muted)" }}>Customer total</span><span className="text-base font-bold tabular-nums" style={{ color: "var(--text-primary)" }}>{fmt(props.totals.total)}</span></div></div>
-    <ReadOnlyNote>The total comes from the Line Items. Edit a Line Items block to change it.</ReadOnlyNote>
+    <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: "var(--text-secondary)" }}><input type="checkbox" checked={s.itemized ?? true} onChange={e => ctx.setBlockSettings(sel.id, { itemized: e.target.checked })} className="accent-indigo-600" /> Itemized (list each line)</label>
+    <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: "var(--text-secondary)" }}><input type="checkbox" checked={s.showMonthly ?? false} onChange={e => ctx.setBlockSettings(sel.id, { showMonthly: e.target.checked })} className="accent-indigo-600" /> Show monthly financing estimate</label>
+    <div className="rounded-lg p-3" style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border-subtle)" }}><div className="flex items-center justify-between"><span className="text-xs" style={{ color: "var(--text-muted)" }}>Customer total</span><span className="text-base font-bold tabular-nums" style={{ color: "var(--text-primary)" }}>{fmt(ctx.totals.total)}</span></div></div>
+    <ReadOnlyNote>The total comes from the Line Items section. Edit a Line Items section to change it.</ReadOnlyNote>
   </>);
 
   if (sel.type === "option_cards") return (<div className="space-y-3">
-    <div className="flex items-center justify-between"><p className="text-[11px]" style={{ color: "var(--text-muted)" }}>{props.options.length} option{props.options.length === 1 ? "" : "s"}</p><button onClick={props.addOption} className="flex items-center gap-1 text-xs font-medium" style={{ color: accent }}><Plus className="w-3.5 h-3.5" /> Add option</button></div>
-    {props.options.length === 0 && <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>No option cards yet. Add Good / Better / Best tiers.</p>}
-    {props.options.map(o => <OptionEditor key={o.id} o={o} accent={accent} onChange={p => props.setOption(o.id, p)} onRemove={() => props.removeOption(o.id)} onToggleSelected={() => props.selectTier(o.id)} />)}
+    <div className="flex items-center justify-between"><p className="text-[11px]" style={{ color: "var(--text-muted)" }}>{ctx.options.length} option{ctx.options.length === 1 ? "" : "s"}</p><button onClick={ctx.addOption} className="flex items-center gap-1 text-xs font-medium" style={{ color: accent }}><Plus className="w-3.5 h-3.5" /> Add option</button></div>
+    {ctx.options.length === 0 && <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>No option cards yet. Add Good / Better / Best tiers.</p>}
+    {ctx.options.map(o => <OptionEditor key={o.id} o={o} accent={accent} onChange={p => ctx.setOption(o.id, p)} onRemove={() => ctx.removeOption(o.id)} onToggleSelected={() => ctx.selectTier(o.id)} />)}
   </div>);
 
-  if (sel.type === "approval_signature") return (<><Field label="Approval wording"><textarea value={sel.content} onChange={e => props.patchBlock(sel.id, { content: e.target.value })} rows={3} className="w-full rounded-lg px-3 py-2 text-sm outline-none resize-none focus:ring-2" style={inputStyle} /></Field><ReadOnlyNote>E-signature isn&apos;t enabled yet — the proposal shows a signature line placeholder.</ReadOnlyNote></>);
+  if (sel.type === "approval_signature") return (<><Field label="Approval wording"><textarea value={sel.content} onChange={e => ctx.patchBlock(sel.id, { content: e.target.value })} rows={3} className="w-full rounded-lg px-3 py-2 text-sm outline-none resize-none focus:ring-2" style={inputStyle} /></Field><ReadOnlyNote>E-signature isn&apos;t enabled yet — the proposal shows a signature line placeholder.</ReadOnlyNote></>);
 
-  if (sel.type === "divider" || sel.type === "page_break") return <ReadOnlyNote>{sel.type === "divider" ? "A horizontal rule separating sections." : "Forces a new page when the proposal is printed or exported to PDF."}</ReadOnlyNote>;
-
-  return <ReadOnlyNote>No settings for this block.</ReadOnlyNote>;
+  return <ReadOnlyNote>No extra settings for this section.</ReadOnlyNote>;
 }
 
-function LineItemsEditor(props: { items: DraftItem[]; setItem: (id: string, patch: Partial<DraftItem>) => void; addItem: () => void; removeItem: (id: string) => void; taxRate: string; setTaxRate: (v: string) => void; totals: { total: number }; showCatalog: () => void; accent: string; customerNotes: string; setCustomerNotes: (v: string) => void }) {
-  const { accent } = props;
+function LineItemsEditor({ ctx }: { ctx: SettingsCtx }) {
+  const { accent } = ctx;
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-3"><button onClick={props.showCatalog} className="flex items-center gap-1 text-xs font-medium" style={{ color: accent }}><Package className="w-3.5 h-3.5" /> Catalog</button><button onClick={props.addItem} className="flex items-center gap-1 text-xs font-medium" style={{ color: "var(--text-secondary)" }}><Plus className="w-3.5 h-3.5" /> Custom line</button></div>
-      {props.items.map(it => (
+      <div className="flex items-center gap-3"><button onClick={ctx.showCatalog} className="flex items-center gap-1 text-xs font-medium" style={{ color: accent }}><Package className="w-3.5 h-3.5" /> Catalog</button><button onClick={ctx.addItem} className="flex items-center gap-1 text-xs font-medium" style={{ color: "var(--text-secondary)" }}><Plus className="w-3.5 h-3.5" /> Custom line</button></div>
+      {ctx.items.map(it => (
         <div key={it.id} className="rounded-lg p-2.5 space-y-2" style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border-subtle)" }}>
           {it.itemId && <div className="flex items-center gap-1 text-[10px] font-semibold" style={{ color: "var(--accent-text)" }}><Tag className="w-2.5 h-2.5" /> From catalog</div>}
-          <input value={it.name} onChange={e => props.setItem(it.id, { name: e.target.value })} placeholder="Item name" className="w-full rounded-lg px-2.5 py-1.5 text-sm outline-none focus:ring-2" style={inputStyle} />
-          <input value={it.description} onChange={e => props.setItem(it.id, { description: e.target.value })} placeholder="Description" className="w-full rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-2" style={inputStyle} />
-          <UiSelect size="sm" value={it.category} onChange={v => props.setItem(it.id, { category: v as LineItemCategory })} options={LINE_ITEM_CATEGORIES.map(c => ({ value: c, label: c }))} />
+          <input value={it.name} onChange={e => ctx.setItem(it.id, { name: e.target.value })} placeholder="Item name" className="w-full rounded-lg px-2.5 py-1.5 text-sm outline-none focus:ring-2" style={inputStyle} />
+          <input value={it.description} onChange={e => ctx.setItem(it.id, { description: e.target.value })} placeholder="Description" className="w-full rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-2" style={inputStyle} />
+          <UiSelect size="sm" value={it.category} onChange={v => ctx.setItem(it.id, { category: v as LineItemCategory })} options={LINE_ITEM_CATEGORIES.map(c => ({ value: c, label: c }))} />
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-1"><span className="text-[10px]" style={{ color: "var(--text-muted)" }}>Qty</span><input type="number" min={0} value={it.quantity} onChange={e => props.setItem(it.id, { quantity: e.target.value })} className="w-14 rounded-lg px-2 py-1 text-xs outline-none tabular-nums focus:ring-2" style={inputStyle} /></div>
-            <div className="flex items-center gap-1"><span className="text-[10px]" style={{ color: "var(--text-muted)" }}>$</span><input type="number" min={0} step="0.01" value={it.unitPrice} onChange={e => props.setItem(it.id, { unitPrice: e.target.value })} className="w-20 rounded-lg px-2 py-1 text-xs outline-none tabular-nums focus:ring-2" style={inputStyle} /></div>
-            <button onClick={() => props.removeItem(it.id)} className="ml-auto p-1 rounded-lg" style={{ color: "var(--text-muted)" }}><Trash2 className="w-3.5 h-3.5" /></button>
+            <div className="flex items-center gap-1"><span className="text-[10px]" style={{ color: "var(--text-muted)" }}>Qty</span><input type="number" min={0} value={it.quantity} onChange={e => ctx.setItem(it.id, { quantity: e.target.value })} className="w-14 rounded-lg px-2 py-1 text-xs outline-none tabular-nums focus:ring-2" style={inputStyle} /></div>
+            <div className="flex items-center gap-1"><span className="text-[10px]" style={{ color: "var(--text-muted)" }}>$</span><input type="number" min={0} step="0.01" value={it.unitPrice} onChange={e => ctx.setItem(it.id, { unitPrice: e.target.value })} className="w-20 rounded-lg px-2 py-1 text-xs outline-none tabular-nums focus:ring-2" style={inputStyle} /></div>
+            <button onClick={() => ctx.removeItem(it.id)} className="ml-auto p-1 rounded-lg" style={{ color: "var(--text-muted)" }}><Trash2 className="w-3.5 h-3.5" /></button>
           </div>
           <div className="flex items-center gap-3">
-            <label className="flex items-center gap-1 text-[11px] cursor-pointer" style={{ color: "var(--text-secondary)" }}><input type="checkbox" checked={it.taxable} onChange={e => props.setItem(it.id, { taxable: e.target.checked })} className="accent-indigo-600" /> Taxable</label>
-            <label className="flex items-center gap-1 text-[11px] cursor-pointer" style={{ color: "var(--text-secondary)" }}><input type="checkbox" checked={it.optional} onChange={e => props.setItem(it.id, { optional: e.target.checked })} className="accent-indigo-600" /> Optional</label>
+            <label className="flex items-center gap-1 text-[11px] cursor-pointer" style={{ color: "var(--text-secondary)" }}><input type="checkbox" checked={it.taxable} onChange={e => ctx.setItem(it.id, { taxable: e.target.checked })} className="accent-indigo-600" /> Taxable</label>
+            <label className="flex items-center gap-1 text-[11px] cursor-pointer" style={{ color: "var(--text-secondary)" }}><input type="checkbox" checked={it.optional} onChange={e => ctx.setItem(it.id, { optional: e.target.checked })} className="accent-indigo-600" /> Optional</label>
           </div>
         </div>
       ))}
-      <div className="flex items-center gap-2"><span className="text-[10px]" style={{ color: "var(--text-muted)" }}>Tax %</span><input type="number" min={0} step="0.1" value={props.taxRate} onChange={e => props.setTaxRate(e.target.value)} className="w-16 rounded px-1.5 py-0.5 text-xs outline-none tabular-nums focus:ring-2" style={inputStyle} /><span className="ml-auto text-sm font-bold tabular-nums" style={{ color: "var(--text-primary)" }}>{fmt(props.totals.total)}</span></div>
-      <Field label="Customer notes" hint="on the quote"><textarea value={props.customerNotes} onChange={e => props.setCustomerNotes(e.target.value)} rows={3} className="w-full rounded-lg px-3 py-2 text-xs outline-none resize-none focus:ring-2" style={inputStyle} /></Field>
+      <div className="flex items-center gap-2"><span className="text-[10px]" style={{ color: "var(--text-muted)" }}>Tax %</span><input type="number" min={0} step="0.1" value={ctx.taxRate} onChange={e => ctx.setTaxRate(e.target.value)} className="w-16 rounded px-1.5 py-0.5 text-xs outline-none tabular-nums focus:ring-2" style={inputStyle} /><span className="ml-auto text-sm font-bold tabular-nums" style={{ color: "var(--text-primary)" }}>{fmt(ctx.totals.total)}</span></div>
+      <Field label="Customer notes" hint="on the quote"><textarea value={ctx.customerNotes} onChange={e => ctx.setCustomerNotes(e.target.value)} rows={3} className="w-full rounded-lg px-3 py-2 text-xs outline-none resize-none focus:ring-2" style={inputStyle} /></Field>
     </div>
   );
 }
 
 function OptionEditor({ o, accent, onChange, onRemove, onToggleSelected }: { o: QuoteOption; accent: string; onChange: (patch: Partial<QuoteOption>) => void; onRemove: () => void; onToggleSelected: () => void }) {
-  const numOr = (s: string) => (s === "" ? 0 : parseFloat(s) || 0);
+  const numOr = (str: string) => (str === "" ? 0 : parseFloat(str) || 0);
   return (
     <div className="rounded-lg p-2.5 space-y-2" style={{ backgroundColor: "var(--bg-surface-2)", border: `1px solid ${o.selected ? accent : "var(--border-subtle)"}` }}>
       <div className="flex items-center gap-2">
@@ -631,7 +895,7 @@ function OptionEditor({ o, accent, onChange, onRemove, onToggleSelected }: { o: 
         <div className="flex items-center gap-1"><span className="text-[10px]" style={{ color: "var(--text-muted)" }}>$</span><input type="number" min={0} value={o.price} onChange={e => onChange({ price: numOr(e.target.value) })} className="w-24 rounded-lg px-2 py-1 text-xs outline-none tabular-nums focus:ring-2" style={inputStyle} /></div>
         <div className="flex items-center gap-1"><span className="text-[10px]" style={{ color: "var(--text-muted)" }}>$/mo</span><input type="number" min={0} value={o.monthlyPrice ?? ""} onChange={e => onChange({ monthlyPrice: e.target.value === "" ? undefined : numOr(e.target.value) })} className="w-20 rounded-lg px-2 py-1 text-xs outline-none tabular-nums focus:ring-2" style={inputStyle} /></div>
       </div>
-      <textarea value={(o.includes ?? []).join("\n")} onChange={e => onChange({ includes: e.target.value.split("\n").map(s => s.trim()).filter(Boolean) })} rows={2} placeholder="Included items (one per line)" className="w-full rounded-lg px-2.5 py-1.5 text-xs outline-none resize-none focus:ring-2" style={inputStyle} />
+      <textarea value={(o.includes ?? []).join("\n")} onChange={e => onChange({ includes: e.target.value.split("\n").map(str => str.trim()).filter(Boolean) })} rows={2} placeholder="Included items (one per line)" className="w-full rounded-lg px-2.5 py-1.5 text-xs outline-none resize-none focus:ring-2" style={inputStyle} />
     </div>
   );
 }
@@ -639,12 +903,6 @@ function OptionEditor({ o, accent, onChange, onRemove, onToggleSelected }: { o: 
 // ─── Small UI helpers ─────────────────────────────────────
 function useCloseOnOutside(ref: React.RefObject<HTMLDivElement | null>, open: boolean, close: () => void) {
   useEffect(() => { if (!open) return; const onDown = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) close(); }; document.addEventListener("mousedown", onDown); return () => document.removeEventListener("mousedown", onDown); }, [open, ref, close]);
-}
-function SummaryRow({ icon: Icon, label, value, muted }: { icon: typeof User; label: string; value: string; muted?: boolean }) {
-  return (<div className="flex items-center gap-2"><Icon className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted)" }} /><div className="min-w-0"><p className="text-[10px]" style={{ color: "var(--text-muted)" }}>{label}</p><p className="text-xs font-medium truncate" style={{ color: muted ? "var(--text-muted)" : "var(--text-primary)" }}>{value}</p></div></div>);
-}
-function IconBtn({ children, title, onClick, active, accent }: { children: React.ReactNode; title: string; onClick: (e: React.MouseEvent) => void; active?: boolean; accent?: string }) {
-  return (<button title={title} onClick={onClick} className="p-1 rounded-md transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: active ? (accent ?? "var(--accent-text)") : "var(--text-muted)" }}>{children}</button>);
 }
 function MenuItem({ icon: Icon, label, onClick, danger }: { icon: typeof Printer; label: string; onClick: () => void; danger?: boolean }) {
   return (<button onClick={onClick} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-[var(--bg-surface-2)] transition-colors" style={{ color: danger ? "#ef4444" : "var(--text-secondary)" }}><Icon className="w-3.5 h-3.5 shrink-0" /> {label}</button>);
@@ -659,11 +917,37 @@ function AlignPicker({ value, onChange, accent }: { value: "left" | "center" | "
   );
 }
 function Placeholder({ icon: Icon, text }: { icon: typeof Package; text: string }) {
-  return (<div className="rounded-lg px-3 py-5 text-center" style={{ border: "1px dashed var(--border)" }}><Icon className="w-4 h-4 mx-auto mb-1" style={{ color: "var(--text-muted)" }} /><p className="text-[11px]" style={{ color: "var(--text-muted)" }}>{text}</p></div>);
+  return (<div className="rounded-lg px-3 py-5 text-center" style={{ border: "1px dashed #d1d5db" }}><Icon className="w-4 h-4 mx-auto mb-1" style={{ color: "#9ca3af" }} /><p className="text-[11px]" style={{ color: "#9ca3af" }}>{text}</p></div>);
 }
 function hasHtml(html: string): boolean { return !!html && html.replace(/<[^>]*>/g, "").trim().length > 0; }
 const inputStyle: React.CSSProperties = { border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" };
-function SecLabel({ children }: { children: React.ReactNode }) { return <p className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>{children}</p>; }
-function Row({ label, value }: { label: string; value: string }) { return <div className="flex items-center justify-between"><span className="text-xs" style={{ color: "var(--text-muted)" }}>{label}</span><span className="text-sm tabular-nums" style={{ color: "var(--text-secondary)" }}>{value}</span></div>; }
+function SecLabel({ children, accent, ds }: { children: React.ReactNode; accent: string; ds: ProposalDesignStyle }) {
+  if (ds.label === "bar") return <div className="flex items-center gap-2 mb-2"><span style={{ width: "3px", height: "15px", backgroundColor: accent, borderRadius: "2px" }} /><span className="text-[12.5px] font-bold" style={{ color: "#111827", fontFamily: ds.headingFamily }}>{children}</span></div>;
+  if (ds.label === "rule") return <p className="inline-block text-[12.5px] font-bold mb-2" style={{ color: "#111827", borderBottom: `2px solid ${accent}`, paddingBottom: "2px", fontFamily: ds.headingFamily }}>{children}</p>;
+  return <p className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: accent }}>{children}</p>;
+}
+function Row({ label, value }: { label: string; value: string }) { return <div className="flex items-center justify-between"><span className="text-xs" style={{ color: "#6b7280" }}>{label}</span><span className="text-sm tabular-nums" style={{ color: "#374151" }}>{value}</span></div>; }
+
+// Totals on the canvas sheet — mirrors the active design's totals treatment.
+function CanvasTotals({ totals, taxRate, accent, ds }: { totals: { subtotal: number; tax: number; total: number }; taxRate: string; accent: string; ds: ProposalDesignStyle }) {
+  const rows = <><Row label="Subtotal" value={fmt(totals.subtotal)} /><Row label={`Tax (${taxRate}%)`} value={fmt(totals.tax)} /></>;
+  if (ds.totals === "accentbar") return (
+    <div className="space-y-1">{rows}
+      <div className="flex items-center justify-between mt-1.5 px-3 py-2 rounded-lg" style={{ backgroundColor: accent }}>
+        <span className="text-sm font-semibold text-white">Total</span><span className="text-lg font-bold tabular-nums text-white">{fmt(totals.total)}</span>
+      </div>
+    </div>
+  );
+  if (ds.totals === "box") return (
+    <div className="rounded-lg px-3 py-2.5 space-y-1" style={{ border: "1px solid #e5e7eb", backgroundColor: "#f9fafb" }}>{rows}
+      <div className="flex items-center justify-between pt-1.5 mt-0.5" style={{ borderTop: `2px solid ${accent}` }}><span className="text-sm font-semibold" style={{ color: "#111827" }}>Total</span><span className="text-lg font-bold tabular-nums" style={{ color: accent }}>{fmt(totals.total)}</span></div>
+    </div>
+  );
+  return (
+    <div className="space-y-1">{rows}
+      <div className="flex items-center justify-between pt-1" style={{ borderTop: "1px solid #e5e7eb" }}><span className="text-sm font-semibold" style={{ color: "#111827" }}>Total</span><span className="text-lg font-bold tabular-nums" style={{ color: accent }}>{fmt(totals.total)}</span></div>
+    </div>
+  );
+}
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) { return <div><label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>{label}{hint && <span style={{ color: "var(--text-muted)" }}> ({hint})</span>}</label>{children}</div>; }
 function ReadOnlyNote({ children }: { children: React.ReactNode }) { return <p className="text-[11px] leading-relaxed" style={{ color: "var(--text-muted)" }}>{children}</p>; }

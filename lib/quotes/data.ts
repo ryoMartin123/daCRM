@@ -6,7 +6,7 @@
 //   supabase.from('quotes').select('*, line_items(*)')
 //     .eq('organization_id', orgId).order('created_at', { ascending: false })
 
-import type { Quote, Invoice, QuoteStatus, QuoteMode, QuotePricing, InvoiceStatus, LineItemCategory } from "./types";
+import type { Quote, Invoice, QuoteStatus, QuoteMode, QuotePricing, InvoiceStatus, LineItemCategory, QuoteSection } from "./types";
 import type { QuoteBlock } from "./blocks";
 import { QUOTE_STATUS_STYLE } from "./types";
 import { createJob, getJob, type Job } from "@/lib/jobs/data";
@@ -32,16 +32,9 @@ export interface LineItem {
 }
 
 // ─── Proposal section (copied from a proposal template) ──
-// Snapshot of a template section on the quote. Editing the template later does
-// not change existing quotes — each quote owns its section copy.
-export interface QuoteSection {
-  id?: string;          // stable unique identity (lets a quote hold duplicates of a type)
-  key: string;          // section TYPE — proposal SectionKey (e.g. "recommended_solution")
-  label: string;        // editable display title (renaming a section edits this)
-  body: string;         // editable customer-facing wording
-  visible: boolean;
-  locked?: boolean;     // structural section that shouldn't be deleted (e.g. cover)
-}
+// The QuoteSection type now lives in ./types (a leaf module) so blocks.ts can
+// reference it without an import cycle; re-exported here for existing consumers.
+export type { QuoteSection } from "./types";
 
 // Stable per-section id generator + a migration helper so legacy quotes (whose
 // sections were saved before `id` existed) get ids on load. Identity matters for

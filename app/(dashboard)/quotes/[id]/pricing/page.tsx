@@ -16,6 +16,7 @@ import {
 import { getQuote, autosaveQuote, computeTotals, fmt, type QuoteRecord, type LineItem } from "@/lib/quotes/data";
 import type { QuotePricing } from "@/lib/quotes/types";
 import { getProposalBranding } from "@/lib/proposals/data";
+import NumberStepper from "@/components/ui/NumberStepper";
 
 // ─── Input model ──────────────────────────────────────────
 interface Inputs {
@@ -204,11 +205,7 @@ export default function PricingWizardPage({ params }: { params: Promise<{ id: st
               <div className="px-4 pb-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>Financing term</span>
-                  <div className="flex items-center gap-1">
-                    <input type="number" min={6} value={v.financeMonths} onChange={e => set({ financeMonths: e.target.value })}
-                      className="w-16 rounded px-1.5 py-0.5 text-xs outline-none text-right" style={inputStyle} />
-                    <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>mo</span>
-                  </div>
+                  <NumberStepper size="sm" min={6} value={v.financeMonths} onChange={x => set({ financeMonths: x })} suffix="mo" className="w-28" />
                 </div>
                 <button onClick={persistAndGo} className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-medium text-white" style={{ backgroundColor: accent }}>
                   Continue to Proposal <ArrowRight className="w-4 h-4" />
@@ -226,8 +223,6 @@ export default function PricingWizardPage({ params }: { params: Promise<{ id: st
 }
 
 // ─── Small bits ───────────────────────────────────────────
-const inputStyle: React.CSSProperties = { border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" };
-
 function Group({ title, icon: Icon, children }: { title: string; icon: typeof DollarSign; children: React.ReactNode }) {
   return (
     <div className="rounded-xl p-4" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
@@ -252,12 +247,7 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
 function Money({ label, value, onChange, suffix, hint }: { label: string; value: string; onChange: (v: string) => void; suffix?: string; hint?: string }) {
   return (
     <Row label={label} hint={hint}>
-      <div className="flex items-center rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)" }}>
-        <span className="pl-2.5 text-sm" style={{ color: "var(--text-muted)" }}>$</span>
-        <input type="number" min={0} step="0.01" value={value} onChange={e => onChange(e.target.value)} placeholder="0"
-          className="flex-1 min-w-0 px-2 py-2 text-sm outline-none bg-transparent" style={{ color: "var(--text-primary)" }} />
-        {suffix && <span className="pr-2.5 text-xs" style={{ color: "var(--text-muted)" }}>{suffix}</span>}
-      </div>
+      <NumberStepper value={value} onChange={onChange} min={0} step={1} placeholder="0" prefix="$" suffix={suffix} />
     </Row>
   );
 }
@@ -265,11 +255,7 @@ function Money({ label, value, onChange, suffix, hint }: { label: string; value:
 function Plain({ label, value, onChange, suffix }: { label: string; value: string; onChange: (v: string) => void; suffix?: string }) {
   return (
     <Row label={label}>
-      <div className="flex items-center rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)" }}>
-        <input type="number" min={0} value={value} onChange={e => onChange(e.target.value)} placeholder="0"
-          className="flex-1 min-w-0 px-2.5 py-2 text-sm outline-none bg-transparent" style={{ color: "var(--text-primary)" }} />
-        {suffix && <span className="pr-2.5 text-xs" style={{ color: "var(--text-muted)" }}>{suffix}</span>}
-      </div>
+      <NumberStepper value={value} onChange={onChange} min={0} step={1} placeholder="0" suffix={suffix} />
     </Row>
   );
 }
@@ -277,11 +263,7 @@ function Plain({ label, value, onChange, suffix }: { label: string; value: strin
 function Pct({ label, value, onChange, highlight }: { label: string; value: string; onChange: (v: string) => void; highlight?: string }) {
   return (
     <Row label={label}>
-      <div className="flex items-center rounded-lg overflow-hidden" style={{ border: `1px solid ${highlight ?? "var(--border)"}`, backgroundColor: "var(--bg-surface)" }}>
-        <input type="number" min={0} step="0.1" value={value} onChange={e => onChange(e.target.value)} placeholder="0"
-          className="flex-1 min-w-0 px-2.5 py-2 text-sm outline-none bg-transparent" style={{ color: "var(--text-primary)" }} />
-        <span className="pr-2.5 text-xs" style={{ color: "var(--text-muted)" }}>%</span>
-      </div>
+      <NumberStepper value={value} onChange={onChange} min={0} step={1} placeholder="0" suffix="%" borderColor={highlight} />
     </Row>
   );
 }
