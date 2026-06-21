@@ -147,12 +147,9 @@ export default function TasksPage() {
       {view === "comments" && <CommentsTab />}
 
       {view === "tasks" && (
-      <div className="rounded-xl overflow-hidden"
-        style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
-
-        {/* Tabs + search */}
-        <div className="flex items-center justify-between flex-wrap gap-2 px-4 py-3"
-          style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+      <>
+        {/* Toolbar — tabs · search · filter, OUTSIDE the table card (consistent with Customers/Leads) */}
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
           <StatusTabs active={tab} onChange={k => setTab(k as typeof tab)}
             tabs={STATUS_TABS.map(t => ({ key: t.key, label: t.label, count: tabCount(t.key) }))} />
           <div className="flex items-center gap-2">
@@ -171,6 +168,8 @@ export default function TasksPage() {
           </div>
         </div>
 
+        {/* Table card */}
+        <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
         {/* Column headers */}
         <div className="grid px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider"
           style={{ gridTemplateColumns: "2.5fr 1fr 2fr 1fr 1fr 0.4fr", color: "var(--text-muted)", borderBottom: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-surface-2)" }}>
@@ -319,6 +318,7 @@ export default function TasksPage() {
           {contextFiltered.filter(t => t.status === "completed").length} completed
         </div>
       </div>
+      </>
       )}
 
       {modalOpen && (

@@ -287,9 +287,9 @@ export default function JobsPage() {
 
       {/* Table card */}
       {moduleView === "list" && (
-      <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
-        {/* Tabs + search */}
-        <div className="flex items-center justify-between flex-wrap gap-2 px-4 py-3" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+      <>
+        {/* Toolbar — tabs · search · filter, OUTSIDE the table card (consistent with Customers/Leads) */}
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
           <StatusTabs active={tab} onChange={k => setTab(k as typeof tab)}
             tabs={TABS.map(t => ({
               key: t.key, label: t.label,
@@ -357,6 +357,8 @@ export default function JobsPage() {
           )}
         </div>
 
+        {/* Table card */}
+        <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
         {/* Projects view */}
         {isProjects ? (
           <div className="p-4">
@@ -441,6 +443,7 @@ export default function JobsPage() {
           </>
         )}
       </div>
+      </>
       )}
 
       {showCreate && (

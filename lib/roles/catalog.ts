@@ -53,11 +53,14 @@ export const ACTION_ORDER: Action[] = [
 ];
 
 export const MASK_LABELS: Record<FieldMask, { label: string; description: string }> = {
+  finance_internal_pricing: { label: "Internal pricing",    description: "Internal price book and list pricing." },
   finance_cost_margin:     { label: "Cost & margin",       description: "Item cost, markup, and profit margin on quotes/jobs." },
   finance_totals:          { label: "Financial totals",    description: "Quote/invoice totals, balances, and payment amounts." },
   finance_payroll:         { label: "Payroll / labor cost", description: "Technician pay rates and internal labor cost." },
   comms_internal_notes:    { label: "Internal notes",      description: "Internal-only notes hidden from customer-facing views." },
   sales_other_commissions: { label: "Others' commissions", description: "Commission figures for other sales reps." },
+  documents_confidential:  { label: "Confidential documents", description: "Restricted/confidential documents and folders." },
+  accounting_reports:      { label: "Accounting reports",  description: "Accounting and financial reporting." },
 };
 
 export const FLAG_LABELS: Record<SensitiveFlag, { label: string; description: string }> = {
@@ -65,6 +68,7 @@ export const FLAG_LABELS: Record<SensitiveFlag, { label: string; description: st
   users_manage:        { label: "Manage users",       description: "Invite and edit users and their role assignments." },
   roles_manage:        { label: "Manage roles",       description: "Edit role definitions and create custom roles." },
   billing_manage:      { label: "Manage billing",     description: "Change subscription, payment method, and billing." },
+  security_manage:     { label: "Manage security",    description: "Manage security and access policies." },
   reports_cross_scope: { label: "Cross-scope reports", description: "View reporting across companies/locations." },
   records_deactivate:  { label: "Deactivate records", description: "Deactivate/archive business records." },
   automation_manage:   { label: "Manage automation",  description: "Configure marketing and automation rules." },

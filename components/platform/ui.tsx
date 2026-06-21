@@ -18,7 +18,7 @@ export function PageHeader({
   icon?: LucideIcon;
 }) {
   return (
-    <div className="flex items-center gap-3 mb-6">
+    <div className="flex items-center gap-3">
       {Icon && (
         <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: (accent ?? "#6366f1") + "22" }}>
           <Icon className="w-5 h-5" style={{ color: accent }} />

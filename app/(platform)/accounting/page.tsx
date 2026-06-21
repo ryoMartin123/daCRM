@@ -9,17 +9,17 @@ import { PageHeader, StatCard } from "@/components/platform/ui";
 
 export default function AccountingDashboard() {
   return (
-    <div className="p-6">
+    <div className="p-6 space-y-4">
       <PageHeader title="Accounting Dashboard" subtitle="Invoices, payments, expenses, and financial activity." accent="#10b981" />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Outstanding A/R" value="$48,250" hint="12 open invoices" icon={Receipt} accent="#10b981" />
         <StatCard label="Collected (MTD)" value="$112,400" hint="+8% vs last month" icon={CreditCard} accent="#0ea5e9" />
         <StatCard label="Expenses (MTD)" value="$34,900" hint="Across 3 locations" icon={Wallet} accent="#f59e0b" />
         <StatCard label="Net (MTD)" value="$77,500" hint="Cash basis" icon={BarChart3} accent="#6366f1" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Panel title="Past-Due Invoices" icon={Receipt} accent="#ef4444" lines={["#1042 — Wilson HVAC · $4,200 · 21d", "#1038 — Maple Roofing · $7,800 · 35d"]} />
         <Panel title="Recent Payments" icon={CreditCard} accent="#10b981" lines={["#1051 — $2,400 · Card", "#1049 — $1,150 · ACH", "#1047 — $980 · Check"]} />
       </div>

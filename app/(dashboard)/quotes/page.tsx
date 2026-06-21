@@ -140,9 +140,9 @@ export default function QuotesPage() {
       )}
 
       {moduleView === "list" && (
-      <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
-        {/* Tabs + search */}
-        <div className="flex items-center justify-between flex-wrap gap-2 px-4 py-3" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+      <>
+        {/* Toolbar — tabs · search · filter, OUTSIDE the table card (consistent with Customers/Leads) */}
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
           <StatusTabs active={tab} onChange={k => setTab(k as QuoteTab)}
             tabs={STATUS_TABS.map(t => ({ key: t.key, label: t.label, count: tabCount(t.key) }))} />
           <div className="flex items-center gap-2 shrink-0">
@@ -158,6 +158,8 @@ export default function QuotesPage() {
           </div>
         </div>
 
+        {/* Table card */}
+        <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
         {/* Table — horizontal scroll so all columns stay visible on narrow screens */}
         <div className="overflow-x-auto thin-scroll-x">
           <div style={{ minWidth: GRID_MIN_WIDTH }}>
@@ -244,6 +246,7 @@ export default function QuotesPage() {
           </div>
         </div>
       </div>
+      </>
       )}
 
       {showCreate && <QuoteTypeChooser onClose={() => setShowCreate(false)} />}

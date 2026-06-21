@@ -21,7 +21,6 @@ import {
   Megaphone,
   BarChart2,
   Settings,
-  MapPin,
   ChevronDown,
   PanelLeftClose,
   PanelLeftOpen,
@@ -29,6 +28,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
 import { usePermissions } from "@/components/providers/PermissionProvider";
+import { appById } from "@/lib/platform/apps";
 import type { Resource } from "@/lib/roles/types";
 
 type NavItem = { name: string; href: string; icon: typeof LayoutDashboard; resource?: Resource };
@@ -100,8 +100,14 @@ const COLLAPSE_KEY = "crm-sidebar-collapsed";
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { organization, activeScopeLabel, userName, userInitials, userRole } = useHierarchy();
+  const { organization, userName, userInitials, userRole } = useHierarchy();
   const { can } = usePermissions();
+
+  // CRM is one app inside the platform — its sidebar header mirrors the other
+  // apps: [app icon] App Name / Organization. Company/location context lives in
+  // the top bar selector, not here.
+  const crmApp = appById("crm");
+  const CrmIcon = crmApp?.icon;
 
   // A nav item is visible when the acting user can view its resource.
   const canSee = (item: NavItem) => !item.resource || can(item.resource, "view");
@@ -188,17 +194,20 @@ export default function Sidebar() {
 
   return (
     <div data-app-nav className={cn("flex flex-col shrink-0 transition-[width] duration-150", collapsed ? "w-16" : "w-56")} style={{ backgroundColor: "var(--sidebar-bg)" }}>
-      {/* Org / Location header */}
-      <div className={cn("flex items-center px-4 py-4", collapsed ? "justify-center" : "justify-between")} style={{ borderBottom: "1px solid var(--sidebar-border)" }}>
+      {/* App identity header — [app icon] App Name / Organization */}
+      <div className={cn("flex items-center px-4 py-4", collapsed ? "justify-center" : "justify-between gap-2")} style={{ borderBottom: "1px solid var(--sidebar-border)" }}>
         {!collapsed && (
-          <div className="min-w-0">
-            <p className="text-sm font-semibold leading-tight truncate" style={{ color: "var(--sidebar-text-active)" }}>
-              {organization.name}
-            </p>
-            <div className="flex items-center gap-1 mt-0.5">
-              <MapPin className="w-3 h-3 shrink-0" style={{ color: "var(--sidebar-text)" }} />
-              <span className="text-xs truncate" style={{ color: "var(--sidebar-text)" }}>{activeScopeLabel}</span>
-              <ChevronDown className="w-3 h-3 shrink-0" style={{ color: "var(--sidebar-text)" }} />
+          <div className="flex items-center gap-2.5 min-w-0">
+            {CrmIcon && (
+              <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: (crmApp?.accent ?? "#0ea5e9") + "26" }}>
+                <CrmIcon className="w-5 h-5" style={{ color: crmApp?.accent }} />
+              </span>
+            )}
+            <div className="min-w-0">
+              <p className="text-sm font-semibold leading-tight truncate" style={{ color: "var(--sidebar-text-active)" }}>
+                {crmApp?.name ?? "CRM"}
+              </p>
+              <p className="text-xs truncate" style={{ color: "var(--sidebar-text)" }}>{organization.name}</p>
             </div>
           </div>
         )}

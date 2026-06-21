@@ -120,10 +120,8 @@ export default function ItemsPage() {
         </div>
       </div>
 
-      {/* Table card */}
-      <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
-        {/* Pill tabs (left) + search & filter (right) */}
-        <div className="flex items-center justify-between flex-wrap gap-2 px-4 py-3" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+      {/* Toolbar — pill tabs · search · filter, OUTSIDE the table card (consistent with Customers/Leads) */}
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
           <div className="flex items-center gap-0.5 flex-wrap">
             {TABS.map(t => {
               const active = tab === t.key;
@@ -171,6 +169,8 @@ export default function ItemsPage() {
           </div>
         </div>
 
+      {/* Table card */}
+      <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
         {/* ── Categories tab ── */}
         {tab === "categories" ? (
           grouped.length === 0 ? (

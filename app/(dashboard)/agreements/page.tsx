@@ -196,20 +196,11 @@ export default function AgreementsPage() {
         />
       )}
 
-      {/* Table card */}
       {moduleView === "list" && (
-      <div
-        className="rounded-xl overflow-hidden"
-        style={{
-          backgroundColor: "var(--bg-surface)",
-          border: "1px solid var(--border-subtle)",
-          boxShadow: "var(--shadow-card)",
-        }}
-      >
-        {/* Tabs + search */}
+      <>
+        {/* Toolbar — tabs · search · filter, OUTSIDE the table card (consistent with Customers/Leads) */}
         <div
-          className="flex items-center justify-between flex-wrap gap-2 px-4 py-3"
-          style={{ borderBottom: "1px solid var(--border-subtle)" }}
+          className="flex items-center justify-between flex-wrap gap-2 mb-3"
         >
           <StatusTabs active={tab} onChange={k => setTab(k as typeof tab)}
             tabs={TABS.map(t => ({ key: t.key, label: t.label, count: t.key === "templates" ? TEMPLATES.length : agreements.filter(t.fn).length }))} />
@@ -241,6 +232,8 @@ export default function AgreementsPage() {
           )}
         </div>
 
+        {/* Table card */}
+        <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
         {/* Templates view */}
         {isTemplates ? (
           <TemplatesTable />
@@ -410,6 +403,7 @@ export default function AgreementsPage() {
           </>
         )}
       </div>
+      </>
       )}
 
     </div>

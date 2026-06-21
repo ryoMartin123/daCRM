@@ -5,7 +5,7 @@ import { PageHeader, FeaturePlaceholder } from "@/components/platform/ui";
 
 export default function AdminIntegrationsPage() {
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
+    <div className="p-6 space-y-6">
       <PageHeader title="Integrations" subtitle="Admin owns the connection; each app owns how it uses it." accent="#a855f7" icon={Puzzle} />
       <FeaturePlaceholder
         title="Platform connections"

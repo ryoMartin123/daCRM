@@ -1,364 +1,294 @@
 "use client";
 
-// ─── Settings → Roles & Permissions ───────────────────────
-// List the org's roles (HVAC defaults + custom), and a full-page editor with a
-// resource × action permission matrix, field masks, sensitive flags, and a scope
-// tier. Editing a role and creating one share the same editor. Validation blocks
-// impossible role definitions.
+// ─── Admin → Roles & Permissions ──────────────────────────
+// A compact permission control center: summary cards, search + filters, and a
+// dense role table (type · scope · app badges · users · sensitive count). Click a
+// role to open its detail drawer; create/edit opens the guided Role Builder.
+// Replaces the old oversized card grid and the giant default permission matrix.
 
 import { useMemo, useState } from "react";
 import {
-  Shield, ShieldCheck, Plus, Pencil, Trash2, RotateCcw, ArrowLeft, Lock, Check,
+  Shield, ShieldCheck, Users, AlertTriangle, Plus, RotateCcw, Search, MoreHorizontal,
+  Pencil, Copy, Trash2, Lock, UserCog, SlidersHorizontal,
 } from "lucide-react";
 import UiSelect from "@/components/ui/Select";
 import StatusBadge from "@/components/shared/StatusBadge";
+import { StatCard } from "@/components/platform/ui";
+import ModuleViewToggle, { type ModuleView } from "@/components/shared/ModuleViewToggle";
 import { usePermissions } from "@/components/providers/PermissionProvider";
+import { getOrgRoles, getOrgRole, deleteRole, resetRole, resetAllRoles } from "@/lib/roles/store";
 import {
-  RESOURCE_ORDER, RESOURCE_LABELS, ACTION_ORDER, ACTION_LABELS, MASK_LABELS, FLAG_LABELS,
-} from "@/lib/roles/catalog";
-import {
-  getOrgRoles, getOrgRole, upsertRole, deleteRole, isSystemRole, resetRole, resetAllRoles, roleKeyFromLabel,
-} from "@/lib/roles/store";
-import { roleErrors } from "@/lib/roles/validate";
-import type {
-  AccessLevel, Action, FieldMask, Resource, RoleDefinition, SensitiveFlag,
-} from "@/lib/roles/types";
-import type { HierarchyRole } from "@/lib/hierarchy/types";
-
-const TIER_OPTIONS: { value: HierarchyRole; label: string; hint: string }[] = [
-  { value: "org_admin",        label: "Organization",        hint: "Granted org-wide only" },
-  { value: "company_admin",    label: "Company / Branch",    hint: "Granted to a company (or org-wide)" },
-  { value: "location_manager", label: "Location",            hint: "Granted to a location, company, or org-wide" },
-  { value: "employee",         label: "Individual / Member", hint: "Granted at any scope" },
-];
-
-const LEVEL_STYLE: Record<AccessLevel, { label: string; bg: string; color: string }> = {
-  none: { label: "—",    bg: "var(--bg-input)", color: "var(--text-muted)" },
-  own:  { label: "Own",  bg: "#fef3c7",         color: "#92400e" },
-  all:  { label: "All",  bg: "#d1fae5",         color: "#065f46" },
-};
-const NEXT_LEVEL: Record<AccessLevel, AccessLevel> = { none: "own", own: "all", all: "none" };
-
-function blankRole(): RoleDefinition {
-  return {
-    key: "", label: "", description: "", system: false, scopeTier: "employee",
-    allAccess: false, capabilities: {}, masks: [], flags: [],
-  };
-}
+  roleApps, roleDataScope, sensitiveCount, adminCount, hasAdminAccess, APP_META, APP_ORDER, SCOPE_LABEL, DATA_SCOPES,
+} from "@/lib/roles/appmap";
+import { getUsers } from "@/lib/users/data";
+import { AppBadges, ScopeBadge, TypeBadge } from "@/components/settings/rolesUi";
+import RoleBuilder from "@/components/settings/RoleBuilder";
+import RoleDrawer from "@/components/settings/RoleDrawer";
+import type { RoleDefinition, DataScope } from "@/lib/roles/types";
+import type { PlatformAppId } from "@/lib/platform/apps";
 
 export default function RolesSection() {
   const { hasFlag } = usePermissions();
   const canManage = hasFlag("roles_manage");
 
   const [version, setVersion] = useState(0);
+  const refresh = () => setVersion((v) => v + 1);
   const roles = useMemo(() => getOrgRoles(), [version]);
-  const refresh = () => setVersion(v => v + 1);
+  const usersByRole = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const u of getUsers()) for (const a of u.assignments) m.set(a.role, (m.get(a.role) ?? 0) + 1);
+    return m;
+  }, [version]);
+  const activeUsers = useMemo(() => getUsers().filter((u) => u.status !== "inactive").length, [version]);
 
-  const [editingKey, setEditingKey] = useState<string | "new" | null>(null);
+  const [builder, setBuilder] = useState<{ initial?: RoleDefinition; isNew: boolean } | null>(null);
+  const [drawerKey, setDrawerKey] = useState<string | null>(null);
 
-  if (editingKey) {
-    const role = editingKey === "new" ? blankRole() : getOrgRole(editingKey) ?? blankRole();
+  // Roles = the working table (default); Overview = the KPI cards.
+  const [view, setView] = useState<ModuleView>("list");
+
+  // Filters (condensed into one popover, CRM-style)
+  const [search, setSearch] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [fType, setFType] = useState("all");
+  const [fApp, setFApp] = useState("all");
+  const [fScope, setFScope] = useState("all");
+  const [fAdmin, setFAdmin] = useState(false);
+  const [fSensitive, setFSensitive] = useState(false);
+  const [fNoUsers, setFNoUsers] = useState(false);
+  const activeFilters = [fType !== "all", fApp !== "all", fScope !== "all", fAdmin, fSensitive, fNoUsers].filter(Boolean).length;
+  function clearFilters() { setFType("all"); setFApp("all"); setFScope("all"); setFAdmin(false); setFSensitive(false); setFNoUsers(false); }
+
+  if (builder) {
     return (
-      <RoleEditor
-        initial={role}
-        isNew={editingKey === "new"}
-        onCancel={() => setEditingKey(null)}
-        onSaved={() => { setEditingKey(null); refresh(); }}
+      <RoleBuilder
+        initial={builder.initial} isNew={builder.isNew}
+        onCancel={() => setBuilder(null)}
+        onSaved={() => { setBuilder(null); refresh(); }}
       />
     );
   }
 
-  return (
-    <div className="space-y-5">
-      <div className="flex items-start justify-between">
-        <div>
-          <h2 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>Roles &amp; Permissions</h2>
-          <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>
-            Control what each role can access. Edit the defaults or create your own; assign them to people under Users &amp; Roles.
-          </p>
-        </div>
-        {canManage && (
-          <div className="flex items-center gap-2">
-            <button onClick={() => { if (confirm("Reset all roles to the shipped defaults? Custom roles will be removed.")) { resetAllRoles(); refresh(); } }}
-              className="flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg transition-colors"
-              style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
-              <RotateCcw className="w-3.5 h-3.5" /> Reset to defaults
-            </button>
-            <button onClick={() => setEditingKey("new")}
-              className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors">
-              <Plus className="w-4 h-4" /> Create Role
-            </button>
-          </div>
-        )}
-      </div>
+  const customCount = roles.filter((r) => !r.system).length;
+  const sensitiveRoles = roles.filter((r) => sensitiveCount(r) > 0 || adminCount(r) > 0).length;
 
-      <div className="grid grid-cols-2 gap-3">
-        {roles.map(role => {
-          const tier = TIER_OPTIONS.find(t => t.value === role.scopeTier);
-          const summary = role.allAccess
-            ? "Full access to all modules"
-            : `${Object.keys(role.capabilities).length} modules · ${role.flags.length} sensitive permissions`;
-          const isOwner = role.key === "org_owner";
-          return (
-            <div key={role.key} className="rounded-xl p-4 flex flex-col" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-start gap-2.5 min-w-0">
-                  <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "#e0e7ff" }}>
-                    {isOwner ? <ShieldCheck className="w-4.5 h-4.5" style={{ color: "#4f46e5" }} /> : <Shield className="w-4 h-4" style={{ color: "#4f46e5" }} />}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{role.label}</p>
-                      <StatusBadge size="sm" label={role.system ? "Default" : "Custom"} color={role.system ? "#9ca3af" : "#6366f1"} />
-                    </div>
-                    <p className="text-xs mt-0.5 leading-snug" style={{ color: "var(--text-muted)" }}>{role.description}</p>
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5 mt-3 text-[10px]" style={{ color: "var(--text-muted)" }}>
-                <span className="font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: "var(--bg-input)" }}>{tier?.label ?? role.scopeTier}</span>
-                <span>· {summary}</span>
-              </div>
-              {canManage && (
-                <div className="flex items-center gap-2 mt-3 pt-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>
-                  {isOwner ? (
-                    <span className="flex items-center gap-1.5 text-xs" style={{ color: "var(--text-muted)" }}>
-                      <Lock className="w-3 h-3" /> The owner role can&apos;t be changed.
-                    </span>
-                  ) : (
-                    <>
-                      <button onClick={() => setEditingKey(role.key)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs"
-                        style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
-                        <Pencil className="w-3 h-3" /> Edit
-                      </button>
-                      {role.system ? (
-                        <button onClick={() => { resetRole(role.key); refresh(); }}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs"
-                          style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
-                          <RotateCcw className="w-3 h-3" /> Reset
-                        </button>
-                      ) : (
-                        <button onClick={() => { if (confirm(`Delete the "${role.label}" role?`)) { deleteRole(role.key); refresh(); } }}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs"
-                          style={{ border: "1px solid #fecaca", color: "#dc2626" }}>
-                          <Trash2 className="w-3 h-3" /> Delete
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+  const filtered = roles.filter((r) => {
+    if (search && !(`${r.label} ${r.description}`.toLowerCase().includes(search.toLowerCase()))) return false;
+    if (fType === "system" && !r.system) return false;
+    if (fType === "custom" && r.system) return false;
+    if (fApp !== "all" && !roleApps(r).includes(fApp as PlatformAppId)) return false;
+    if (fScope !== "all" && roleDataScope(r) !== fScope) return false;
+    if (fAdmin && !hasAdminAccess(r)) return false;
+    if (fSensitive && sensitiveCount(r) === 0) return false;
+    if (fNoUsers && (usersByRole.get(r.key) ?? 0) > 0) return false;
+    return true;
+  });
 
-// ─── Role editor (the "separate page") ────────────────────
-function RoleEditor({ initial, isNew, onCancel, onSaved }: {
-  initial: RoleDefinition; isNew: boolean; onCancel: () => void; onSaved: () => void;
-}) {
-  const [draft, setDraft] = useState<RoleDefinition>(() => JSON.parse(JSON.stringify(initial)));
-  const [initialKey] = useState(() => JSON.stringify(initial));
-  const [errors, setErrors] = useState<string[]>([]);
-  const others = useMemo(() => getOrgRoles().filter(r => r.key !== initial.key), [initial.key]);
-  const dirty = JSON.stringify(draft) !== initialKey;
-
-  function cellLevel(res: Resource, act: Action): AccessLevel {
-    return draft.capabilities[res]?.[act] ?? "none";
-  }
-  function cycleCell(res: Resource, act: Action) {
-    setDraft(d => {
-      const caps = { ...d.capabilities };
-      const row = { ...(caps[res] ?? {}) };
-      const next = NEXT_LEVEL[row[act] ?? "none"];
-      if (next === "none") delete row[act];
-      else row[act] = next;
-      // Coherence: any non-view grant implies View at least at that level.
-      if (act !== "view" && next !== "none") {
-        const viewRank = { none: 0, own: 1, all: 2 }[row.view ?? "none"];
-        const nextRank = { none: 0, own: 1, all: 2 }[next];
-        if (viewRank < nextRank) row.view = next;
-      }
-      if (Object.keys(row).length === 0) delete caps[res];
-      else caps[res] = row;
-      return { ...d, capabilities: caps };
-    });
-  }
-  function toggleMask(m: FieldMask) {
-    setDraft(d => ({ ...d, masks: d.masks.includes(m) ? d.masks.filter(x => x !== m) : [...d.masks, m] }));
-  }
-  function toggleFlag(f: SensitiveFlag) {
-    setDraft(d => ({ ...d, flags: d.flags.includes(f) ? d.flags.filter(x => x !== f) : [...d.flags, f] }));
-  }
-
-  function save() {
-    const key = draft.key || roleKeyFromLabel(draft.label);
-    const toSave: RoleDefinition = { ...draft, key };
-    const errs = roleErrors(toSave, others);
-    if (errs.length) { setErrors(errs); return; }
-    upsertRole(toSave);
-    onSaved();
-  }
-
-  const tierHint = TIER_OPTIONS.find(t => t.value === draft.scopeTier)?.hint;
+  const drawerRole = drawerKey ? getOrgRole(drawerKey) : undefined;
 
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <button onClick={onCancel} className="flex items-center gap-1.5 text-sm transition-colors hover:opacity-80" style={{ color: "var(--text-secondary)" }}>
-          <ArrowLeft className="w-4 h-4" /> Roles
-        </button>
-        <div className="flex items-center gap-2">
-          <button onClick={onCancel} className="text-sm font-medium px-3 py-2 rounded-lg" style={{ color: "var(--text-secondary)" }}>Cancel</button>
-          <button onClick={save} disabled={!dirty}
-            className="text-sm font-medium px-4 py-2 rounded-lg text-white transition-colors disabled:opacity-40" style={{ backgroundColor: "#4f46e5" }}>
-            {isNew ? "Create Role" : "Save Role"}
-          </button>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <h2 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>Roles &amp; Permissions</h2>
+          <p className="text-sm mt-0.5 truncate" style={{ color: "var(--text-secondary)" }}>Control what each role can access across the platform.</p>
+        </div>
+        <ModuleViewToggle view={view} onChange={setView} listLabel="Roles" />
+        <div className="flex-1 flex justify-end">
+          {canManage && (
+            <div className="flex items-center gap-2 shrink-0">
+              <button onClick={() => { if (confirm("Reset all roles to the shipped defaults? Custom roles will be removed.")) { resetAllRoles(); refresh(); } }}
+                className="flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg transition-colors" style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
+                <RotateCcw className="w-3.5 h-3.5" /> Reset Defaults
+              </button>
+              <button onClick={() => setBuilder({ isNew: true })}
+                className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors">
+                <Plus className="w-4 h-4" /> Create Role
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      <div>
-        <h2 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
-          {isNew ? "New Role" : `Edit "${initial.label}"`}
-        </h2>
-        {draft.system && !isNew && (
-          <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>Default role — your edits override the shipped defaults; use Reset to restore.</p>
-        )}
-      </div>
-
-      {errors.length > 0 && (
-        <div className="px-3 py-2.5 rounded-lg space-y-1" style={{ backgroundColor: "#fee2e2", border: "1px solid #fecaca" }}>
-          {errors.map((e, i) => <p key={i} className="text-xs" style={{ color: "#991b1b" }}>• {e}</p>)}
+      {/* Overview — KPI cards (kept off the main Roles view) */}
+      {view === "overview" && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatCard label="Total Roles" value={String(roles.length)} hint="System + custom" icon={Shield} accent="#6366f1" />
+          <StatCard label="Custom Roles" value={String(customCount)} hint="Created by your org" icon={ShieldCheck} accent="#0ea5e9" />
+          <StatCard label="Users Assigned" value={String(activeUsers)} hint="Active accounts" icon={Users} accent="#22c55e" />
+          <StatCard label="Sensitive Access" value={String(sensitiveRoles)} hint="Roles with sensitive/admin perms" icon={AlertTriangle} accent="#f59e0b" />
         </div>
       )}
 
-      {/* Identity */}
-      <div className="rounded-xl p-4 grid grid-cols-2 gap-4" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
-        <Field label="Role name">
-          <input value={draft.label} onChange={e => setDraft(d => ({ ...d, label: e.target.value }))} placeholder="e.g. Service Manager"
-            className="w-full rounded-lg px-3 py-2 text-sm outline-none" style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface-2)", color: "var(--text-primary)" }} />
-        </Field>
-        <Field label="Scope tier" hint={tierHint}>
-          <UiSelect value={draft.scopeTier} onChange={v => setDraft(d => ({ ...d, scopeTier: v as HierarchyRole }))}
-            options={TIER_OPTIONS.map(t => ({ value: t.value, label: t.label }))} />
-        </Field>
-        <div className="col-span-2">
-          <Field label="Description">
-            <input value={draft.description} onChange={e => setDraft(d => ({ ...d, description: e.target.value }))} placeholder="What this role is for"
-              className="w-full rounded-lg px-3 py-2 text-sm outline-none" style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface-2)", color: "var(--text-primary)" }} />
-          </Field>
+      {view === "list" && (
+      <>
+        {/* Toolbar — search + one condensed Filter, right-aligned (CRM style) */}
+        <div className="flex items-center justify-end flex-wrap gap-2">
+          <div className="flex items-center gap-2 rounded-lg px-3 py-1.5" style={{ backgroundColor: "var(--bg-input)" }}>
+            <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted)" }} />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search roles..."
+              className="bg-transparent text-sm outline-none w-44" style={{ color: "var(--text-primary)" }} />
+          </div>
+          <div className="relative">
+            <button onClick={() => setFiltersOpen((o) => !o)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors"
+              style={{ border: `1px solid ${activeFilters ? "var(--accent-soft-border)" : "var(--border)"}`, backgroundColor: activeFilters ? "var(--accent-soft-bg)" : "var(--bg-surface)", color: activeFilters ? "var(--accent-text)" : "var(--text-secondary)" }}>
+              <SlidersHorizontal className="w-3.5 h-3.5" /> Filter
+              {activeFilters > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "var(--accent-soft-2-bg)", color: "var(--accent-text)" }}>{activeFilters}</span>}
+            </button>
+            {filtersOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setFiltersOpen(false)} />
+                <div className="absolute right-0 top-full mt-2 z-50 rounded-xl p-4 w-72" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "0 12px 32px rgba(0,0,0,0.18)" }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Filters</p>
+                    {activeFilters > 0 && <button onClick={clearFilters} className="text-xs" style={{ color: "var(--accent-text)" }}>Clear all</button>}
+                  </div>
+                  <div className="space-y-2.5">
+                    <FilterField label="Role type"><UiSelect size="sm" value={fType} onChange={setFType} options={[{ value: "all", label: "All types" }, { value: "system", label: "System Default" }, { value: "custom", label: "Custom" }]} /></FilterField>
+                    <FilterField label="App access"><UiSelect size="sm" value={fApp} onChange={setFApp} options={[{ value: "all", label: "Any app" }, ...APP_ORDER.filter((a) => a !== "portal").map((a) => ({ value: a, label: APP_META[a].name }))]} /></FilterField>
+                    <FilterField label="Default scope"><UiSelect size="sm" value={fScope} onChange={setFScope} options={[{ value: "all", label: "Any scope" }, ...DATA_SCOPES.map((s) => ({ value: s.value, label: s.label }))]} /></FilterField>
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      <FilterChip on={fAdmin} onClick={() => setFAdmin((v) => !v)} label="Has Admin" />
+                      <FilterChip on={fSensitive} onClick={() => setFSensitive((v) => !v)} label="Has Sensitive" />
+                      <FilterChip on={fNoUsers} onClick={() => setFNoUsers((v) => !v)} label="No Users" />
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </div>
-        <div className="col-span-2">
-          <label className="flex items-center gap-2.5 cursor-pointer select-none rounded-lg p-3" style={{ backgroundColor: "var(--bg-surface-2)" }}>
-            <input type="checkbox" checked={!!draft.allAccess} onChange={e => setDraft(d => ({ ...d, allAccess: e.target.checked }))} className="accent-indigo-600" />
-            <span>
-              <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Full access</span>
-              <span className="text-xs ml-2" style={{ color: "var(--text-muted)" }}>Grants every action on every module (except Billing) within scope. Turn off to set the matrix below.</span>
-            </span>
-          </label>
-        </div>
-      </div>
 
-      {/* Permission matrix */}
-      <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", opacity: draft.allAccess ? 0.45 : 1, pointerEvents: draft.allAccess ? "none" : "auto" }}>
-        <div className="px-4 py-2.5" style={{ borderBottom: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-surface-2)" }}>
-          <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
-            Module permissions <span className="font-normal normal-case">— click a cell to cycle None → Own → All</span>
-          </p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm" style={{ minWidth: 640 }}>
-            <thead>
-              <tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-                <th className="text-left font-semibold px-3 py-2 text-[11px] uppercase tracking-wide sticky left-0" style={{ color: "var(--text-muted)", backgroundColor: "var(--bg-surface)" }}>Module</th>
-                {ACTION_ORDER.map(a => (
-                  <th key={a} className="px-2 py-2 text-[10px] font-semibold text-center" style={{ color: "var(--text-muted)" }}>{ACTION_LABELS[a]}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {RESOURCE_ORDER.map(res => (
-                <tr key={res} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-                  <td className="px-3 py-1.5 text-xs font-medium sticky left-0" style={{ color: "var(--text-primary)", backgroundColor: "var(--bg-surface)" }}>{RESOURCE_LABELS[res]}</td>
-                  {ACTION_ORDER.map(act => {
-                    const lvl = cellLevel(res, act);
-                    const s = LEVEL_STYLE[lvl];
-                    return (
-                      <td key={act} className="px-1 py-1 text-center">
-                        <button onClick={() => cycleCell(res, act)}
-                          className="w-12 py-1 rounded-md text-[10px] font-semibold transition-colors"
-                          style={{ backgroundColor: s.bg, color: s.color }}>
-                          {s.label}
-                        </button>
-                      </td>
-                    );
-                  })}
-                </tr>
+        {/* Role table */}
+        <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+          <div className="overflow-x-auto thin-scroll-x">
+            <div style={{ minWidth: 880 }}>
+              <div className="grid px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider" style={{ gridTemplateColumns: COLS, color: "var(--text-muted)", borderBottom: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-surface-2)" }}>
+                <span>Role</span><span>Type</span><span>Default Scope</span><span>Apps</span>
+                <span className="text-center">Users</span><span className="text-center">Sensitive</span><span>Status</span><span className="text-right">Actions</span>
+              </div>
+              {filtered.length === 0 ? (
+                <div className="py-14 text-center"><p className="text-sm" style={{ color: "var(--text-muted)" }}>No roles match the current filters.</p></div>
+              ) : filtered.map((role, i) => (
+                <RoleRow key={role.key} role={role} users={usersByRole.get(role.key) ?? 0} canManage={canManage} last={i === filtered.length - 1}
+                  onOpen={() => setDrawerKey(role.key)}
+                  onEdit={() => setBuilder({ initial: role, isNew: false })}
+                  onDuplicate={() => { const c: RoleDefinition = JSON.parse(JSON.stringify(role)); c.key = ""; c.label = `${role.label} (Copy)`; c.system = false; c.locked = false; setBuilder({ initial: c, isNew: true }); }}
+                  onReset={() => { resetRole(role.key); refresh(); }}
+                  onArchive={() => { if (confirm(`Archive the "${role.label}" role? It will be removed.`)) { deleteRole(role.key); refresh(); } }}
+                  onUsers={() => setDrawerKey(role.key)}
+                />
               ))}
-            </tbody>
-          </table>
+            </div>
+          </div>
         </div>
-      </div>
+      </>
+      )}
 
-      {/* Sensitive data masks */}
-      <ToggleCard title="Sensitive data" subtitle="Reveal otherwise-hidden financial and internal fields.">
-        {(Object.keys(MASK_LABELS) as FieldMask[]).map(m => (
-          <ToggleRow key={m} checked={draft.masks.includes(m)} onChange={() => toggleMask(m)}
-            label={MASK_LABELS[m].label} desc={MASK_LABELS[m].description} />
-        ))}
-      </ToggleCard>
-
-      {/* Sensitive action flags */}
-      <ToggleCard title="Administrative permissions" subtitle="High-trust actions, granted on top of module permissions.">
-        {(Object.keys(FLAG_LABELS) as SensitiveFlag[]).map(f => (
-          <ToggleRow key={f} checked={draft.flags.includes(f)} onChange={() => toggleFlag(f)}
-            label={FLAG_LABELS[f].label} desc={FLAG_LABELS[f].description} />
-        ))}
-      </ToggleCard>
+      {drawerRole && (
+        <RoleDrawer role={drawerRole} canManage={canManage}
+          onClose={() => setDrawerKey(null)}
+          onSaved={() => { refresh(); }}
+          onEditFull={() => { setDrawerKey(null); setBuilder({ initial: drawerRole, isNew: false }); }}
+        />
+      )}
     </div>
   );
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+const COLS = "1.8fr 1fr 1fr 1.6fr 0.6fr 0.7fr 0.8fr 0.7fr";
+
+function FilterField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>
-        {label}{hint && <span className="font-normal ml-1.5" style={{ color: "var(--text-muted)" }}>· {hint}</span>}
-      </label>
+      <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>{label}</label>
       {children}
     </div>
   );
 }
 
-function ToggleCard({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+function FilterChip({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
   return (
-    <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
-      <div className="px-4 py-2.5" style={{ borderBottom: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-surface-2)" }}>
-        <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{title}</p>
-        <p className="text-xs" style={{ color: "var(--text-muted)" }}>{subtitle}</p>
+    <button onClick={onClick} className="text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors"
+      style={{ border: `1px solid ${on ? "var(--accent-soft-border)" : "var(--border)"}`, backgroundColor: on ? "var(--accent-soft-bg)" : "var(--bg-surface)", color: on ? "var(--accent-text)" : "var(--text-secondary)" }}>
+      {label}
+    </button>
+  );
+}
+
+function RoleRow({ role, users, canManage, last, onOpen, onEdit, onDuplicate, onReset, onArchive, onUsers }: {
+  role: RoleDefinition; users: number; canManage: boolean; last: boolean;
+  onOpen: () => void; onEdit: () => void; onDuplicate: () => void; onReset: () => void; onArchive: () => void; onUsers: () => void;
+}) {
+  const [menu, setMenu] = useState(false);
+  const sens = sensitiveCount(role);
+  const adm = adminCount(role);
+  const status = role.status ?? "active";
+
+  return (
+    <div onClick={onOpen} className="grid px-4 py-3 items-center cursor-pointer transition-colors hover:bg-[var(--bg-surface-2)]"
+      style={{ gridTemplateColumns: COLS, borderBottom: last ? "none" : "1px solid var(--border-subtle)" }}>
+      {/* Role */}
+      <div className="min-w-0 pr-2">
+        <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{role.label}</p>
+        <p className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>{role.description}</p>
       </div>
-      <div>{children}</div>
+      {/* Type */}
+      <div><TypeBadge role={role} /></div>
+      {/* Scope */}
+      <div><ScopeBadge scope={roleDataScope(role)} /></div>
+      {/* Apps */}
+      <div className="pr-2"><AppBadges role={role} max={4} /></div>
+      {/* Users */}
+      <div className="text-center text-sm" style={{ color: users > 0 ? "var(--text-primary)" : "var(--text-muted)" }}>{users}</div>
+      {/* Sensitive */}
+      <div className="text-center">
+        <span className="text-sm" style={{ color: sens > 0 ? "var(--text-primary)" : "var(--text-muted)" }}>{sens}</span>
+        {adm > 0 && <span className="ml-1 text-[10px] font-semibold px-1 py-0.5 rounded" style={{ backgroundColor: "#ede9fe", color: "#6d28d9" }}>{adm} adm</span>}
+      </div>
+      {/* Status */}
+      <div><StatusBadge size="sm" label={status === "draft" ? "Draft" : "Active"} color={status === "draft" ? "#9ca3af" : "#10b981"} /></div>
+      {/* Actions */}
+      <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+        {role.locked ? (
+          <span className="flex items-center gap-1 text-[11px]" style={{ color: "var(--text-muted)" }}><Lock className="w-3 h-3" /> Locked</span>
+        ) : canManage ? (
+          <>
+            <button onClick={onEdit} className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs" style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
+              <Pencil className="w-3 h-3" /> Edit
+            </button>
+            <div className="relative">
+              <button onClick={() => setMenu((m) => !m)} className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-[var(--bg-input)]" style={{ color: "var(--text-secondary)" }}>
+                <MoreHorizontal className="w-4 h-4" />
+              </button>
+              {menu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setMenu(false)} />
+                  <div className="absolute right-0 mt-1.5 w-44 rounded-xl overflow-hidden z-50 py-1" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "0 12px 32px rgba(0,0,0,0.2)" }}>
+                    <MenuItem icon={UserCog} label="View users" onClick={() => { setMenu(false); onUsers(); }} />
+                    <MenuItem icon={Copy} label="Duplicate" onClick={() => { setMenu(false); onDuplicate(); }} />
+                    {role.system
+                      ? <MenuItem icon={RotateCcw} label="Reset to default" onClick={() => { setMenu(false); onReset(); }} />
+                      : <MenuItem icon={Trash2} label="Archive" danger onClick={() => { setMenu(false); onArchive(); }} />}
+                  </div>
+                </>
+              )}
+            </div>
+          </>
+        ) : (
+          <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>—</span>
+        )}
+      </div>
     </div>
   );
 }
 
-function ToggleRow({ checked, onChange, label, desc }: { checked: boolean; onChange: () => void; label: string; desc: string }) {
+function MenuItem({ icon: Icon, label, onClick, danger }: { icon: typeof Copy; label: string; onClick: () => void; danger?: boolean }) {
   return (
-    <label className="flex items-start gap-3 px-4 py-2.5 cursor-pointer" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-      <button type="button" onClick={onChange}
-        className="w-4 h-4 rounded flex items-center justify-center shrink-0 mt-0.5 transition-colors"
-        style={{ backgroundColor: checked ? "#4f46e5" : "var(--bg-input)", border: `1px solid ${checked ? "#4f46e5" : "var(--border)"}` }}>
-        {checked && <Check className="w-3 h-3 text-white" />}
-      </button>
-      <span>
-        <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{label}</span>
-        <span className="block text-xs" style={{ color: "var(--text-muted)" }}>{desc}</span>
-      </span>
-    </label>
+    <button onClick={onClick} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: danger ? "#dc2626" : "var(--text-primary)" }}>
+      <Icon className="w-3.5 h-3.5" /> {label}
+    </button>
   );
 }

@@ -163,8 +163,8 @@ export function BusinessStructureSection() {
   return (
     <div className="space-y-6">
       <SectionHeader
-        title="Business Structure"
-        subtitle="Controls which hierarchy layers and modules are active for your organization."
+        title="Structure Mode & Modules"
+        subtitle="How the hierarchy selectors and optional modules behave. The actual companies, locations, and service areas are managed in Admin → Business Structure."
       />
 
       <Card>

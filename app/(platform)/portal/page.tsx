@@ -18,8 +18,8 @@ export default function PortalDashboard() {
   const firstName = actingUser.fullName.split(/\s+/)[0];
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
+    <div className="p-6 space-y-4">
+      <div>
         <h1 className="text-2xl font-semibold" style={{ color: "var(--text-primary)" }}>
           Good to see you, {firstName}.
         </h1>
@@ -29,7 +29,7 @@ export default function PortalDashboard() {
       </div>
 
       {/* Self-service stat cards — fixed-fraction grid scales with the viewport */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Hours This Week" value="32.5" hint="of 40 scheduled" icon={Clock} accent="#0ea5e9" />
         <StatCard label="Next Pay Date" value="Jun 28" hint="Direct deposit" icon={DollarSign} accent="#10b981" />
         <StatCard label="Open Training" value="2" hint="1 due this week" icon={GraduationCap} accent="#f59e0b" />
@@ -37,7 +37,7 @@ export default function PortalDashboard() {
       </div>
 
       {/* Quick panels */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <PortalPanel
           title="Today's Schedule"
           icon={CalendarDays}

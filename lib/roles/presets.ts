@@ -22,20 +22,20 @@ export const ROLE_PRESETS: Record<RoleKey, RoleDefinition> = {
   org_owner: {
     key: "org_owner", label: "Organization Owner", system: true, scopeTier: "org_admin",
     description: "The account owner. Full control of everything, including billing and ownership.",
-    allAccess: true,
+    allAccess: true, locked: true, dataScope: "all", apps: ["portal", "crm", "hr", "accounting", "documents", "admin"],
     capabilities: { billing: { ...FULL } },
-    masks: ["finance_cost_margin", "finance_totals", "finance_payroll", "comms_internal_notes", "sales_other_commissions"],
-    flags: ["hierarchy_manage", "users_manage", "roles_manage", "billing_manage", "reports_cross_scope", "records_deactivate", "automation_manage", "jobs_status_override"],
+    masks: ["finance_internal_pricing", "finance_cost_margin", "finance_totals", "finance_payroll", "comms_internal_notes", "sales_other_commissions", "documents_confidential", "accounting_reports"],
+    flags: ["hierarchy_manage", "users_manage", "roles_manage", "billing_manage", "security_manage", "reports_cross_scope", "records_deactivate", "automation_manage", "jobs_status_override"],
   },
 
   // ── Org Admin ────────────────────────────────────────────
   org_admin: {
     key: "org_admin", label: "Org Admin", system: true, scopeTier: "org_admin",
     description: "Manage every company, location, user, and setting across the organization. No billing.",
-    allAccess: true,
+    allAccess: true, dataScope: "organization", apps: ["portal", "crm", "hr", "accounting", "documents", "admin"],
     capabilities: {},
-    masks: ["finance_cost_margin", "finance_totals", "finance_payroll", "comms_internal_notes", "sales_other_commissions"],
-    flags: ["hierarchy_manage", "users_manage", "roles_manage", "reports_cross_scope", "records_deactivate", "automation_manage", "jobs_status_override"],
+    masks: ["finance_internal_pricing", "finance_cost_margin", "finance_totals", "finance_payroll", "comms_internal_notes", "sales_other_commissions", "documents_confidential", "accounting_reports"],
+    flags: ["hierarchy_manage", "users_manage", "roles_manage", "security_manage", "reports_cross_scope", "records_deactivate", "automation_manage", "jobs_status_override"],
   },
 
   // ── Branch Manager (over a company / brand and its locations) ──

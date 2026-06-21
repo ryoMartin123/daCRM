@@ -9,17 +9,17 @@ import { PageHeader, StatCard } from "@/components/platform/ui";
 
 export default function HrDashboard() {
   return (
-    <div className="p-6">
+    <div className="p-6 space-y-4">
       <PageHeader title="HR Dashboard" subtitle="Manage your people — employees, hiring, onboarding, and reviews." accent="#ec4899" />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Active Employees" value="24" hint="3 locations" icon={UsersRound} accent="#ec4899" />
         <StatCard label="Open Roles" value="3" hint="2 in interview" icon={UserPlus} accent="#0ea5e9" />
         <StatCard label="In Onboarding" value="2" hint="Starting this month" icon={ClipboardCheck} accent="#f59e0b" />
         <StatCard label="Time Off Requests" value="5" hint="2 pending approval" icon={Plane} accent="#6366f1" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Panel title="Upcoming Reviews" icon={Star} accent="#f59e0b" lines={["Tucker Hayes — 90-day · Jun 30", "Kylie Brooks — Annual · Jul 12"]} />
         <Panel title="Training Compliance" icon={GraduationCap} accent="#10b981" lines={["Safety certification — 88% complete", "Equipment handling — 4 outstanding"]} />
       </div>

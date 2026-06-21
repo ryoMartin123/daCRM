@@ -62,6 +62,9 @@ export default function ProjectsPage() {
   const [lens, setLens]       = useState<LensKey>("status");
   const [tab, setTab]         = useState("all");
   const [search, setSearch]   = useState("");
+  // Calendar focus lives here (lifted out of ProjectCalendar) so the month + nav
+  // can sit in the shared toolbar row, in line with the tabs/search across views.
+  const [calFocus, setCalFocus] = useState(() => new Date());
   const [sortField, setSort]  = useState<SortField>("status");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [refreshKey, setRefreshKey] = useState(0);
@@ -95,7 +98,14 @@ export default function ProjectsPage() {
     count: t.key === "all" ? contextFiltered.length : contextFiltered.filter(p => bucketOf(lens, p, stageMap) === t.key).length,
   }));
   const matchesTab = (p: Project) => tab === "all" || bucketOf(lens, p, stageMap) === tab;
-  const lensFiltered = contextFiltered.filter(matchesTab);
+  // Search is applied here (not just in the list) so the shared toolbar's search
+  // box filters Kanban and Calendar too — it's in line with the tabs above them.
+  const matchesSearch = (p: Project) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return p.name.toLowerCase().includes(q) || p.customerName.toLowerCase().includes(q);
+  };
+  const lensFiltered = contextFiltered.filter(p => matchesTab(p) && matchesSearch(p));
 
   function selectLens(k: LensKey) { setLens(k); setTab("all"); }
 
@@ -108,11 +118,6 @@ export default function ProjectsPage() {
   ];
 
   const displayed = lensFiltered
-    .filter(p => {
-      if (!search) return true;
-      const q = search.toLowerCase();
-      return p.name.toLowerCase().includes(q) || p.customerName.toLowerCase().includes(q);
-    })
     .sort((a, b) => {
       const av = a[sortField] ?? "", bv = b[sortField] ?? "";
       return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
@@ -159,49 +164,64 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      {/* Lens switcher + bucket tabs (Photos & Files style): the lens picker that
-          toggles which tab-set shows on the LEFT, a divider, then the active
-          lens's buckets on the RIGHT. Applies across List / Kanban / Calendar. */}
+      {/* Lens switcher + bucket tabs (left) · search + filter (right). The whole
+          row sits ABOVE the views, so search & filter stay in line with the tabs
+          and apply across List / Kanban / Calendar — never buried in the table. */}
       {view !== "overview" && (
-        <div className="flex flex-wrap items-center gap-0.5 mb-4">
-          {PROJECT_LENSES.map(l => (
-            <button key={l.key} onClick={() => selectLens(l.key)}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-              style={pillStyle(lens === l.key)}>
-              {l.label}
-            </button>
-          ))}
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+          <div className="flex flex-wrap items-center gap-0.5">
+            {PROJECT_LENSES.map(l => (
+              <button key={l.key} onClick={() => selectLens(l.key)}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                style={pillStyle(lens === l.key)}>
+                {l.label}
+              </button>
+            ))}
 
-          <span className="w-px h-5 mx-1.5 shrink-0" style={{ backgroundColor: "var(--border)" }} />
+            <span className="w-px h-5 mx-1.5 shrink-0" style={{ backgroundColor: "var(--border)" }} />
 
-          {lensTabs.map(t => (
-            <button key={t.key} onClick={() => setTab(t.key)}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-              style={pillStyle(tab === t.key)}>
-              {t.label}<span className="ml-1.5 opacity-60">{t.count}</span>
+            {lensTabs.map(t => (
+              <button key={t.key} onClick={() => setTab(t.key)}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                style={pillStyle(tab === t.key)}>
+                {t.label}<span className="ml-1.5 opacity-60">{t.count}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Calendar month nav — only in calendar view, sits in line with the
+              tabs/search so the row doesn't jump when switching views. */}
+          {view === "calendar" && (
+            <div className="flex items-center gap-0.5">
+              <button onClick={() => setCalFocus(f => new Date(f.getFullYear(), f.getMonth() - 1, 1))} title="Previous"
+                className="p-1 rounded-md transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-muted)" }}><ChevronLeft className="w-4 h-4" /></button>
+              <span className="text-sm font-semibold text-center" style={{ color: "var(--text-primary)", minWidth: 128 }}>
+                {calFocus.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+              </span>
+              <button onClick={() => setCalFocus(f => new Date(f.getFullYear(), f.getMonth() + 1, 1))} title="Next"
+                className="p-1 rounded-md transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-muted)" }}><ChevronRight className="w-4 h-4" /></button>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 rounded-lg px-3 py-1.5" style={{ backgroundColor: "var(--bg-input)" }}>
+              <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted)" }} />
+              <input type="text" placeholder="Search projects..." value={search} onChange={e => setSearch(e.target.value)}
+                className="bg-transparent text-sm outline-none w-44" style={{ color: "var(--text-primary)" }} />
+            </div>
+            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm"
+              style={{ border: "1px solid var(--border)", color: "var(--text-secondary)", backgroundColor: "var(--bg-surface)" }}>
+              <SlidersHorizontal className="w-3.5 h-3.5" /> Filter
             </button>
-          ))}
+          </div>
         </div>
       )}
 
       {view === "kanban"   && <ProjectKanban stages={activeStages} projects={lensFiltered} onMove={moveStage} />}
-      {view === "calendar" && <ProjectCalendar stages={stages} projects={lensFiltered} />}
+      {view === "calendar" && <ProjectCalendar stages={stages} projects={lensFiltered} focus={calFocus} />}
 
       {view === "list" && (
       <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
-        {/* Search (the lens + tabs live above, shared across views) */}
-        <div className="flex items-center justify-end flex-wrap gap-2 px-4 py-3" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-          <div className="flex items-center gap-2 rounded-lg px-3 py-1.5" style={{ backgroundColor: "var(--bg-input)" }}>
-            <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted)" }} />
-            <input type="text" placeholder="Search projects..." value={search} onChange={e => setSearch(e.target.value)}
-              className="bg-transparent text-sm outline-none w-44" style={{ color: "var(--text-primary)" }} />
-          </div>
-          <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm"
-            style={{ border: "1px solid var(--border)", color: "var(--text-secondary)", backgroundColor: "var(--bg-surface)" }}>
-            <SlidersHorizontal className="w-3.5 h-3.5" /> Filter
-          </button>
-        </div>
-
         {/* Column headers */}
         <div className="grid px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider select-none"
           style={{ gridTemplateColumns: "2.5fr 1fr 1fr 1fr 1fr 1fr 1.5fr", color: "var(--text-muted)", borderBottom: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-surface-2)" }}>
@@ -388,8 +408,7 @@ function ProjectCard({ project }: { project: Project }) {
 
 // ─── Calendar view ────────────────────────────────────────
 // Same month-grid style as the Leads calendar; projects placed on target date.
-function ProjectCalendar({ stages, projects }: { stages: ProjectStage[]; projects: Project[] }) {
-  const [focus, setFocus] = useState(() => new Date());
+function ProjectCalendar({ stages, projects, focus }: { stages: ProjectStage[]; projects: Project[]; focus: Date }) {
   const stageColor = (key?: string) => stages.find(s => s.key === key)?.color ?? "#6366f1";
 
   const monthStart = new Date(focus.getFullYear(), focus.getMonth(), 1);
@@ -408,21 +427,10 @@ function ProjectCalendar({ stages, projects }: { stages: ProjectStage[]; project
     const arr = byKey.get(key) ?? []; arr.push(p); byKey.set(key, arr);
   });
 
-  function shiftMonth(delta: number) { setFocus(f => new Date(f.getFullYear(), f.getMonth() + delta, 1)); }
   const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-          {focus.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
-        </p>
-        <div className="flex items-center gap-1">
-          <button onClick={() => setFocus(new Date())} className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-secondary)", border: "1px solid var(--border-subtle)" }}>Today</button>
-          <button onClick={() => shiftMonth(-1)} className="p-1.5 rounded-lg transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-secondary)", border: "1px solid var(--border-subtle)" }}><ChevronLeft className="w-4 h-4" /></button>
-          <button onClick={() => shiftMonth(1)} className="p-1.5 rounded-lg transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-secondary)", border: "1px solid var(--border-subtle)" }}><ChevronRight className="w-4 h-4" /></button>
-        </div>
-      </div>
 
       <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--border-subtle)" }}>
         <div className="grid grid-cols-7">
@@ -438,8 +446,11 @@ function ProjectCalendar({ stages, projects }: { stages: ProjectStage[]; project
             return (
               <div key={i} className="min-h-[104px] p-1.5 flex flex-col"
                 style={{ backgroundColor: inMonth ? "var(--bg-surface)" : "var(--bg-page)", borderRight: (i % 7 !== 6) ? "1px solid var(--border-subtle)" : undefined, borderBottom: i < 35 ? "1px solid var(--border-subtle)" : undefined }}>
-                <span className="text-[11px] font-medium mb-1 inline-flex items-center justify-center w-5 h-5 rounded-full self-start"
-                  style={isToday ? { backgroundColor: "var(--accent-soft-bg)", color: "var(--accent-text-strong)" } : { color: inMonth ? "var(--text-secondary)" : "var(--text-muted)" }}>{day.getDate()}</span>
+                <span className="text-[11px] mb-1 inline-flex items-center justify-center w-5 h-5 rounded-full self-start"
+                  style={isToday
+                    ? { backgroundColor: "#4f46e5", color: "#fff", fontWeight: 700 }
+                    : { color: inMonth ? "var(--text-secondary)" : "var(--text-muted)", fontWeight: 500 }}
+                  title={isToday ? "Today" : undefined}>{day.getDate()}</span>
                 <div className="flex flex-col gap-1 overflow-hidden">
                   {items.slice(0, 3).map(p => (
                     <Link key={p.id} href={`/projects/${p.id}`}

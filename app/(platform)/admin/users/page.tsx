@@ -4,7 +4,7 @@ import UsersSection from "@/components/settings/UsersSection";
 // (Employee/person records live in the HR app; this is access, not HR data.)
 export default function AdminUsersPage() {
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-6">
       <UsersSection />
     </div>
   );

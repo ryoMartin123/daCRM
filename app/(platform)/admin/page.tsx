@@ -24,10 +24,10 @@ export default function AdminDashboard() {
   const activeLocations = allLocations.filter((l) => l.status === "active").length;
 
   return (
-    <div className="p-6">
+    <div className="p-6 space-y-4">
       <PageHeader title="Admin" subtitle="Platform control center — users, access, structure, security, and billing." accent="#a855f7" />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Total Users" value={String(users.length)} hint={`${activeUsers} active`} icon={Users} accent="#a855f7" />
         <StatCard label="Active Users" value={String(activeUsers)} hint="Signed-in accounts" icon={UserCheck} accent="#10b981" />
         <StatCard label="Pending Invites" value={String(invited)} hint="Awaiting acceptance" icon={MailPlus} accent="#f59e0b" />

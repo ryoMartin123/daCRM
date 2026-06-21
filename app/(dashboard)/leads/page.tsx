@@ -224,6 +224,9 @@ export default function LeadsPage() {
   const { effectiveCompanyId, effectiveLocationId, effectiveServiceAreaId } = useHierarchy();
 
   const [view, setView]       = useState<"overview" | "pipeline" | "table" | "calendar">("table");
+  // Calendar focus lives here (lifted out of LeadsCalendar) so the month + nav
+  // can sit in the shared toolbar row, in line with the tabs/search across views.
+  const [calFocus, setCalFocus] = useState(() => new Date());
   const [stageEdits, setStageEdits] = useState<Record<string, string>>({});
   const [wizardOpen, setWizardOpen] = useState(false);
   // Bumped after a lead is created so the list re-reads the store.
@@ -474,6 +477,20 @@ export default function LeadsPage() {
             })}
           </div>
 
+          {/* Calendar month nav — only in calendar view, in line with the
+              tabs/search so the row doesn't jump when switching views. */}
+          {view === "calendar" && (
+            <div className="flex items-center gap-0.5">
+              <button onClick={() => setCalFocus(f => new Date(f.getFullYear(), f.getMonth() - 1, 1))} title="Previous"
+                className="p-1 rounded-md transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-muted)" }}><ChevronLeft className="w-4 h-4" /></button>
+              <span className="text-sm font-semibold text-center" style={{ color: "var(--text-primary)", minWidth: 128 }}>
+                {calFocus.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+              </span>
+              <button onClick={() => setCalFocus(f => new Date(f.getFullYear(), f.getMonth() + 1, 1))} title="Next"
+                className="p-1 rounded-md transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-muted)" }}><ChevronRight className="w-4 h-4" /></button>
+            </div>
+          )}
+
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-2 rounded-lg px-3 py-1.5" style={{ backgroundColor: "var(--bg-input)" }}>
               <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted)" }} />
@@ -537,7 +554,7 @@ export default function LeadsPage() {
       {view === "overview" ? (
         <OverviewView contextLeads={contextFiltered} resolve={resolve} openStages={openStages} summaryCards={summaryCards} />
       ) : view === "calendar" ? (
-        <LeadsCalendar leads={filtered.filter(tabFn)} resolve={resolve} />
+        <LeadsCalendar leads={filtered.filter(tabFn)} resolve={resolve} focus={calFocus} />
       ) : view === "pipeline" ? (
         <PipelineView leads={filtered} openStages={openStages.filter(s => !hiddenStages.has(s.key))} resolve={resolve} tab={tab} onMoveStage={moveStage} />
       ) : (
@@ -753,9 +770,7 @@ function OverviewView({ contextLeads, resolve, openStages, summaryCards }: {
 }
 
 // ─── Calendar view: leads placed on their created date ───────
-function LeadsCalendar({ leads, resolve }: { leads: Lead[]; resolve: (key: string) => StageDisplay }) {
-  const [focus, setFocus] = useState(() => new Date());
-
+function LeadsCalendar({ leads, resolve, focus }: { leads: Lead[]; resolve: (key: string) => StageDisplay; focus: Date }) {
   const monthStart = new Date(focus.getFullYear(), focus.getMonth(), 1);
   const gridStart = new Date(monthStart);
   gridStart.setDate(gridStart.getDate() - gridStart.getDay());
@@ -778,30 +793,10 @@ function LeadsCalendar({ leads, resolve }: { leads: Lead[]; resolve: (key: strin
     byKey.set(key, arr);
   });
 
-  function shiftMonth(delta: number) {
-    setFocus(f => new Date(f.getFullYear(), f.getMonth() + delta, 1));
-  }
-
   const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-          {focus.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
-        </p>
-        <div className="flex items-center gap-1">
-          <button onClick={() => setFocus(new Date())}
-            className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors hover:bg-[var(--bg-surface-2)]"
-            style={{ color: "var(--text-secondary)", border: "1px solid var(--border-subtle)" }}>Today</button>
-          <button onClick={() => shiftMonth(-1)}
-            className="p-1.5 rounded-lg transition-colors hover:bg-[var(--bg-surface-2)]"
-            style={{ color: "var(--text-secondary)", border: "1px solid var(--border-subtle)" }}><ChevronLeft className="w-4 h-4" /></button>
-          <button onClick={() => shiftMonth(1)}
-            className="p-1.5 rounded-lg transition-colors hover:bg-[var(--bg-surface-2)]"
-            style={{ color: "var(--text-secondary)", border: "1px solid var(--border-subtle)" }}><ChevronRight className="w-4 h-4" /></button>
-        </div>
-      </div>
 
       <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--border-subtle)" }}>
         <div className="grid grid-cols-7">
@@ -822,10 +817,11 @@ function LeadsCalendar({ leads, resolve }: { leads: Lead[]; resolve: (key: strin
                   borderRight: (i % 7 !== 6) ? "1px solid var(--border-subtle)" : undefined,
                   borderBottom: i < 35 ? "1px solid var(--border-subtle)" : undefined,
                 }}>
-                <span className="text-[11px] font-medium mb-1 inline-flex items-center justify-center w-5 h-5 rounded-full self-start"
+                <span className="text-[11px] mb-1 inline-flex items-center justify-center w-5 h-5 rounded-full self-start"
                   style={isToday
-                    ? { backgroundColor: "var(--accent-soft-bg)", color: "var(--accent-text-strong)" }
-                    : { color: inMonth ? "var(--text-secondary)" : "var(--text-muted)" }}>{day.getDate()}</span>
+                    ? { backgroundColor: "#4f46e5", color: "#fff", fontWeight: 700 }
+                    : { color: inMonth ? "var(--text-secondary)" : "var(--text-muted)", fontWeight: 500 }}
+                  title={isToday ? "Today" : undefined}>{day.getDate()}</span>
                 <div className="flex flex-col gap-1 overflow-hidden">
                   {items.slice(0, 3).map(l => {
                     const d = resolve(l.stage);

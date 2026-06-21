@@ -11,6 +11,7 @@
 // organization_id / company_id / location_id / service_area_id.
 
 import type { HierarchyRole } from "@/lib/hierarchy/types";
+import type { PlatformAppId } from "@/lib/platform/apps";
 
 // ─── Resources (modules a capability can target) ──────────
 export type Resource =
@@ -54,11 +55,14 @@ export type AccessLevel = "none" | "own" | "all";
 // ─── Field masks (the v1 sensitive-data layer) ────────────
 // Default hidden; a role must grant the flag to reveal the field/section.
 export type FieldMask =
+  | "finance_internal_pricing"  // internal price book / list pricing
   | "finance_cost_margin"       // item cost, markup, margin
   | "finance_totals"            // quote/invoice totals, balances, payments
   | "finance_payroll"           // labor cost / pay rates
   | "comms_internal_notes"      // internal-only notes
-  | "sales_other_commissions";  // other reps' commissions
+  | "sales_other_commissions"   // other reps' commissions
+  | "documents_confidential"    // confidential / restricted documents
+  | "accounting_reports";       // accounting / financial reports
 
 // ─── Sensitive-action flags ───────────────────────────────
 export type SensitiveFlag =
@@ -66,10 +70,23 @@ export type SensitiveFlag =
   | "users_manage"             // invite/edit users & their assignments
   | "roles_manage"             // edit role definitions / custom roles
   | "billing_manage"           // change subscription / billing
+  | "security_manage"          // security & access policies
   | "reports_cross_scope"      // cross-company / cross-location reporting
   | "records_deactivate"       // deactivate business records
   | "automation_manage"        // marketing/automation rules
   | "jobs_status_override";     // force any job status, bypassing the transition graph
+
+// ─── Default data scope ───────────────────────────────────
+// How much data a role can see by default. Richer than scopeTier (which governs
+// where a role can be GRANTED); this governs the default visibility window.
+export type DataScope =
+  | "self"          // only their own record
+  | "assigned"      // records assigned to / created by them
+  | "team"          // their team's records
+  | "location"      // their location(s)
+  | "company"       // their company / brand
+  | "organization"  // the whole organization
+  | "all";          // everything (no scope limit)
 
 // ─── Role keys ────────────────────────────────────────────
 // A role key is any string: built-in defaults (see DEFAULT_ROLE_KEYS) plus
@@ -107,6 +124,15 @@ export interface RoleDefinition {
   capabilities: CapabilityMap;
   masks: FieldMask[];
   flags: SensitiveFlag[];
+  /** Default data-visibility window (UI: "Default Data Scope"). Optional so
+   *  legacy/persisted roles fall back to a value derived from scopeTier. */
+  dataScope?: DataScope;
+  /** Which platform apps this role can open. Optional so legacy roles fall back
+   *  to a value derived from capabilities/flags. Portal is always implied. */
+  apps?: PlatformAppId[];
+  /** Marks the locked, non-editable owner role. */
+  locked?: boolean;
+  status?: "active" | "draft";
 }
 
 // Resources that allAccess does NOT cover — they always require an explicit grant.

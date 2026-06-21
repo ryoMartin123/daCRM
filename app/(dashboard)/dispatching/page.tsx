@@ -904,7 +904,7 @@ function DispatchBoard({ focus, mode, items, roster, availability, dayStart, day
   }
 
   return (
-    <div className="relative" style={{ paddingTop: "20px" }}>
+    <div className="relative">
       {/* Overlap warning — jobs can't be stacked on the same tech/time. */}
       {overlapMsg && (
         <div className="fixed left-1/2 bottom-6 -translate-x-1/2 z-50 flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium shadow-lg"
@@ -917,7 +917,7 @@ function DispatchBoard({ focus, mode, items, roster, availability, dayStart, day
           its x matches the dashed line inside the grid. */}
       {now != null && (
         <div className="absolute z-30 px-1.5 py-0.5 rounded-md text-[10px] font-bold whitespace-nowrap pointer-events-none"
-          style={{ top: 0, left: `calc(180px + (100% - 180px) * ${now.min / totalMin})`, transform: "translateX(-50%)", backgroundColor: "var(--accent-soft-bg)", color: "var(--accent-text)", border: "1px solid var(--accent-soft-border)" }}>
+          style={{ top: -17, left: `calc(180px + (100% - 180px) * ${now.min / totalMin})`, transform: "translateX(-50%)", backgroundColor: "var(--accent-soft-bg)", color: "var(--accent-text)", border: "1px solid var(--accent-soft-border)" }}>
           {now.label}
         </div>
       )}

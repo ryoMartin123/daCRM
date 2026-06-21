@@ -100,7 +100,7 @@ export const APP_NAV: Partial<Record<PlatformAppId, AppNavItem[]>> = {
   admin: [
     { name: "Dashboard", href: "/admin", icon: LayoutDashboard },
     { name: "Organization", href: "/admin/organization", icon: Globe },
-    { name: "Companies & Locations", href: "/admin/companies", icon: Building2 },
+    { name: "Business Structure", href: "/admin/companies", icon: Building2 },
     { name: "Users", href: "/admin/users", icon: Users },
     { name: "Roles & Permissions", href: "/admin/roles", icon: ShieldCheck },
     { name: "App Access", href: "/admin/app-access", icon: AppWindow },
