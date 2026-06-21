@@ -22,16 +22,21 @@ import { use, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ArrowLeft, Eye, EyeOff, Send, FileText, MoreHorizontal, Cloud, CloudOff,
+  ArrowLeft, Eye, EyeOff, Send, Cloud, CloudOff,
   Plus, Trash2, Copy, Link2, RotateCcw, Archive, GripVertical, Monitor, Pencil,
-  Printer, Download, Check, SlidersHorizontal, Lock,
-  Package, Tag, ChevronLeft, ChevronRight, Image as ImageIcon,
+  Printer, Download, Check, SlidersHorizontal, Lock, MoreVertical,
+  Package, Tag, ChevronLeft, ChevronRight, Image as ImageIcon, Search, X, Blocks,
 } from "lucide-react";
 import UiSelect from "@/components/ui/Select";
 import CatalogPicker from "@/components/quotes/CatalogPicker";
 import OptionImageInput from "@/components/quotes/OptionImageInput";
 import RichTextEditor from "@/components/quotes/custom/RichTextEditor";
 import CustomProposalDocument, { type CustomDocData } from "@/components/quotes/custom/CustomProposalDocument";
+import { downloadCustomProposalPdf } from "@/lib/quotes/customProposalPdf";
+import {
+  getContentBlocks, CONTENT_BLOCK_TYPE_LABELS, CONTENT_BLOCK_TYPES,
+  type ContentBlock, type ContentBlockType,
+} from "@/lib/content-blocks/data";
 import {
   getQuote, autosaveQuote, updateQuoteStatus, computeTotals, fmt,
   duplicateQuote, archiveQuote, deleteQuote,
@@ -50,6 +55,40 @@ import { getActiveDesign, type ProposalDesignStyle } from "@/lib/proposals/desig
 // Structural blocks have no free-form body — auto-opening the editor on insert is
 // skipped for them (they can still be opened by click for delete/move).
 const isEditable = (t: BlockType) => t !== "divider" && t !== "page_break";
+
+// Content Block type → the document BlockType it becomes when inserted.
+const CB_TO_BLOCK: Record<ContentBlockType, BlockType> = {
+  recommended_solution: "recommended_solution", scope_of_work: "scope_of_work", problem_need: "problem_need",
+  warranty: "warranty", financing: "financing_note", terms: "terms", exclusions: "terms",
+  approval: "approval_signature", company_value: "rich_text", addon_explanation: "custom_section", custom: "rich_text",
+};
+
+// Convert a Content Block's plain text (•/- bullets, "## " headings) to the simple
+// HTML the rich-text blocks store.
+function plainTextToHtml(text: string): string {
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  let html = ""; let inList = false;
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (line.startsWith("• ") || line.startsWith("- ")) { if (!inList) { html += "<ul>"; inList = true; } html += `<li>${esc(line.slice(2))}</li>`; continue; }
+    if (inList) { html += "</ul>"; inList = false; }
+    if (!line) continue;
+    if (line.startsWith("## ")) { html += `<h3>${esc(line.slice(3))}</h3>`; continue; }
+    html += `<p>${esc(line)}</p>`;
+  }
+  if (inList) html += "</ul>";
+  return html || "<p></p>";
+}
+
+// A Content Block → a fresh document block (independent copy). Used by both the
+// click-to-append path and the live drag preview/drop.
+function contentBlockToBlock(cb: ContentBlock): QuoteBlock {
+  const type = CB_TO_BLOCK[cb.type] ?? "rich_text";
+  const b = defaultBlock(type);
+  b.title = cb.name || b.title;
+  b.content = RICH_BLOCK_TYPES.includes(type) ? plainTextToHtml(cb.text) : cb.text;
+  return b;
+}
 
 // ─── Draft line item (string-backed) ──────────────────────
 interface DraftItem {
@@ -96,6 +135,9 @@ export default function CustomProposalBuilder({ params }: { params: Promise<{ id
   const [moreOpen, setMoreOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [dragId, setDragId] = useState("");
+  const [cbDrawerOpen, setCbDrawerOpen] = useState(false);   // Content Block library drawer (right slide-in)
+  const [cbDrag, setCbDrag] = useState<ContentBlock | null>(null);   // content block being dragged from the drawer
+  const [cbDropIndex, setCbDropIndex] = useState<number | null>(null);   // live-preview insert position while dragging
 
   const hydratedRef = useRef(false);
   const moreRef = useRef<HTMLDivElement>(null);
@@ -167,6 +209,25 @@ export default function CustomProposalBuilder({ params }: { params: Promise<{ id
     setBlocks(prev => { const next = [...prev]; next.splice(index, 0, b); return next; });
     if (isEditable(type)) setEditingId(b.id);
   }
+  // Insert wording from a Content Block: copy its text into a new block at `index`.
+  // The copy is independent — editing here never changes the master Content Block.
+  // `openEditor` opens the focused editor afterward (used by click-to-append).
+  function insertContentBlock(cb: ContentBlock, index: number, openEditor = true) {
+    const b = contentBlockToBlock(cb);
+    setBlocks(prev => { const next = [...prev]; next.splice(Math.max(0, Math.min(index, prev.length)), 0, b); return next; });
+    if (openEditor && isEditable(b.type)) setEditingId(b.id);
+  }
+  // Live-drag preview: the ghost block shown in-flow as the rep drags (same content
+  // it'll become). Memoized per drag so the previewed + dropped block are identical.
+  const previewBlock = useMemo(() => (cbDrag ? contentBlockToBlock(cbDrag) : null), [cbDrag]);
+  function commitCbDrop() {
+    if (previewBlock && cbDropIndex !== null) {
+      const b = previewBlock; const idx = Math.max(0, Math.min(cbDropIndex, blocks.length));
+      setBlocks(prev => { const next = [...prev]; next.splice(idx, 0, b); return next; });
+    }
+    setCbDrag(null); setCbDropIndex(null);
+  }
+  function endCbDrag() { setCbDrag(null); setCbDropIndex(null); }
   // Live drag-reorder: as the cursor moves over a block, slot the dragged block
   // before/after it so the whole list reflows in real time (the hovered block
   // moves to take the dragged block's old place).
@@ -201,7 +262,6 @@ export default function CustomProposalBuilder({ params }: { params: Promise<{ id
   function persist() {
     autosaveQuote(id, { title: title.trim() || "Untitled Proposal", blocks, lineItems, options, subtotal: totals.subtotal, tax: totals.tax, total: totals.total, expiresAt: expiresAt || undefined, customerNotes: customerNotes || undefined });
   }
-  function saveDraftAndExit() { persist(); router.push(`/quotes/${id}`); }
   function sendQuote() { persist(); updateQuoteStatus(id, "sent"); router.push(`/quotes/${id}`); }
   function printProposal() {
     setMoreOpen(false);
@@ -209,6 +269,8 @@ export default function CustomProposalBuilder({ params }: { params: Promise<{ id
     const restore = () => { document.title = prev; window.removeEventListener("afterprint", restore); };
     window.addEventListener("afterprint", restore); window.print();
   }
+  // Real PDF download (no print dialog) — block-aware, matches this builder.
+  function downloadPdf() { setMoreOpen(false); if (docData) void downloadCustomProposalPdf(docData, design); }
   function handleDuplicate() { setMoreOpen(false); persist(); const c = duplicateQuote(id); if (c) router.push(`/quotes/${c.id}${c.quoteMode === "quick" ? "/quick" : c.quoteMode === "custom" ? "/custom" : ""}`); }
   function copyLink() { setMoreOpen(false); try { navigator.clipboard?.writeText(`${window.location.origin}/quotes/${id}`); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* ignore */ } }
   function resetLayout() { setMoreOpen(false); if (!window.confirm("Reset to the starter proposal structure? This replaces the current sections (line items, options and pricing are kept).")) return; const b = starterBlocks(); setBlocks(b); setEditingId(""); }
@@ -247,18 +309,21 @@ export default function CustomProposalBuilder({ params }: { params: Promise<{ id
         <span className="flex items-center gap-1.5 text-[11px] shrink-0" style={{ color: "var(--text-muted)" }}>
           {saveState === "saving" ? <><CloudOff className="w-3.5 h-3.5" /> Saving…</> : saveState === "saved" ? <><Cloud className="w-3.5 h-3.5" style={{ color: "#10b981" }} /> Saved</> : <><Cloud className="w-3.5 h-3.5" /> Autosave on</>}
         </span>
+        {preview && (
+          <span className="flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full shrink-0" style={{ backgroundColor: "var(--accent-soft-bg)", color: "var(--accent-text)" }}>
+            <Monitor className="w-3 h-3" /> Preview
+          </span>
+        )}
         <div className="flex-1" />
-        <button onClick={() => setPreview(p => !p)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors" style={{ border: "1px solid var(--border)", backgroundColor: preview ? "var(--accent-soft-bg)" : "var(--bg-surface)", color: preview ? "var(--accent-text)" : "var(--text-secondary)" }}>
-          {preview ? <Pencil className="w-3.5 h-3.5" /> : <Monitor className="w-3.5 h-3.5" />} {preview ? "Edit" : "Preview"}
-        </button>
-        <button onClick={saveDraftAndExit} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors hover:bg-[var(--bg-surface-2)]" style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}><FileText className="w-3.5 h-3.5" /> Save Draft</button>
         <button onClick={sendQuote} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-medium text-white transition-transform active:scale-[0.98]" style={{ backgroundColor: accent, boxShadow: "0 2px 8px " + accent + "55" }}><Send className="w-3.5 h-3.5" /> Send Quote</button>
         <div className="relative" ref={moreRef}>
-          <button onClick={() => setMoreOpen(o => !o)} className="p-1.5 rounded-lg transition-colors hover:bg-[var(--bg-surface-2)]" style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}><MoreHorizontal className="w-4 h-4" /></button>
+          <button onClick={() => setMoreOpen(o => !o)} className="p-1.5 rounded-lg transition-colors hover:bg-[var(--bg-surface-2)]" style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}><MoreVertical className="w-4 h-4" /></button>
           {moreOpen && (
             <div className="absolute right-0 top-full mt-1.5 z-50 w-52 rounded-xl p-1" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "0 12px 32px rgba(0,0,0,0.28)" }}>
+              <MenuItem icon={preview ? Pencil : Monitor} label={preview ? "Back to editing" : "Preview proposal"} onClick={() => { setMoreOpen(false); setPreview(p => !p); }} />
+              <div className="my-1 h-px" style={{ backgroundColor: "var(--border-subtle)" }} />
               <MenuItem icon={Copy} label="Duplicate quote" onClick={handleDuplicate} />
-              <MenuItem icon={Download} label="Download PDF" onClick={printProposal} />
+              <MenuItem icon={Download} label="Download PDF" onClick={downloadPdf} />
               <MenuItem icon={Printer} label="Print proposal" onClick={printProposal} />
               <MenuItem icon={copied ? Check : Link2} label={copied ? "Link copied" : "Copy link"} onClick={copyLink} />
               <div className="my-1 h-px" style={{ backgroundColor: "var(--border-subtle)" }} />
@@ -280,39 +345,71 @@ export default function CustomProposalBuilder({ params }: { params: Promise<{ id
             {quote.pricing && <PricingSidebar pricing={quote.pricing} accent={accent} onEdit={() => router.push(`/quotes/${id}/pricing`)} />}
 
             <div className="flex-1 min-w-0">
+              {/* Toolbar above the sheet — the Content Blocks launcher (horizontal,
+                  stays put + shows an active state while the drawer is open). */}
+              <div className="mx-auto mb-2.5 flex justify-end" style={{ maxWidth: "816px" }}>
+                <button onClick={() => setCbDrawerOpen(o => !o)} title="Content Block library"
+                  aria-pressed={cbDrawerOpen}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                  style={cbDrawerOpen
+                    ? { backgroundColor: accent, color: "#fff", border: `1px solid ${accent}`, boxShadow: "0 2px 8px " + accent + "55" }
+                    : { backgroundColor: "var(--bg-surface)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}>
+                  <Blocks className="w-3.5 h-3.5" /> Content Blocks
+                </button>
+              </div>
+
               {/* The proposal sheet — click any section to edit it in the focused editor. */}
               <div className="relative mx-auto" style={{ maxWidth: "816px", backgroundColor: "#fff", borderRadius: "10px", boxShadow: "0 10px 40px rgba(0,0,0,0.14)" }}>
                 {ds.header === "band" && <div style={{ height: "6px", backgroundColor: accent, borderTopLeftRadius: "10px", borderTopRightRadius: "10px" }} />}
-                <div style={{ padding: "40px 56px 56px", fontFamily: ds.fontFamily }}>
+                <div style={{ padding: "40px 56px 56px", fontFamily: ds.fontFamily }}
+                  onDragOver={cbDrag ? (e => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }) : undefined}
+                  onDrop={cbDrag ? (e => { e.preventDefault(); commitCbDrop(); }) : undefined}>
                   <Letterhead branding={branding} quote={quote} title={title} setTitle={setTitle} expiresAt={expiresAt} setExpiresAt={setExpiresAt} accent={accent} ds={ds} />
 
-                  <InsertGap index={0} onInsert={insertBlock} accent={accent} />
+                  {!cbDrag && <InsertGap index={0} onInsert={insertBlock} accent={accent} />}
 
-                  {blocks.length === 0 && (
+                  {blocks.length === 0 && !cbDrag && (
                     <div className="py-10 text-center">
-                      <p className="text-sm" style={{ color: "#9ca3af" }}>Empty proposal — use a <span style={{ color: accent, fontWeight: 600 }}>＋</span> above to add your first section.</p>
+                      <p className="text-sm" style={{ color: "#9ca3af" }}>Empty proposal — use a <span style={{ color: accent, fontWeight: 600 }}>＋</span> above to add a section, or drag in a <span style={{ color: accent, fontWeight: 600 }}>Content Block</span>.</p>
                     </div>
                   )}
 
                   {blocks.map((b, i) => (
                     <div key={b.id}>
+                      {cbDrag && previewBlock && cbDropIndex === i && (
+                        <GhostBlock block={previewBlock} accent={accent} ds={ds} lineItems={lineItems} totals={totals} taxRate={taxRate} options={options} monthly={quote.pricing?.monthly} />
+                      )}
                       <BlockRow
                         b={b} accent={accent} ds={ds}
                         lineItems={lineItems} totals={totals} taxRate={taxRate} options={options} monthly={quote.pricing?.monthly}
                         dragging={dragId === b.id} dragActive={!!dragId}
+                        cbDragActive={!!cbDrag}
                         onEdit={() => setEditingId(b.id)}
                         onDragStart={() => setDragId(b.id)}
                         onDragEnd={() => setDragId("")}
                         onDragOverBlock={bottom => liveMove(b.id, bottom)}
+                        onCbDragOver={bottom => setCbDropIndex(bottom ? i + 1 : i)}
                       />
-                      <InsertGap index={i + 1} onInsert={insertBlock} accent={accent} />
+                      {!cbDrag && <InsertGap index={i + 1} onInsert={insertBlock} accent={accent} />}
                     </div>
                   ))}
+
+                  {cbDrag && previewBlock && cbDropIndex !== null && cbDropIndex >= blocks.length && (
+                    <GhostBlock block={previewBlock} accent={accent} ds={ds} lineItems={lineItems} totals={totals} taxRate={taxRate} options={options} monthly={quote.pricing?.monthly} />
+                  )}
                 </div>
               </div>
-              <p className="text-center text-[11px] mt-3" style={{ color: "var(--text-muted)" }}>Click any section to edit it · drag the handle to reorder.</p>
+              <p className="text-center text-[11px] mt-3" style={{ color: "var(--text-muted)" }}>Click any section to edit it · drag the handle to reorder{cbDrag ? " · release to drop the content block" : ""}.</p>
             </div>
           </div>
+        )}
+
+        {/* Content Block library — slide-in drawer (mirrors the dashboard Add-Widgets panel; eases in). */}
+        {cbDrawerOpen && !preview && (
+          <ContentBlockDrawer accent={accent}
+            onClose={() => setCbDrawerOpen(false)}
+            onDragStart={cb => { setCbDrag(cb); setCbDropIndex(blocks.length); }} onDragEnd={endCbDrag}
+            onAppend={cb => insertContentBlock(cb, blocks.length, true)} />
         )}
       </div>
 
@@ -520,19 +617,101 @@ function InsertGap({ index, onInsert, accent }: {
   );
 }
 
+// ─── Content Block library drawer (right slide-in) ──
+// Mirrors the dashboard Add-Widgets drawer: fixed panel from the right, no dimming
+// backdrop so the rep can drag cards straight onto the sheet (drops land in any
+// insert gap) or click to append. The copy is independent — the master is untouched.
+function ContentBlockDrawer({ accent, onClose, onDragStart, onDragEnd, onAppend }: {
+  accent: string; onClose: () => void;
+  onDragStart: (cb: ContentBlock) => void; onDragEnd: () => void; onAppend: (cb: ContentBlock) => void;
+}) {
+  const all = useMemo(() => getContentBlocks(), []);
+  const [q, setQ] = useState("");
+  const [type, setType] = useState<string>("");
+
+  const filtered = all.filter(b => {
+    if (type && b.type !== type) return false;
+    if (q) { const hay = `${b.name} ${b.text} ${b.tags.join(" ")} ${CONTENT_BLOCK_TYPE_LABELS[b.type]}`.toLowerCase(); if (!hay.includes(q.toLowerCase())) return false; }
+    return true;
+  });
+
+  return (
+    <div className="dashboard-edit-drawer fixed top-0 right-0 bottom-0 z-50 w-full max-w-md flex flex-col"
+      style={{ backgroundColor: "var(--bg-surface)", borderLeft: "1px solid var(--border)", boxShadow: "-16px 0 48px -12px rgba(0,0,0,0.22)" }}>
+      {/* Header */}
+      <div className="flex items-center gap-2 px-4 py-3.5 shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: accent + "1a" }}>
+          <Blocks className="w-4 h-4" style={{ color: accent }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Content Blocks</p>
+          <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>Drag onto the proposal, or click to add</p>
+        </div>
+        <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-secondary)" }} aria-label="Close"><X className="w-4 h-4" /></button>
+      </div>
+
+      {/* Search + filter */}
+      <div className="px-4 py-3 space-y-2 shrink-0" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+        <div className="relative">
+          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search blocks…"
+            className="w-full rounded-lg pl-8 pr-2.5 py-1.5 text-sm outline-none" style={inputStyle} />
+        </div>
+        <UiSelect size="sm" value={type} onChange={setType} placeholder="All types"
+          options={[{ value: "", label: "All types" }, ...CONTENT_BLOCK_TYPES.map(t => ({ value: t, label: CONTENT_BLOCK_TYPE_LABELS[t] }))]} />
+      </div>
+
+      {/* Cards */}
+      <div className="flex-1 min-h-0 overflow-y-auto thin-scroll-y p-3 space-y-2">
+          {filtered.length === 0 ? (
+            <p className="text-xs text-center py-8" style={{ color: "var(--text-muted)" }}>No content blocks match.</p>
+          ) : filtered.map(b => (
+            <div key={b.id}
+              draggable
+              onDragStart={e => { e.dataTransfer.effectAllowed = "copy"; e.dataTransfer.setData("text/plain", b.id); onDragStart(b); }}
+              onDragEnd={onDragEnd}
+              onClick={() => onAppend(b)}
+              title="Drag onto the proposal, or click to append"
+              className="group rounded-lg p-2.5 cursor-grab active:cursor-grabbing transition-all hover:shadow-md"
+              style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+              <div className="flex items-start gap-2">
+                <GripVertical className="w-3.5 h-3.5 shrink-0 mt-0.5 opacity-40 group-hover:opacity-100 transition-opacity" style={{ color: "var(--text-muted)" }} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold leading-snug truncate" style={{ color: "var(--text-primary)" }}>{b.name}</p>
+                  <span className="inline-block text-[9px] font-semibold px-1.5 py-0.5 rounded mt-1" style={{ backgroundColor: accent + "1a", color: accent }}>{CONTENT_BLOCK_TYPE_LABELS[b.type]}</span>
+                  <p className="text-[11px] mt-1 leading-snug" style={{ color: "var(--text-muted)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{b.text}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+      {/* Footer hint */}
+      <div className="px-4 py-2.5 shrink-0" style={{ borderTop: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-surface-2)" }}>
+        <p className="text-[10px] leading-relaxed" style={{ color: "var(--text-muted)" }}>Drag a block into any gap on the proposal, or click to append. Edits here never change the master block.</p>
+      </div>
+    </div>
+  );
+}
+
 // ─── A single block in the flowing sheet (display + click-to-edit + drag) ──
 function BlockRow(props: {
   b: QuoteBlock; accent: string; ds: ProposalDesignStyle;
   lineItems: LineItem[]; totals: { subtotal: number; tax: number; total: number }; taxRate: string; options: QuoteOption[]; monthly?: number;
-  dragging: boolean; dragActive: boolean;
+  dragging: boolean; dragActive: boolean; cbDragActive?: boolean;
   onEdit: () => void; onDragStart: () => void; onDragEnd: () => void; onDragOverBlock: (bottomHalf: boolean) => void;
+  onCbDragOver?: (bottomHalf: boolean) => void;
 }) {
-  const { b, accent, dragging, dragActive } = props;
+  const { b, accent, dragging, dragActive, cbDragActive } = props;
 
   return (
     <div
       onClick={() => props.onEdit()}
-      onDragOver={dragActive ? (e => { e.preventDefault(); const r = e.currentTarget.getBoundingClientRect(); props.onDragOverBlock(e.clientY > r.top + r.height / 2); }) : undefined}
+      onDragOver={
+        dragActive ? (e => { e.preventDefault(); const r = e.currentTarget.getBoundingClientRect(); props.onDragOverBlock(e.clientY > r.top + r.height / 2); })
+        : cbDragActive ? (e => { e.preventDefault(); const r = e.currentTarget.getBoundingClientRect(); props.onCbDragOver?.(e.clientY > r.top + r.height / 2); })
+        : undefined
+      }
       onDrop={dragActive ? (e => { e.preventDefault(); props.onDragEnd(); }) : undefined}
       className="group relative transition-all cursor-pointer"
       style={{
@@ -567,6 +746,20 @@ function BlockRow(props: {
       {/* The block content, rendered as it appears in the document (borderless, display-only) */}
       <CanvasBlock b={b} accent={accent} ds={props.ds}
         lineItems={props.lineItems} totals={props.totals} taxRate={props.taxRate} options={props.options} monthly={props.monthly} />
+    </div>
+  );
+}
+
+// ─── Live drag preview — the dragged content block shown in-flow before it's
+// dropped (reflows the document as the cursor moves, like the dashboard). ──
+function GhostBlock({ block, accent, ds, lineItems, totals, taxRate, options, monthly }: {
+  block: QuoteBlock; accent: string; ds: ProposalDesignStyle;
+  lineItems: LineItem[]; totals: { subtotal: number; tax: number; total: number }; taxRate: string; options: QuoteOption[]; monthly?: number;
+}) {
+  return (
+    <div className="cb-ghost-block" style={{ margin: "6px -12px", padding: "10px 12px", borderRadius: "8px", outline: `2px dashed ${accent}`, outlineOffset: "-2px", backgroundColor: accent + "0d" }}>
+      <p className="text-[9px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: accent }}>New block · drop to place</p>
+      <CanvasBlock b={block} accent={accent} ds={ds} lineItems={lineItems} totals={totals} taxRate={taxRate} options={options} monthly={monthly} />
     </div>
   );
 }

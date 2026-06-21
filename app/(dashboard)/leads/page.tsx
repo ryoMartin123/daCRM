@@ -381,7 +381,7 @@ export default function LeadsPage() {
       {/* Header — title · centered view tabs · stages + action */}
       <div className="flex items-center gap-4 mb-6">
         <div className="flex-1 min-w-0">
-          <PageTitle title="Leads" count={contextFiltered.length} description="Sales pipeline — track, follow up, and convert" />
+          <PageTitle title="Leads" count={contextFiltered.length} description="Track new opportunities, follow-ups, and pipeline movement." />
         </div>
         <div className="flex items-center rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
           {([

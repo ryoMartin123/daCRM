@@ -131,7 +131,7 @@ export default function ProjectsPage() {
     <div className="p-6">
       <div className="flex items-center gap-4 mb-6">
         <div className="flex-1 min-w-0">
-          <PageTitle title="Projects" count={contextFiltered.length} description="Multi-phase and larger scope work" />
+          <PageTitle title="Projects" count={contextFiltered.length} description="Organize larger multi-phase work, milestones, and related jobs." />
         </div>
         <div className="flex items-center rounded-lg overflow-hidden shrink-0" style={{ border: "1px solid var(--border)" }}>
           {VIEW_TABS.map(v => {

@@ -17,8 +17,7 @@ export default function StatCard({ label, value, subtext, icon, href, urgent }: 
       className="rounded-xl p-4 transition-colors h-full"
       style={{
         backgroundColor: "var(--bg-surface)",
-        border: urgent ? "1px solid #fecaca" : "1px solid var(--border-subtle)",
-        boxShadow: "var(--shadow-card)",
+        border: urgent ? "1px solid #fecaca" : "1px solid var(--border)",
       }}
     >
       <div className="flex items-start justify-between">

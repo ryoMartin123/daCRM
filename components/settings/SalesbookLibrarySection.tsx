@@ -11,16 +11,19 @@
 import { useMemo, useState } from "react";
 import {
   BookOpen, Eye, Check, Download, Trash2, X, Layers, Package,
-  CreditCard, ShieldCheck, FileText, Sparkles, Pencil, Palette,
+  CreditCard, ShieldCheck, FileText, Sparkles, Pencil, Palette, ChevronRight,
+  Image as ImageIcon, Upload, Tag, Sliders,
 } from "lucide-react";
 import UiSelect from "@/components/ui/Select";
 import CompanySalesbookEditor from "@/components/settings/CompanySalesbookEditor";
-import CustomProposalDocument, { type CustomDocData } from "@/components/quotes/custom/CustomProposalDocument";
+import QuoteDesignsManager from "@/components/settings/QuoteDesignsManager";
+import OfferLibrarySection from "@/components/settings/OfferLibrarySection";
+import MediaLibrarySection from "@/components/settings/MediaLibrarySection";
+import ContentBlocksSection from "@/components/settings/ContentBlocksSection";
+import ProposalBrandingSection from "@/components/settings/ProposalBrandingSection";
+import ProposalDefaultsSection from "@/components/settings/ProposalDefaultsSection";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
-import { SECTION_LABELS, getProposalBranding, type SectionKey } from "@/lib/proposals/data";
-import { DESIGN_LIBRARY, getActiveDesignId, setActiveDesign, type ProposalDesign } from "@/lib/proposals/designs";
-import type { QuoteBlock } from "@/lib/quotes/blocks";
-import type { LineItem } from "@/lib/quotes/data";
+import { SECTION_LABELS, type SectionKey } from "@/lib/proposals/data";
 import {
   getSalesbookTemplates, getCompanySalesbooks, isTemplateInstalled,
   installSalesbook, uninstallSalesbook,
@@ -28,15 +31,38 @@ import {
   type SalesbookTemplate, type SalesbookOption,
 } from "@/lib/salesbooks/data";
 
-type View = "library" | "installed" | "designs";
+// The section is a HUB (like Agreements): a landing grid of cards that each drill
+// one level deeper into a module. The settings page owns the open-module state +
+// breadcrumb and passes it in via HubProps.
+type ModuleKey =
+  | "installed" | "library" | "designs" | "offer_library" | "media_library"
+  | "content_blocks" | "defaults" | "import_center";
+interface SbModule { key: ModuleKey; label: string; description: string; icon: typeof BookOpen }
+// The single source of truth for reusable proposal/salesbook setup. (The old
+// Proposal Builder settings page folded into these cards — templates → Salesbook
+// Templates / Quote Designs, sections & terms → Content Blocks, branding & defaults
+// → their own cards.)
+const MODULES: SbModule[] = [
+  { key: "installed",        label: "Proposal Templates",  description: "Your company-owned proposal templates — edit them or quote from them.",                icon: Check },
+  { key: "library",          label: "Starter Templates",   description: "Browse premium starter templates and copy them into your company.",                    icon: BookOpen },
+  { key: "designs",          label: "Quote Designs",       description: "Choose what your customer-facing quote looks like — the complete layout & style.",     icon: Palette },
+  { key: "offer_library",    label: "Offer Library",       description: "Reusable packages, options, equipment cards, pricing blocks, and Good/Better/Best groups.", icon: Package },
+  { key: "media_library",    label: "Media Library",       description: "Reusable images: equipment, covers, before/after, logos, and warranty icons.",          icon: ImageIcon },
+  { key: "content_blocks",   label: "Content Blocks",      description: "Reusable wording: recommended solution, scope, warranty, financing, terms, and exclusions.", icon: FileText },
+  { key: "defaults",         label: "Defaults",            description: "Branding, default designs by quote type, expiration, terms, financing, and pricing display.", icon: Sliders },
+  { key: "import_center",    label: "Import Center",       description: "Bulk-upload spreadsheets, equipment data, pricing, images, and documents.",             icon: Upload },
+];
 
-export default function SalesbookLibrarySection() {
+export default function SalesbookLibrarySection({ activeModule, onOpen, onBack }: {
+  activeModule: string | null;
+  onOpen: (key: string, label: string) => void;
+  onBack: () => void;
+}) {
   const { allCompanies, allLocations, effectiveCompanyId } = useHierarchy();
 
   const [tick, setTick] = useState(0);          // bump to re-read after install/uninstall
   const refresh = () => setTick(t => t + 1);
 
-  const [view, setView] = useState<View>("library");
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [installId, setInstallId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -52,33 +78,57 @@ export default function SalesbookLibrarySection() {
     return <CompanySalesbookEditor sbId={editingId} onBack={() => { setEditingId(null); refresh(); }} />;
   }
 
-  const TABS: { key: View; label: string }[] = [
-    { key: "library", label: "Salesbook Library" },
-    { key: "installed", label: `Installed${installed.length ? ` (${installed.length})` : ""}` },
-    { key: "designs", label: "Quote Designs" },
-  ];
+  // ── Hub (cards) ──
+  if (!activeModule) {
+    return (
+      <div className="space-y-5">
+        <div>
+          <h2 className="text-lg font-semibold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
+            <BookOpen className="w-5 h-5" style={{ color: "#4f46e5" }} /> Proposal Library
+          </h2>
+          <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>
+            The single place for reusable proposal setup — templates, designs, content, branding, and defaults. Pick one to manage it.
+          </p>
+        </div>
+        <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" }}>
+          {MODULES.map(m => {
+            const Icon = m.icon;
+            const badge = m.key === "installed" && installed.length > 0 ? installed.length : null;
+            return (
+              <button key={m.key} onClick={() => onOpen(m.key, m.label)}
+                className="flex items-start gap-3 p-4 rounded-xl text-left w-full transition-all group hover:shadow-md cursor-pointer"
+                style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "var(--bg-surface-2)" }}>
+                  <Icon className="w-4 h-4" style={{ color: "#4f46e5" }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{m.label}</p>
+                    {badge != null && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "var(--bg-surface-2)", color: "var(--text-muted)" }}>{badge}</span>}
+                  </div>
+                  <p className="text-xs mt-0.5 leading-snug" style={{ color: "var(--text-muted)" }}>{m.description}</p>
+                </div>
+                <ChevronRight className="w-4 h-4 shrink-0 mt-0.5 opacity-0 group-hover:opacity-40 transition-opacity" style={{ color: "var(--text-muted)" }} />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Module page (one level deeper) ──
+  const mod = MODULES.find(m => m.key === activeModule);
+  if (!mod) { onBack(); return null; }
 
   return (
     <div className="space-y-5">
-      {/* Header */}
       <div>
-        <h2 className="text-lg font-semibold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
-          <BookOpen className="w-5 h-5" style={{ color: "#4f46e5" }} /> Sales &amp; Proposal Library
-        </h2>
-        <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>
-          Salesbooks supply the proposal content; Quote Designs control the layout your customer sees.
-        </p>
+        <h2 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>{mod.label}</h2>
+        <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>{mod.description}</p>
       </div>
 
-      {/* Glossy tabs */}
-      <div className="flex items-center gap-1.5">
-        {TABS.map(t => (
-          <button key={t.key} onClick={() => setView(t.key)} data-active={view === t.key}
-            className="glossy-pill px-3.5 py-1.5 text-sm font-medium">{t.label}</button>
-        ))}
-      </div>
-
-      {view === "library" && (
+      {mod.key === "library" && (
         <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))" }}>
           {templates.map(t => (
             <SalesbookCard key={t.id} t={t} installed={isTemplateInstalled(t.id)}
@@ -87,177 +137,86 @@ export default function SalesbookLibrarySection() {
         </div>
       )}
 
-      {view === "installed" && <InstalledList installed={installed} onRefresh={refresh} onEdit={setEditingId} />}
+      {mod.key === "installed" && <InstalledList installed={installed} onRefresh={refresh} onEdit={setEditingId} />}
 
-      {view === "designs" && <QuoteDesignsTab />}
+      {mod.key === "designs" && <QuoteDesignsManager />}
+
+      {mod.key === "offer_library" && <OfferLibrarySection />}
+
+      {mod.key === "media_library" && <MediaLibrarySection />}
+
+      {mod.key === "content_blocks" && <ContentBlocksSection />}
+
+      {mod.key === "defaults" && (
+        <div className="space-y-8">
+          <ProposalDefaultsSection />
+          {/* Proposal Branding now lives inside Defaults (its standalone card was removed). */}
+          <div>
+            <h3 className="text-sm font-semibold mb-4 pt-5 flex items-center gap-2" style={{ color: "var(--text-primary)", borderTop: "1px solid var(--border-subtle)" }}>
+              <Palette className="w-4 h-4" style={{ color: "#4f46e5" }} /> Proposal Branding
+            </h3>
+            <ProposalBrandingSection />
+          </div>
+        </div>
+      )}
+
+      {mod.key === "import_center" && <ImportCenter />}
 
       {previewTmpl && <PreviewDrawer t={previewTmpl} installed={isTemplateInstalled(previewTmpl.id)}
         onClose={() => setPreviewId(null)} onUse={() => { setPreviewId(null); setInstallId(previewTmpl.id); }} />}
 
       {installTmpl && <InstallModal t={installTmpl} companies={allCompanies} locations={allLocations}
         defaultCompanyId={effectiveCompanyId ?? allCompanies[0]?.id ?? ""}
-        onClose={() => setInstallId(null)} onInstalled={() => { setInstallId(null); refresh(); setView("installed"); }} />}
+        onClose={() => setInstallId(null)} onInstalled={() => { setInstallId(null); refresh(); onOpen("installed", "Proposal Templates"); }} />}
     </div>
   );
 }
 
-// ─── Quote Designs tab ────────────────────────────────────
-// A gallery of client-facing proposal DESIGN themes. "Use this design" sets the
-// company's active design (one active at a time); the proposal document renders
-// in that design everywhere. Accent color comes from Proposal Branding.
-function QuoteDesignsTab() {
-  const [activeId, setActiveId] = useState(getActiveDesignId());
-  const [previewId, setPreviewId] = useState<string | null>(null);
-  const branding = useMemo(() => getProposalBranding(), []);
-  const accent = branding.accentColor || "#4f46e5";
-  const previewDesign = DESIGN_LIBRARY.find(d => d.id === previewId) ?? null;
-
-  function use(id: string) { setActiveDesign(id); setActiveId(id); }
-
+// ─── Import Center (utility) ──────────────────────────────
+function ImportCenter() {
+  const KINDS: { icon: typeof Upload; label: string; hint: string }[] = [
+    { icon: Tag,         label: "Pricing spreadsheet", hint: "CSV / XLSX of items, costs & prices" },
+    { icon: Package,     label: "Equipment data",      hint: "Brands, models, efficiency & warranty" },
+    { icon: ImageIcon,   label: "Images",              hint: "Equipment, covers & before/after photos" },
+    { icon: FileText,    label: "Documents",           hint: "Terms, warranties & spec sheets" },
+  ];
   return (
     <div className="space-y-4">
-      <div className="rounded-xl p-3.5 flex items-start gap-2.5" style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border-subtle)" }}>
-        <Palette className="w-4 h-4 shrink-0 mt-0.5" style={{ color: accent }} />
-        <p className="text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-          Choose the layout &amp; typography of the proposal your customer receives. Your brand color and logo (from <span style={{ fontWeight: 600 }}>Proposal Branding</span>) carry through every design. One design is active at a time.
-        </p>
+      <LibraryToolbar icon={Upload} text="Bulk-load your catalog and assets. Drop a file to get started — mapping & preview land next." />
+      <div className="rounded-xl flex flex-col items-center justify-center gap-1.5 py-10" style={{ border: "1.5px dashed var(--border)", backgroundColor: "var(--bg-surface-2)" }}>
+        <Upload className="w-6 h-6" style={{ color: "var(--accent-text)" }} />
+        <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Drag &amp; drop a spreadsheet, image set, or document</p>
+        <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>Guided import &amp; column mapping coming soon</p>
       </div>
-
-      <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" }}>
-        {DESIGN_LIBRARY.map(d => (
-          <DesignCard key={d.id} d={d} accent={accent} active={activeId === d.id}
-            onUse={() => use(d.id)} onPreview={() => setPreviewId(d.id)} />
-        ))}
+      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
+        {KINDS.map(k => {
+          const Icon = k.icon;
+          return (
+            <div key={k.label} className="rounded-xl p-3.5 flex items-start gap-3" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+              <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "var(--bg-surface-2)" }}><Icon className="w-4 h-4" style={{ color: "var(--accent-text)" }} /></span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{k.label}</p>
+                  <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "var(--bg-input)", color: "var(--text-muted)" }}>Soon</span>
+                </div>
+                <p className="text-[11px] mt-0.5 leading-snug" style={{ color: "var(--text-muted)" }}>{k.hint}</p>
+              </div>
+            </div>
+          );
+        })}
       </div>
-
-      {previewDesign && (
-        <DesignPreviewModal d={previewDesign} branding={branding} active={activeId === previewDesign.id}
-          onClose={() => setPreviewId(null)} onUse={() => { use(previewDesign.id); setPreviewId(null); }} />
-      )}
     </div>
   );
 }
 
-function DesignCard({ d, accent, active, onUse, onPreview }: { d: ProposalDesign; accent: string; active: boolean; onUse: () => void; onPreview: () => void }) {
+// ─── Shared library bits ──────────────────────────────────
+function LibraryToolbar({ icon: Icon, text }: { icon: typeof Package; text: string }) {
   return (
-    <div className="rounded-2xl overflow-hidden flex flex-col transition-all hover:shadow-md"
-      style={{ backgroundColor: "var(--bg-surface)", border: `1px solid ${active ? accent : "var(--border-subtle)"}`, boxShadow: "var(--shadow-card)" }}>
-      <div className="p-3" style={{ backgroundColor: "var(--bg-surface-2)" }}>
-        <DesignThumbnail d={d} accent={accent} />
-      </div>
-      <div className="px-4 py-3 flex-1">
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{d.name}</p>
-          {active
-            ? <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: "#d1fae5", color: "#065f46" }}><Check className="w-3 h-3" /> Active</span>
-            : <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--bg-input)", color: "var(--text-muted)" }}>{d.badge}</span>}
-        </div>
-        <p className="text-xs leading-relaxed mt-1" style={{ color: "var(--text-secondary)" }}>{d.description}</p>
-      </div>
-      <div className="px-4 py-3 flex items-center gap-2" style={{ borderTop: "1px solid var(--border-subtle)" }}>
-        <button onClick={onPreview} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium"
-          style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
-          <Eye className="w-3.5 h-3.5" /> Preview
-        </button>
-        <button onClick={onUse} disabled={active} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-white disabled:opacity-50"
-          style={{ backgroundColor: active ? "var(--text-muted)" : accent }}>
-          {active ? <><Check className="w-3.5 h-3.5" /> In use</> : <><Download className="w-3.5 h-3.5" /> Use this design</>}
-        </button>
-      </div>
+    <div className="rounded-xl p-3.5 flex items-start gap-2.5" style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border-subtle)" }}>
+      <Icon className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--accent-text)" }} />
+      <p className="text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>{text}</p>
     </div>
   );
-}
-
-// Lightweight faux-proposal thumbnail that conveys each design's header, label,
-// and totals treatment without rendering a full document.
-function DesignThumbnail({ d, accent }: { d: ProposalDesign; accent: string }) {
-  const s = d.style;
-  const TINT = "#e5e7eb", FAINT = "#9ca3af";
-  const line = (w: string, top = 4) => <div style={{ height: "4px", width: w, borderRadius: "2px", backgroundColor: TINT, marginTop: `${top}px` }} />;
-
-  // Header
-  let header: React.ReactNode = null;
-  if (s.header === "band") header = (<><div style={{ height: "5px", backgroundColor: accent }} /><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px 4px" }}><div style={{ width: "26px", height: "8px", borderRadius: "2px", backgroundColor: accent }} /><div style={{ fontSize: "6px", fontWeight: 700, letterSpacing: "0.1em", color: "#111827" }}>PROPOSAL</div></div></>);
-  else if (s.header === "centered") header = (<div style={{ textAlign: "center", padding: "10px 10px 4px" }}><div style={{ width: "30px", height: "8px", borderRadius: "2px", backgroundColor: accent, margin: "0 auto" }} /><div style={{ width: "22px", height: "3px", backgroundColor: accent, borderRadius: "2px", margin: "6px auto" }} /><div style={{ fontSize: "6px", fontWeight: 700, letterSpacing: "0.16em", color: "#111827" }}>PROPOSAL</div></div>);
-  else if (s.header === "bold") header = (<div style={{ backgroundColor: accent, padding: "10px 10px 8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}><div style={{ width: "30px", height: "9px", borderRadius: "2px", backgroundColor: "rgba(255,255,255,0.92)" }} /><div style={{ fontSize: "6px", fontWeight: 700, letterSpacing: "0.1em", color: "#fff" }}>PROPOSAL</div></div>);
-  else if (s.header === "serif") header = (<div style={{ padding: "10px 10px 4px" }}><div style={{ fontFamily: "Georgia, serif", fontSize: "11px", fontWeight: 700, color: "#111827" }}>Company</div><div style={{ borderTop: `1px solid ${accent}`, marginTop: "5px" }} /><div style={{ borderTop: `1px solid ${accent}`, marginTop: "2px", opacity: 0.5 }} /></div>);
-  else header = (<div style={{ padding: "12px 10px 6px" }}><div style={{ display: "flex", justifyContent: "space-between" }}><div style={{ fontSize: "6px", fontWeight: 700, letterSpacing: "0.16em", color: "#111827" }}>COMPANY</div><div style={{ fontSize: "6px", letterSpacing: "0.16em", color: FAINT }}>PROPOSAL</div></div><div style={{ borderTop: `1px solid ${TINT}`, marginTop: "6px" }} /></div>);
-
-  // Section label
-  let label: React.ReactNode = null;
-  if (s.label === "bar") label = (<div style={{ display: "flex", alignItems: "center", gap: "4px" }}><span style={{ width: "3px", height: "8px", backgroundColor: accent, borderRadius: "1px" }} /><span style={{ fontSize: "6.5px", fontWeight: 700, color: "#111827" }}>Recommended</span></div>);
-  else if (s.label === "rule") label = (<span style={{ display: "inline-block", fontSize: "6.5px", fontWeight: 700, color: "#111827", borderBottom: `2px solid ${accent}`, paddingBottom: "1px" }}>Recommended</span>);
-  else label = (<span style={{ fontSize: "6px", fontWeight: 700, letterSpacing: "0.12em", color: accent }}>RECOMMENDED</span>);
-
-  // Totals chip
-  let totals: React.ReactNode = null;
-  if (s.totals === "accentbar") totals = (<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 7px", borderRadius: "4px", backgroundColor: accent }}><span style={{ fontSize: "6px", fontWeight: 700, color: "#fff" }}>Total</span><span style={{ fontSize: "8px", fontWeight: 800, color: "#fff" }}>$12,400</span></div>);
-  else if (s.totals === "box") totals = (<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 7px", borderRadius: "4px", border: `1px solid ${TINT}`, backgroundColor: "#f9fafb" }}><span style={{ fontSize: "6px", fontWeight: 700, color: "#111827" }}>Total</span><span style={{ fontSize: "8px", fontWeight: 800, color: accent }}>$12,400</span></div>);
-  else totals = (<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: `1px solid ${TINT}`, paddingTop: "4px" }}><span style={{ fontSize: "6px", fontWeight: 700, color: "#111827" }}>Total</span><span style={{ fontSize: "8px", fontWeight: 800, color: accent }}>$12,400</span></div>);
-
-  return (
-    <div style={{ height: "150px", backgroundColor: "#fff", borderRadius: "8px", border: `1px solid ${TINT}`, overflow: "hidden", fontFamily: s.fontFamily }}>
-      {header}
-      <div style={{ padding: "6px 10px" }}>
-        {label}
-        {line("90%", 5)}
-        {line("80%")}
-        {line("60%")}
-        <div style={{ marginTop: "8px", display: "flex", justifyContent: "flex-end" }}>
-          <div style={{ width: "62%" }}>{totals}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DesignPreviewModal({ d, branding, active, onClose, onUse }: { d: ProposalDesign; branding: ReturnType<typeof getProposalBranding>; active: boolean; onClose: () => void; onUse: () => void }) {
-  const accent = branding.accentColor || "#4f46e5";
-  const sample = sampleDoc(branding);
-  return (
-    <div className="fixed inset-0 z-[60] bg-black/45 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="w-full max-w-3xl max-h-[92vh] flex flex-col rounded-2xl overflow-hidden" onClick={e => e.stopPropagation()}
-        style={{ backgroundColor: "var(--bg-surface)", boxShadow: "0 24px 70px rgba(0,0,0,0.4)" }}>
-        <div className="flex items-center justify-between px-5 py-3.5 shrink-0" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-          <div className="min-w-0">
-            <p className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>{d.name}</p>
-            <p className="text-[11px] mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>{d.description}</p>
-          </div>
-          <button onClick={onClose} style={{ color: "var(--text-muted)" }}><X className="w-5 h-5" /></button>
-        </div>
-        <div className="flex-1 overflow-y-auto thin-scroll-y p-6" style={{ backgroundColor: "#e5e7eb" }}>
-          <CustomProposalDocument data={sample} design={d} />
-        </div>
-        <div className="px-5 py-3.5 flex items-center justify-end gap-2 shrink-0" style={{ borderTop: "1px solid var(--border-subtle)" }}>
-          <button onClick={onClose} className="px-3 py-2 rounded-lg text-sm" style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}>Close</button>
-          <button onClick={onUse} disabled={active} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50" style={{ backgroundColor: active ? "var(--text-muted)" : accent }}>
-            {active ? <><Check className="w-4 h-4" /> In use</> : <><Download className="w-4 h-4" /> Use this design</>}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// A representative sample proposal used for the design preview.
-function sampleDoc(branding: ReturnType<typeof getProposalBranding>): CustomDocData {
-  const blocks: QuoteBlock[] = [
-    { id: "h", type: "heading", title: "", visible: true, content: "Comfort System Replacement", settings: { level: 1 } },
-    { id: "rs", type: "recommended_solution", title: "Recommended Solution", visible: true, content: "<p>We recommend a high-efficiency, two-stage system properly sized for your home and professionally installed by our certified team — quieter operation, lower bills, and even temperatures throughout.</p>" },
-    { id: "li", type: "line_items", title: "Your Investment", visible: true, content: "" },
-    { id: "ps", type: "price_summary", title: "Summary", visible: true, content: "", settings: { showMonthly: true, itemized: false } },
-    { id: "ap", type: "approval_signature", title: "Approval", visible: true, content: "By signing below, you approve this proposal and authorize the work described." },
-  ];
-  const lineItems: LineItem[] = [
-    { id: "l1", name: "2-Stage Condenser", description: "18 SEER2, 3-ton", quantity: 1, unitPrice: 6800, total: 6800, taxable: true },
-    { id: "l2", name: "Variable-Speed Air Handler", description: "Matched coil", quantity: 1, unitPrice: 3200, total: 3200, taxable: true },
-    { id: "l3", name: "Installation & Labor", description: "Includes haul-away & startup", quantity: 1, unitPrice: 2400, total: 2400, taxable: false },
-  ];
-  return {
-    branding, quoteNumber: "Q-2026-0042", customerName: "Sample Customer", expiresAt: "Jul 15, 2026",
-    blocks, lineItems, options: [],
-    subtotal: 12400, tax: 0, total: 12400, taxRatePct: 0, monthly: 214,
-  };
 }
 
 // ─── Gallery card ─────────────────────────────────────────
@@ -305,7 +264,7 @@ function SalesbookCard({ t, installed, onPreview, onUse }: { t: SalesbookTemplat
         </button>
         <button onClick={onUse} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-white"
           style={{ backgroundColor: installed ? "var(--text-muted)" : accent }}>
-          {installed ? <><Download className="w-3.5 h-3.5" /> Install again</> : <><Download className="w-3.5 h-3.5" /> Use This Salesbook</>}
+          {installed ? <><Download className="w-3.5 h-3.5" /> Install again</> : <><Download className="w-3.5 h-3.5" /> Use This Template</>}
         </button>
       </div>
     </div>
@@ -329,7 +288,7 @@ function PreviewDrawer({ t, installed, onClose, onUse }: { t: SalesbookTemplate;
         {/* Cover / header style */}
         <div className="px-6 py-6 relative shrink-0" style={{ background: `linear-gradient(135deg, ${accent}, ${accent}cc)` }}>
           <button onClick={onClose} className="absolute top-4 right-4 text-white/80 hover:text-white"><X className="w-5 h-5" /></button>
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-white/80">{INDUSTRY_LABELS[t.industry]} Salesbook</p>
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-white/80">{INDUSTRY_LABELS[t.industry]} Template</p>
           <p className="text-xl font-bold text-white mt-1">{t.name}</p>
           <p className="text-sm text-white/85 mt-1.5">{t.bestFor}</p>
           <div className="flex items-center gap-2 mt-3">
@@ -387,7 +346,7 @@ function PreviewDrawer({ t, installed, onClose, onUse }: { t: SalesbookTemplate;
         <div className="shrink-0 px-6 py-4 flex items-center justify-between" style={{ backgroundColor: "var(--bg-surface)", borderTop: "1px solid var(--border-subtle)" }}>
           <button onClick={onClose} className="text-sm px-3 py-2 rounded-lg" style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}>Close</button>
           <button onClick={onUse} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ backgroundColor: accent }}>
-            <Download className="w-4 h-4" /> {installed ? "Install again" : "Use This Salesbook"}
+            <Download className="w-4 h-4" /> {installed ? "Install again" : "Use This Template"}
           </button>
         </div>
       </div>
@@ -478,7 +437,7 @@ function InstallModal({ t, companies, locations, defaultCompanyId, onClose, onIn
       <div className="w-full max-w-md rounded-2xl overflow-hidden" onClick={e => e.stopPropagation()}
         style={{ backgroundColor: "var(--bg-surface)", boxShadow: "0 16px 48px rgba(0,0,0,0.28)" }}>
         <div className="px-6 py-4" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-          <p className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>Use This Salesbook</p>
+          <p className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>Use This Template</p>
           <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>Copy “{t.name}” into your company workspace.</p>
         </div>
         <div className="px-6 py-5 space-y-4">
@@ -495,7 +454,7 @@ function InstallModal({ t, companies, locations, defaultCompanyId, onClose, onIn
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Salesbook name</label>
+            <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Template name</label>
             <input value={name} onChange={e => setName(e.target.value)}
               className="w-full rounded-lg px-3 py-2 text-sm outline-none" style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }} />
           </div>
@@ -508,7 +467,7 @@ function InstallModal({ t, companies, locations, defaultCompanyId, onClose, onIn
         <div className="px-6 py-4 flex justify-end gap-2" style={{ borderTop: "1px solid var(--border-subtle)" }}>
           <button onClick={onClose} className="px-3 py-2 rounded-lg text-sm" style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}>Cancel</button>
           <button onClick={doInstall} disabled={!companyId} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-40" style={{ backgroundColor: accent }}>
-            <Download className="w-4 h-4" /> Create Company Salesbook
+            <Download className="w-4 h-4" /> Create Proposal Template
           </button>
         </div>
       </div>
@@ -531,8 +490,8 @@ function InstalledList({ installed, onRefresh, onEdit }: { installed: ReturnType
     return (
       <div className="rounded-xl py-16 text-center" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
         <BookOpen className="w-8 h-8 mx-auto mb-3" style={{ color: "var(--text-muted)" }} />
-        <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>No salesbooks installed yet</p>
-        <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>Browse the Library and choose “Use This Salesbook” to copy one in.</p>
+        <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>No proposal templates yet</p>
+        <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>Browse Starter Templates and choose “Use This Template” to copy one in.</p>
       </div>
     );
   }
@@ -564,7 +523,7 @@ function InstalledList({ installed, onRefresh, onEdit }: { installed: ReturnType
         );
       })}
       <div className="flex items-center gap-1.5 text-[11px] px-1 pt-1" style={{ color: "var(--text-muted)" }}>
-        <FileText className="w-3.5 h-3.5" /> Edit a salesbook to tune its sections, option pricing, and terms. Spreadsheet import is coming next.
+        <FileText className="w-3.5 h-3.5" /> Edit a proposal template to tune its sections, option pricing, and terms. Spreadsheet import is coming next.
       </div>
     </div>
   );

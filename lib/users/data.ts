@@ -7,6 +7,7 @@
 // more are invited here. Runtime changes persist to localStorage.
 
 import type { RoleKey } from "@/lib/roles/types";
+import type { AppAccess } from "@/lib/platform/access";
 
 export type UserStatus = "active" | "invited" | "inactive";
 export type ScopeLevel = "org" | "company" | "location" | "service_area";
@@ -31,6 +32,9 @@ export interface AppUser {
   isOrgOwner?: boolean;          // the owner grant — can't be removed/deactivated
   assignments: RoleAssignment[];
   createdAt: string;            // ISO date
+  // Platform-layer 1: explicit app-access override. When set it wins over the
+  // role-derived default (portal is always forced on). See lib/platform/access.
+  appAccess?: Partial<AppAccess>;
 }
 
 // ─── Helpers ──────────────────────────────────────────────
@@ -56,6 +60,49 @@ const SEED: AppUser[] = [
     assignments: [{ id: "asg-owner", role: "org_owner", level: "org" }],
     createdAt: "2026-01-01",
   },
+  // ── Mock platform users — exercise app-access via the View-as menu ──
+  // Each carries an explicit appAccess override so the launcher and shell show
+  // exactly the apps described, regardless of CRM role-derived defaults.
+  {
+    id: "user_tucker",
+    fullName: "Tucker Hayes",
+    initials: "TH",
+    email: "tucker@northstar.example",
+    status: "active",
+    assignments: [{ id: "asg-tucker", role: "field_technician", level: "location", companyId: "co_hvac", locationId: "loc_augusta" }],
+    createdAt: "2026-02-01",
+    appAccess: { crm: true, documents: true },
+  },
+  {
+    id: "user_kylie",
+    fullName: "Kylie Brooks",
+    initials: "KB",
+    email: "kylie@northstar.example",
+    status: "active",
+    assignments: [{ id: "asg-kylie", role: "dispatcher", level: "location", companyId: "co_hvac", locationId: "loc_augusta" }],
+    createdAt: "2026-02-01",
+    appAccess: { crm: true, documents: true },
+  },
+  {
+    id: "user_nicole",
+    fullName: "Nicole Adams",
+    initials: "NA",
+    email: "nicole@northstar.example",
+    status: "active",
+    assignments: [{ id: "asg-nicole", role: "accounting", level: "org" }],
+    createdAt: "2026-02-01",
+    appAccess: { crm: true, accounting: true, documents: true },
+  },
+  {
+    id: "user_hr",
+    fullName: "Dana Whitfield",
+    initials: "DW",
+    email: "dana@northstar.example",
+    status: "active",
+    assignments: [{ id: "asg-hr", role: "hr_manager", level: "org" }],
+    createdAt: "2026-02-01",
+    appAccess: { hr: true, documents: true },
+  },
 ];
 
 // ─── localStorage-backed store ────────────────────────────
@@ -67,7 +114,14 @@ function init(): AppUser[] {
   if (typeof window === "undefined") return [...SEED];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    _users = raw ? (JSON.parse(raw) as AppUser[]) : [...SEED];
+    const stored = raw ? (JSON.parse(raw) as AppUser[]) : [];
+    // Union in any SEED users missing from a previously-cached directory so the
+    // mock platform users (and the owner) always exist for the demo. New seed
+    // users added later show up without a manual reset.
+    const haveIds = new Set(stored.map((u) => u.id));
+    const missing = SEED.filter((s) => !haveIds.has(s.id));
+    _users = stored.length ? [...stored, ...missing] : [...SEED];
+    if (missing.length && stored.length) persist();
   } catch {
     _users = [...SEED];
   }

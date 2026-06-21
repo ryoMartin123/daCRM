@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { ChevronUp } from "lucide-react";
+import AppSwitcher from "@/components/platform/AppSwitcher";
 import HierarchySelector from "@/components/layout/HierarchySelector";
 import GlobalCreateMenu from "@/components/layout/GlobalCreateMenu";
 import GlobalSearch from "@/components/layout/GlobalSearch";
@@ -18,8 +19,9 @@ export default function TopBar({ onHide }: { onHide?: () => void }) {
         borderBottom: "1px solid var(--topbar-border)",
       }}
     >
-      {/* Left */}
-      <div className="flex-1 min-w-0 flex items-center">
+      {/* Left — app switcher + hierarchy selector */}
+      <div className="flex-1 min-w-0 flex items-center gap-3">
+        <AppSwitcher />
         <HierarchySelector />
       </div>
 

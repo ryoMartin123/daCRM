@@ -40,31 +40,31 @@ const SPECS: Spec[] = [
     name: "Ryo Martin", accountType: "residential", status: "Customer",
     phone: "(706) 555-0142", email: "ryo.martin@example.com",
     address: "418 Telfair St", city: "Augusta", state: "GA", zip: "30901",
-    job: { title: "AC Tune-Up", type: "agreement_visit", tech: "Marcus Reyes", amount: "$189.00", scheduledDate: "Jun 12, 2026", scheduledTime: "9:00 AM" },
+    job: { title: "AC Tune-Up", type: "agreement_visit", tech: "Ryo Martin", amount: "$189.00", scheduledDate: "Jun 12, 2026", scheduledTime: "9:00 AM" },
   },
   {
     name: "Brecht Holdings LLC", accountType: "commercial", status: "Customer",
     phone: "(706) 555-0188", email: "facilities@brechtholdings.com",
     address: "2201 Central Ave", city: "Augusta", state: "GA", zip: "30904",
-    job: { title: "Rooftop Unit Replacement", type: "replacement", tech: "Marcus Reyes", amount: "$12,400.00", scheduledDate: "Jun 18, 2026", scheduledTime: "8:00 AM" },
+    job: { title: "Rooftop Unit Replacement", type: "replacement", tech: "Ryo Martin", amount: "$12,400.00", scheduledDate: "Jun 18, 2026", scheduledTime: "8:00 AM" },
   },
   {
     name: "Giesbrecht Property Group", accountType: "property_management", status: "Customer",
     phone: "(706) 555-0211", email: "ops@giesbrechtpg.com",
     address: "150 Greene St", city: "Augusta", state: "GA", zip: "30901",
-    job: { title: "Quarterly HVAC Inspection", type: "inspection", tech: "Marcus Reyes", scheduledDate: "Jun 20, 2026", scheduledTime: "10:30 AM" },
+    job: { title: "Quarterly HVAC Inspection", type: "inspection", tech: "Ryo Martin", scheduledDate: "Jun 20, 2026", scheduledTime: "10:30 AM" },
   },
   {
     name: "Southern Rentals Network", accountType: "multi_site", status: "Prospect",
     phone: "(803) 555-0177", email: "maintenance@southernrentals.com",
     address: "905 Georgia Ave", city: "North Augusta", state: "SC", zip: "29841",
-    job: { title: "Unit 4B Furnace Repair", type: "repair", tech: "Marcus Reyes", amount: "$420.00", scheduledDate: "Jun 22, 2026", scheduledTime: "1:00 PM" },
+    job: { title: "Unit 4B Furnace Repair", type: "repair", tech: "Ryo Martin", amount: "$420.00", scheduledDate: "Jun 22, 2026", scheduledTime: "1:00 PM" },
   },
   {
     name: "Augusta Community Center", accountType: "other", status: "Prospect",
     phone: "(706) 555-0133", email: "info@augustacc.org",
     address: "3014 Wrightsboro Rd", city: "Augusta", state: "GA", zip: "30909",
-    job: { title: "Walkthrough & Estimate", type: "estimate", tech: "Marcus Reyes" },
+    job: { title: "Walkthrough & Estimate", type: "estimate", tech: "Ryo Martin" },
   },
 ];
 

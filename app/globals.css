@@ -40,6 +40,7 @@
   --accent-text:         #4f46e5;   /* indigo-600 */
   --accent-text-strong:  #3730a3;   /* indigo-800 */
   --accent-icon:         #6366f1;   /* indigo-500 */
+  --skeleton-sheen:      rgba(255,255,255,0.6);  /* shimmer highlight on skeletons */
 
   /* ── Soft warning surfaces (urgent panels, overdue) ── */
   --warning-soft-bg:     #fffbeb;   /* amber-50 */
@@ -99,6 +100,7 @@
   --accent-text:         #a5b4fc;   /* indigo-300 — legible, not glaring */
   --accent-text-strong:  #c7d2fe;   /* indigo-200 — headings */
   --accent-icon:         #8b8fd9;   /* desaturated indigo */
+  --skeleton-sheen:      rgba(255,255,255,0.05); /* subtle shimmer on dark skeletons */
 
   /* ── Soft warning surfaces — cooler, softer amber ── */
   --warning-soft-bg:     #2a2415;   /* warm charcoal, low glare */
@@ -137,6 +139,88 @@ body {
   background-color: var(--bg-page);
   color: var(--text-primary);
   font-family: var(--font-family-sans);
+}
+
+/* ─── Platform welcome launcher animations ────────────────────────────
+   Apple "Hello"-style entrance: hero text eases in softly, the prompt and app
+   cards rise and fade in a gentle stagger. Items set their own animation-delay
+   inline. Respect reduced-motion. */
+@keyframes platform-hero {
+  0%   { opacity: 0; transform: translateY(14px) scale(0.985); letter-spacing: 0.04em; filter: blur(6px); }
+  60%  { opacity: 1; filter: blur(0); }
+  100% { opacity: 1; transform: translateY(0) scale(1); letter-spacing: normal; filter: blur(0); }
+}
+@keyframes platform-rise {
+  0%   { opacity: 0; transform: translateY(18px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.platform-hero {
+  opacity: 0;
+  animation: platform-hero 1.5s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+.platform-rise {
+  opacity: 0;
+  animation: platform-rise 0.7s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .platform-hero, .platform-rise { animation: none; opacity: 1; }
+}
+
+/* ─── Skeleton loading blocks ─────────────────────────────────────────
+   Quiet placeholder shapes shown while a page route or major content loads.
+   A neutral base tinted to the surface, with a soft sheen that sweeps across.
+   Matches the dark premium UI; respects reduced-motion. */
+.skeleton-block {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--bg-surface-2);
+  border-radius: 8px;
+}
+.skeleton-block::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--skeleton-sheen), transparent);
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  100% { transform: translateX(100%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-block::after { animation: none; }
+}
+
+/* ─── Route content transition ────────────────────────────────────────
+   Each route's content — and its skeleton fallback — fades in as it mounts, so
+   the skeleton→content swap reads as a soft cross-dissolve instead of a hard
+   pop. Targets the first child of the content region, so it fires both when the
+   skeleton appears and again when the real content replaces it (a freshly
+   mounted element). Opacity ONLY: a transform here would establish a containing
+   block and reparent every position:fixed modal/drawer in the app. */
+@keyframes route-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+[data-comment-region] > :first-child,
+[data-route-fade] > :first-child {
+  animation: route-fade-in 0.32s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-comment-region] > :first-child,
+  [data-route-fade] > :first-child { animation: none; }
+}
+
+/* App loading screen — a gentle breathing pulse on the app icon tile. */
+@keyframes app-loading-pulse {
+  0%, 100% { opacity: 0.55; transform: scale(0.97); }
+  50%      { opacity: 1;    transform: scale(1); }
+}
+.app-loading-pulse {
+  animation: app-loading-pulse 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-loading-pulse { animation: none; opacity: 1; }
 }
 
 /* ─── Glossy selectable pill ──────────────────────────────────────────
@@ -258,15 +342,36 @@ body {
 }
 
 /* ── Widget editing outline (applied via JS className) ───────────── */
+/* Easing the outline + drag-handle in (instead of popping) makes entering
+   customize mode feel like a smooth mode-switch, matching the dock/frame/
+   drawer chrome and the comment-mode banner. */
+@keyframes dash-widget-edit-in {
+  from { outline-color: transparent; }
+  to   { outline-color: rgba(99, 102, 241, 0.35); }
+}
+@keyframes dash-handle-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 .dashboard-widget-editing {
   outline: 2px dashed rgba(99, 102, 241, 0.35);
   outline-offset: 0;
   border-radius: 12px;
   transition: outline-color 0.15s ease, box-shadow 0.15s ease;
+  animation: dash-widget-edit-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .dashboard-widget-editing:hover {
   outline-color: rgba(99, 102, 241, 0.65);
   box-shadow: 0 0 0 3px rgba(99,102,241,0.08);
+}
+/* The drag-handle bar floats over each widget's top edge — slide+fade it in
+   so the header isn't abruptly covered. */
+.dashboard-widget-editing .widget-drag-handle {
+  animation: dash-handle-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-widget-editing,
+  .dashboard-widget-editing .widget-drag-handle { animation: none; }
 }
 
 /* ── Customize ("edit mode") chrome ──────────────────────────────────
@@ -285,6 +390,22 @@ body {
 @keyframes dash-drawer-in {
   from { opacity: 0; transform: translateX(24px); }
   to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Content-block live drag preview — the ghost grows into each position it lands
+   on as the rep drags it through the proposal, so neighbouring sections glide to
+   make room (the same feel as dropping a widget on the dashboard). Longer, eased. */
+@keyframes cb-ghost-in {
+  from { opacity: 0; max-height: 0;    transform: translateY(-6px); }
+  to   { opacity: 0.85; max-height: 1400px; transform: translateY(0); }
+}
+.cb-ghost-block {
+  overflow: hidden;
+  transform-origin: top center;
+  animation: cb-ghost-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cb-ghost-block { animation: none; }
 }
 
 /* Ambient inset frame — overlays the whole viewport, ignores pointer

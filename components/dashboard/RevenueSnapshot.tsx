@@ -43,7 +43,7 @@ export default function RevenueSnapshot() {
 
   return (
     <div className="rounded-xl p-4 h-full min-h-0 flex flex-col overflow-y-auto dashboard-widget-content"
-      style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+      style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)" }}>
       <div className="flex items-center justify-between mb-1 shrink-0">
         <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Revenue</h2>
         <Link href="/invoices" className="text-xs font-medium text-indigo-600 hover:text-indigo-700">

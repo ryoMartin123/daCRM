@@ -30,7 +30,7 @@ export default function PipelineSnapshot() {
 
   return (
     <div className="rounded-xl p-4 h-full min-h-0 flex flex-col"
-      style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+      style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)" }}>
       <div className="flex items-center justify-between mb-3 shrink-0">
         <div>
           <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Pipeline</h2>

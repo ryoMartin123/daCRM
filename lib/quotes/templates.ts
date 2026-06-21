@@ -9,6 +9,7 @@
 // what a row + its `template_items` would hold.
 
 import type { LineItemCategory } from "./types";
+import { getFamily } from "@/lib/proposals/families";
 
 export interface QuoteTemplateSeedItem {
   name: string;
@@ -138,12 +139,35 @@ export interface QuoteTemplateConfig {
   active: boolean;
   isDefault: boolean;
   sections: Record<string, boolean>;
+  // Customer-facing LAYOUT: the proposal Template Family + Style Variant this
+  // quote template renders in. Salesbooks pick a quote template and inherit this.
+  familyId?: string;
+  variantId?: string;
 }
 
 const TEMPLATE_DEFAULT_TYPE: Record<string, TemplateType> = {
   standard_service: "service", good_better_best: "tiered", project: "project",
   agreement: "agreement", repair_replace: "comparison",
 };
+
+// Default proposal layout (family + variant) per seed template.
+const TEMPLATE_DEFAULT_LAYOUT: Record<string, { familyId: string; variantId: string }> = {
+  standard_service: { familyId: "classic",    variantId: "clean" },
+  good_better_best: { familyId: "comparison", variantId: "bold" },
+  project:          { familyId: "classic",    variantId: "executive" },
+  agreement:        { familyId: "classic",    variantId: "clean" },
+  repair_replace:   { familyId: "comparison", variantId: "clean" },
+};
+
+// Resolve a template config's layout, filling sensible defaults for configs
+// saved before the family system or seed templates without an explicit layout.
+export function templateLayoutIds(c: { key: string; familyId?: string; variantId?: string }): { familyId: string; variantId: string } {
+  if (c.familyId) {
+    const fam = getFamily(c.familyId);
+    return { familyId: fam.id, variantId: c.variantId ?? fam.defaultVariant };
+  }
+  return TEMPLATE_DEFAULT_LAYOUT[c.key] ?? { familyId: "classic", variantId: "clean" };
+}
 
 // Sections enabled by default per template (others default on except a few).
 function defaultSections(key: string): Record<string, boolean> {
@@ -166,6 +190,7 @@ function defaultTemplateConfigs(): QuoteTemplateConfig[] {
     active: true,
     isDefault: i === 0,
     sections: defaultSections(t.key),
+    ...templateLayoutIds({ key: t.key }),
   }));
 }
 

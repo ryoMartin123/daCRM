@@ -63,7 +63,7 @@ const SEED: Conversation[] = [
     id: 1, name: "Ryo Martin", preview: "Sounds good, see you at 9!", time: "9:02 AM",
     job: "AC Tune-Up", type: "sms", unread: true,
     contact: { name: "Ryo Martin", phone: "(706) 555-0142", email: "ryo.martin@example.com" },
-    activeJob: { title: "AC Tune-Up", time: "Today · 9:00 AM", tech: "Marcus Reyes" },
+    activeJob: { title: "AC Tune-Up", time: "Today · 9:00 AM", tech: "Ryo Martin" },
     messages: [
       { id: 1, from: "customer", text: "Hi, are we still on for this morning?", time: "8:48 AM" },
       { id: 2, from: "us",       text: "Yes! Marcus is on the way 🚐", time: "8:50 AM" },

@@ -30,7 +30,7 @@ export default function VisitsToSchedule() {
   if (items.length === 0) {
     return (
       <div className="rounded-xl p-4 h-full min-h-0 flex flex-col items-center justify-center"
-        style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+        style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)" }}>
         <CalendarClock className="w-6 h-6 mb-2 opacity-30" style={{ color: "var(--text-muted)" }} />
         <p className="text-sm text-center" style={{ color: "var(--text-muted)" }}>No agreement visits to schedule.</p>
       </div>
@@ -39,7 +39,7 @@ export default function VisitsToSchedule() {
 
   return (
     <div className="rounded-xl overflow-hidden h-full min-h-0 flex flex-col"
-      style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+      style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)" }}>
       <div className="flex items-center justify-between px-4 py-3 shrink-0" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
         <div className="flex items-center gap-2">
           <CalendarClock className="w-4 h-4" style={{ color: "#059669" }} />

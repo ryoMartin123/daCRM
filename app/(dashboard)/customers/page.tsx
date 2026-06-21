@@ -158,7 +158,7 @@ export default function CustomersPage() {
       {/* Header — title · centered view toggle · action */}
       <div className="flex items-center gap-4 mb-6">
         <div className="flex-1 min-w-0">
-          <PageTitle title="Customers" count={contextFiltered.length} description="All customers, leads, and accounts" />
+          <PageTitle title="Customers" count={contextFiltered.length} description="Manage customer accounts, contacts, properties, equipment, and history." />
         </div>
         <ModuleViewToggle view={moduleView} onChange={setModuleView} />
         <div className="flex-1 flex justify-end gap-2">

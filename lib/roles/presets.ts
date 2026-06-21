@@ -122,6 +122,31 @@ export const ROLE_PRESETS: Record<RoleKey, RoleDefinition> = {
     masks: ["finance_cost_margin", "finance_totals", "comms_internal_notes"],
     flags: [],
   },
+
+  // ── Accounting / Bookkeeper ──────────────────────────────
+  accounting: {
+    key: "accounting", label: "Accounting", system: true, scopeTier: "employee",
+    description: "Handle invoices, payments, expenses, and financial reports across the org.",
+    capabilities: {
+      dashboard: VIEW,
+      invoices: { ...FULL }, payments: { ...FULL },
+      customers: { view: A }, reports: { view: A, export: A },
+    },
+    masks: [], // accounting sees financials
+    flags: ["reports_cross_scope"],
+  },
+
+  // ── HR Manager (people ops, not financials) ──────────────
+  hr_manager: {
+    key: "hr_manager", label: "HR Manager", system: true, scopeTier: "company_admin",
+    description: "Manage employees, onboarding, training, time off, and reviews. People — not deals.",
+    capabilities: {
+      dashboard: VIEW,
+      users: { ...FULL }, files: { view: A, create: A },
+    },
+    masks: ["finance_cost_margin", "finance_totals"],
+    flags: ["users_manage"],
+  },
 };
 
 // Minimal safe role for an unknown key (e.g. a deleted custom role still on a
@@ -141,6 +166,7 @@ export function getRolePreset(key: RoleKey): RoleDefinition {
 export const ROLE_ORDER: RoleKey[] = [
   "org_owner", "org_admin", "branch_manager", "location_manager",
   "dispatcher", "field_technician", "installer", "salesperson",
+  "accounting", "hr_manager",
 ];
 
 // Roles offered when assigning a user (excludes org_owner, set only on the

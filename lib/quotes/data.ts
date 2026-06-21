@@ -6,11 +6,12 @@
 //   supabase.from('quotes').select('*, line_items(*)')
 //     .eq('organization_id', orgId).order('created_at', { ascending: false })
 
-import type { Quote, Invoice, QuoteStatus, QuoteMode, QuotePricing, InvoiceStatus, LineItemCategory, QuoteSection } from "./types";
+import type { Quote, Invoice, QuoteStatus, QuoteMode, QuoteRenderMode, QuotePricing, InvoiceStatus, LineItemCategory, QuoteSection } from "./types";
 import type { QuoteBlock } from "./blocks";
 import { QUOTE_STATUS_STYLE } from "./types";
 import { createJob, getJob, type Job } from "@/lib/jobs/data";
 import { createProject, type Project } from "@/lib/projects/data";
+import { currentUser } from "@/lib/hierarchy/data";   // signed-in user (org admin) — drives createdBy / assignedTo / activity actor
 
 const STATUS_LABEL: Record<QuoteStatus, string> =
   Object.fromEntries(Object.entries(QUOTE_STATUS_STYLE).map(([k, v]) => [k, v.label])) as Record<QuoteStatus, string>;
@@ -64,6 +65,7 @@ export interface QuoteOption {
   notes?: string;
   image?: string;            // image URL or data-URL (equipment/product photo)
   selected?: boolean;        // customer-chosen tier
+  featured?: boolean;        // recommended / highlighted option
 }
 
 // ─── Activity log (per quote) ─────────────────────────────
@@ -86,6 +88,7 @@ export interface QuoteRecord extends Quote {
   internalNotes?: string;
   customerNotes?: string;          // customer-facing notes shown on the quote
   templateKey?: string;            // template the quote was created from
+  quoteDesignId?: string;          // customer-facing Quote Design (copied from the salesbook at creation; overridable)
   salesbookId?: string;            // company salesbook the quote was started from (template path)
   proposalTemplateId?: string;     // proposal template the quote was built from
   sections?: QuoteSection[];       // ordered, snapshot-copied proposal sections (template path)
@@ -276,7 +279,7 @@ export function duplicateInvoice(id: string): InvoiceRecord | undefined {
 function nowStamp(): string {
   return new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
-function newActivity(kind: QuoteActivityKind, message: string, actor = "Marcus Reyes"): QuoteActivity {
+function newActivity(kind: QuoteActivityKind, message: string, actor = currentUser.fullName): QuoteActivity {
   return { id: `qa-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, at: nowStamp(), iso: new Date().toISOString(), actor, kind, message };
 }
 
@@ -305,7 +308,7 @@ const STATUS_VERB: Partial<Record<QuoteStatus, QuoteActivityKind>> = {
 };
 
 // Update status (+ append matching activity). Used by Mark Sent/Approved/etc.
-export function updateQuoteStatus(id: string, status: QuoteStatus, actor = "Marcus Reyes"): QuoteRecord | undefined {
+export function updateQuoteStatus(id: string, status: QuoteStatus, actor = currentUser.fullName): QuoteRecord | undefined {
   const q = getQuote(id);
   if (!q) return;
   const patch: Partial<QuoteRecord> = { status };
@@ -316,13 +319,13 @@ export function updateQuoteStatus(id: string, status: QuoteStatus, actor = "Marc
   return getQuote(id);
 }
 
-export function setQuoteNotes(id: string, notes: { internalNotes?: string; customerNotes?: string }, actor = "Marcus Reyes"): void {
+export function setQuoteNotes(id: string, notes: { internalNotes?: string; customerNotes?: string }, actor = currentUser.fullName): void {
   persistEdit(id, notes, newActivity("note", "Notes updated", actor));
 }
 
 // Edit a quote's contents (title, line items, totals, notes, links). Used by the
 // edit flow; logs an "edited" activity entry.
-export function updateQuote(id: string, patch: Partial<QuoteRecord>, actor = "Marcus Reyes"): QuoteRecord | undefined {
+export function updateQuote(id: string, patch: Partial<QuoteRecord>, actor = currentUser.fullName): QuoteRecord | undefined {
   persistEdit(id, patch, newActivity("edited", "Quote edited", actor));
   return getQuote(id);
 }
@@ -336,7 +339,7 @@ export function autosaveQuote(id: string, patch: Partial<QuoteRecord>): QuoteRec
 
 // Convert to a job — creates a real (unscheduled) job, links it on the quote,
 // marks the quote converted, and logs activity. Returns the new job.
-export function convertQuoteToJob(id: string, actor = "Marcus Reyes"): Job | undefined {
+export function convertQuoteToJob(id: string, actor = currentUser.fullName): Job | undefined {
   const q = getQuote(id);
   if (!q) return;
   const job = createJob({
@@ -354,7 +357,7 @@ export function convertQuoteToJob(id: string, actor = "Marcus Reyes"): Job | und
 
 // Convert to a project — creates a real draft project, links it, marks the
 // quote converted, and logs activity. Returns the new project.
-export function convertQuoteToProject(id: string, actor = "Marcus Reyes"): Project | undefined {
+export function convertQuoteToProject(id: string, actor = currentUser.fullName): Project | undefined {
   const q = getQuote(id);
   if (!q) return;
   const project = createProject({
@@ -393,7 +396,7 @@ export function duplicateQuote(id: string): QuoteRecord | undefined {
 }
 
 // Reopen a rejected/expired quote back to an editable draft.
-export function reopenQuote(id: string, actor = "Marcus Reyes"): QuoteRecord | undefined {
+export function reopenQuote(id: string, actor = currentUser.fullName): QuoteRecord | undefined {
   const q = getQuote(id);
   if (!q) return;
   persistEdit(id, { status: "draft", approvedAt: undefined }, newActivity("status", "Reopened as draft", actor));
@@ -401,17 +404,17 @@ export function reopenQuote(id: string, actor = "Marcus Reyes"): QuoteRecord | u
 }
 
 // Resend a sent quote (logs activity; status unchanged).
-export function resendQuote(id: string, actor = "Marcus Reyes"): void {
+export function resendQuote(id: string, actor = currentUser.fullName): void {
   persistEdit(id, {}, newActivity("sent", "Quote re-sent to customer", actor));
 }
 
 // Archive — removes the quote from active lists without hard-deleting it.
-export function archiveQuote(id: string, actor = "Marcus Reyes"): void {
+export function archiveQuote(id: string, actor = currentUser.fullName): void {
   persistEdit(id, { archived: true }, newActivity("status", "Quote archived", actor));
 }
 
 // Unarchive — restores an archived quote to the active lists.
-export function unarchiveQuote(id: string, actor = "Marcus Reyes"): void {
+export function unarchiveQuote(id: string, actor = currentUser.fullName): void {
   persistEdit(id, { archived: false }, newActivity("status", "Quote unarchived", actor));
 }
 
@@ -510,9 +513,11 @@ export interface NewQuoteInput {
   propertyLabel?: string;
   linkedLabel?: string; linkedType?: QuoteRecord["linkedType"]; linkedId?: string;
   // Metadata
-  templateKey?: string; assignedTo?: string; customerNotes?: string; internalNotes?: string;
+  templateKey?: string; quoteDesignId?: string; assignedTo?: string; customerNotes?: string; internalNotes?: string;
   // How the quote was created (drives which editor it opens). Defaults to "custom".
   quoteMode?: QuoteMode;
+  // How the Quote Design renders this quote's content (quick/single/multi/etc.).
+  renderMode?: QuoteRenderMode;
   // Salesbook this quote was started from (template path)
   salesbookId?: string;
   // Proposal template structure (snapshot-copied into the quote)
@@ -543,14 +548,15 @@ export function createQuote(input: NewQuoteInput): QuoteRecord {
     projectId: input.projectId, agreementId: input.agreementId,
     quoteNumber: number, title: input.title, status,
     quoteMode: input.quoteMode ?? "custom",
+    renderMode: input.renderMode,
     ...totals, expiresAt: input.expiresAt,
     assignedUserId: undefined,
-    createdBy: "Marcus Reyes",
+    createdBy: currentUser.fullName,
     createdAt: nowStamp(), updatedAt: nowStamp(),
     lineItems: input.lineItems,
     customerName: input.customerName, customerInitials: input.customerInitials, locationName: input.locationName,
     propertyLabel: input.propertyLabel,
-    templateKey: input.templateKey, assignedTo: input.assignedTo ?? "Marcus Reyes",
+    templateKey: input.templateKey, quoteDesignId: input.quoteDesignId, assignedTo: input.assignedTo ?? currentUser.fullName,
     salesbookId: input.salesbookId,
     proposalTemplateId: input.proposalTemplateId, sections: input.sections,
     options: input.options, pricing: input.pricing,
@@ -601,7 +607,7 @@ export function createInvoice(input: NewInvoiceInput): InvoiceRecord {
     quoteId: input.quoteId,
     invoiceNumber: nextNumber("INV", all), title: input.title, status: "draft",
     ...totals, balanceDue: totals.total, dueDate: input.dueDate,
-    createdBy: "Marcus Reyes",
+    createdBy: currentUser.fullName,
     createdAt: nowStamp(), updatedAt: nowStamp(),
     lineItems: input.lineItems,
     customerName: input.customerName, customerInitials: input.customerInitials, locationName: input.locationName,

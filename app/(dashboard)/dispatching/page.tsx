@@ -497,7 +497,7 @@ export default function CalendarPage() {
       {/* Header — title (left) · centered date nav (date above arrows) · Hourly toggle (right) */}
       <div className="flex items-center gap-3">
         <div className="flex-1 min-w-0">
-          <PageTitle title="Dispatching" description="Dispatch command center — schedule and assign jobs" />
+          <PageTitle title="Dispatching" description="Schedule jobs, assign technicians, and manage unscheduled work." />
           {boardScopeNotice && (
             <button onClick={() => selectBoard("all")}
               title="Viewing a scoped board — click to return to all boards"
@@ -510,13 +510,14 @@ export default function CalendarPage() {
           )}
         </div>
 
-        {/* Center: date label above the arrows, centered */}
-        <div className="flex flex-col items-center gap-1 shrink-0">
+        {/* Center: date label above a quiet nav — ghost icon buttons + a subtle
+            Today link, no heavy segmented container, integrated with the dark UI. */}
+        <div className="flex flex-col items-center gap-0.5 shrink-0">
           <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{rangeLabel}</span>
-          <div className="flex items-center rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
-            <button onClick={() => navigate(-1)} title="Previous" className="px-2.5 py-1.5 transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-secondary)" }}><ChevronLeft className="w-4 h-4" /></button>
-            <button onClick={() => setFocus(new Date())} className="px-4 py-1.5 text-sm font-medium transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-secondary)", borderLeft: "1px solid var(--border)", borderRight: "1px solid var(--border)" }}>Today</button>
-            <button onClick={() => navigate(1)} title="Next" className="px-2.5 py-1.5 transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-secondary)" }}><ChevronRight className="w-4 h-4" /></button>
+          <div className="flex items-center gap-0.5">
+            <button onClick={() => navigate(-1)} title="Previous" className="p-1 rounded-md transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-muted)" }}><ChevronLeft className="w-4 h-4" /></button>
+            <button onClick={() => setFocus(new Date())} className="px-2 py-0.5 rounded-md text-xs font-medium transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-muted)" }}>Today</button>
+            <button onClick={() => navigate(1)} title="Next" className="p-1 rounded-md transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-muted)" }}><ChevronRight className="w-4 h-4" /></button>
           </div>
         </div>
 

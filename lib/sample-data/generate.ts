@@ -34,7 +34,7 @@ const PLACES = [
   { city: "North Augusta", state: "SC", zip: "29841" },
   { city: "Aiken", state: "SC", zip: "29801" },
 ];
-const TECHS = ["Marcus Reyes", "Dana Whitfield", "Luis Romero", "Priya Shah", "Owen Bauer"];
+const TECHS = ["Ryo Martin", "Dana Whitfield", "Luis Romero", "Priya Shah", "Owen Bauer"];
 
 const JOB_TYPES: JobType[] = ["agreement_visit", "repair", "installation", "inspection", "emergency", "estimate", "warranty", "replacement"];
 const JOB_TITLES: Record<string, string[]> = {

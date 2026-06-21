@@ -50,14 +50,14 @@ export default function UrgentPanel() {
 
   if (items.length === 0) return (
     <div className="rounded-xl p-4 h-full min-h-0 flex flex-col items-center justify-center"
-      style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+      style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)" }}>
       <p className="text-sm text-center py-4" style={{ color: "var(--text-muted)" }}>Nothing urgent right now.</p>
     </div>
   );
 
   return (
     <div className="rounded-xl overflow-hidden h-full min-h-0 flex flex-col"
-      style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+      style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)" }}>
       <div className="flex items-center justify-between px-4 py-3 shrink-0"
         style={{ backgroundColor: "var(--warning-soft-bg)", borderBottom: "1px solid var(--warning-soft-border)" }}>
         <div className="flex items-center gap-2">

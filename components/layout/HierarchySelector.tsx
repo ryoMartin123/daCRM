@@ -11,6 +11,9 @@ const OPERATIONAL_PREFIXES = [
   "/dashboard", "/inbox", "/customers", "/leads", "/jobs", "/projects",
   "/quotes", "/invoices", "/items",
   "/tasks", "/dispatching", "/calendar", "/files", "/agreements", "/marketing", "/reports",
+  // Platform apps that filter by the active company/location context. Portal
+  // (self-service) and Admin (platform-wide management) intentionally omitted.
+  "/hr", "/accounting", "/documents",
 ];
 
 function isOperational(pathname: string) {

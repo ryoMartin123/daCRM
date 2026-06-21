@@ -24,6 +24,12 @@ export const QUOTE_MODE_LABELS: Record<QuoteMode, string> = {
   custom:   "Custom Proposal",
 };
 
+// How much content the Quote Design renders for this quote (chosen by quote
+// type/content, resolved against the design's supported modes). Mirrors
+// QuoteDesignMode in lib/quotes/quoteDesigns; kept here so the quote record stays
+// decoupled from the design library.
+export type QuoteRenderMode = "quick_quote" | "single_offer" | "multi_option" | "salesbook" | "custom";
+
 // Pricing-wizard worksheet + computed results, stored on a custom-mode quote.
 // Internal (rep-only) — not shown to the customer on the proposal.
 export interface QuotePricing {
@@ -97,6 +103,7 @@ export interface Quote {
   title: string;
   status: QuoteStatus;
   quoteMode?: QuoteMode;   // how the quote was created (defaults to "custom" for legacy records)
+  renderMode?: QuoteRenderMode;  // how the Quote Design renders this quote's content
 
   subtotal: number;
   tax: number;

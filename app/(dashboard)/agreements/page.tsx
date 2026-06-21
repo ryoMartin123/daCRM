@@ -173,7 +173,7 @@ export default function AgreementsPage() {
       {/* Page header — title · centered view toggle · actions */}
       <div className="flex items-center gap-4">
         <div className="flex-1 min-w-0">
-          <PageTitle title="Agreements" count={agreements.length} description="Maintenance plans, service agreements, renewals, and recurring visits" />
+          <PageTitle title="Agreements" count={agreements.length} description="Manage recurring service plans, visits, billing rules, and renewals." />
         </div>
         <ModuleViewToggle view={moduleView} onChange={setModuleView} />
         <div className="flex-1 flex items-center justify-end gap-2">

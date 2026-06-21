@@ -72,7 +72,7 @@ export default function WorkOrdersPage() {
       {/* Header — title · centered view toggle · action */}
       <div className="flex items-center gap-4 mb-6">
         <div className="flex-1 min-w-0">
-          <PageTitle title="Work Orders" count={contextFiltered.length} description="Field execution instructions — one work order per job" />
+          <PageTitle title="Work Orders" count={contextFiltered.length} description="Manage field instructions, checklists, required photos, and completion status." />
         </div>
         <ModuleViewToggle view={moduleView} onChange={setModuleView} />
         <div className="flex-1 flex justify-end">

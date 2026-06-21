@@ -11,6 +11,7 @@ import {
   Shield, ShieldCheck, Plus, Pencil, Trash2, RotateCcw, ArrowLeft, Lock, Check,
 } from "lucide-react";
 import UiSelect from "@/components/ui/Select";
+import StatusBadge from "@/components/shared/StatusBadge";
 import { usePermissions } from "@/components/providers/PermissionProvider";
 import {
   RESOURCE_ORDER, RESOURCE_LABELS, ACTION_ORDER, ACTION_LABELS, MASK_LABELS, FLAG_LABELS,
@@ -108,10 +109,7 @@ export default function RolesSection() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{role.label}</p>
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                        style={{ backgroundColor: "var(--bg-input)", color: "var(--text-muted)" }}>
-                        {role.system ? "DEFAULT" : "CUSTOM"}
-                      </span>
+                      <StatusBadge size="sm" label={role.system ? "Default" : "Custom"} color={role.system ? "#9ca3af" : "#6366f1"} />
                     </div>
                     <p className="text-xs mt-0.5 leading-snug" style={{ color: "var(--text-muted)" }}>{role.description}</p>
                   </div>

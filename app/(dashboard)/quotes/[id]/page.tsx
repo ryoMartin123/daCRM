@@ -4,28 +4,70 @@ import React, { use, useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ArrowLeft, Pencil, Eye, Copy, ChevronRight, ChevronDown, FileCheck,
+  ArrowLeft, Pencil, Eye, Copy, ChevronRight, MoreVertical, FileCheck,
   Briefcase, FolderKanban, TrendingUp, Send, X, Download, Printer, Archive, ArchiveRestore,
   Trash2, RotateCcw, Link2, RefreshCw, XCircle, Clock, Receipt,
-  FileText, Tag, DollarSign, CheckCircle, Calendar, MapPin, User, MessageSquare,
+  FileText, Tag, DollarSign, CheckCircle, Calendar, MapPin, User, MessageSquare, Palette,
+  Zap, LayoutTemplate, SlidersHorizontal, Layers, Plus, Upload, Image as ImageIcon,
+  FileBox, Trash,
 } from "lucide-react";
-import HoverInfo, { Pill } from "@/components/shared/HoverInfo";
 import {
   getQuote, fmt, duplicateQuote, updateQuoteStatus, convertQuoteToJob, convertQuoteToProject,
-  setQuoteNotes, getQuoteActivity, reopenQuote, resendQuote, archiveQuote, unarchiveQuote, deleteQuote,
-  createInvoiceFromQuote, type QuoteRecord, type QuoteActivityKind,
+  getQuoteActivity, reopenQuote, resendQuote, archiveQuote, unarchiveQuote, deleteQuote,
+  createInvoiceFromQuote, type QuoteRecord, type QuoteActivityKind, type QuoteOption,
 } from "@/lib/quotes/data";
 import { downloadProposalPdf } from "@/lib/quotes/proposalPdf";
-import { getActiveDesign } from "@/lib/proposals/designs";
+import { downloadCustomProposalPdf } from "@/lib/quotes/customProposalPdf";
+import { resolveQuoteDesign, legacyDesignForQuoteDesign } from "@/lib/quotes/quoteDesigns";
 import { proposalDocFromQuote } from "@/lib/quotes/proposalDoc";
+import { getProposalBranding } from "@/lib/proposals/data";
+import { getActiveDesign } from "@/lib/proposals/designs";
+import { sectionsToBlocks } from "@/lib/quotes/blocks";
 import { QUOTE_STATUS_STYLE, type QuoteStatus } from "@/lib/quotes/types";
 import { getCustomer } from "@/lib/customers/data";
-import ProposalDocument from "@/components/quotes/ProposalDocument";
+import ProposalFamilyDocument from "@/components/quotes/family/ProposalFamilyDocument";
+import CustomProposalDocument, { type CustomDocData } from "@/components/quotes/custom/CustomProposalDocument";
 import Commentable from "@/components/comments/Commentable";
 import DetailTabs from "@/components/shared/DetailTabs";
-import StatusBadge from "@/components/shared/StatusBadge";
 
-const TABS = ["Details", "Notes", "Activity"];
+// One adaptive detail page for every quote — the tabs are always present for
+// consistency; each tab's CONTENT adapts to the quote mode + available data.
+const TABS = ["Overview", "Pricing", "Options", "Files", "Activity"];
+
+// Quote-mode badge (Quick / Template / Custom) — shown in the header next to status.
+const QUOTE_MODE_META: Record<string, { label: string; color: string; icon: typeof Send }> = {
+  quick:    { label: "Quick",    color: "#4f46e5", icon: Zap },
+  template: { label: "Template", color: "#0891b2", icon: LayoutTemplate },
+  custom:   { label: "Custom",   color: "#7c3aed", icon: SlidersHorizontal },
+};
+function quoteModeMeta(mode?: string) { return QUOTE_MODE_META[mode ?? "custom"] ?? QUOTE_MODE_META.custom; }
+
+// Customer-decision + next-action are derived from status so every quote — however
+// it was created — surfaces the same command-center signals on the Overview tab.
+function customerDecision(status: QuoteStatus): { label: string; color: string } {
+  switch (status) {
+    case "draft":     return { label: "Not sent yet", color: "var(--text-muted)" };
+    case "sent":      return { label: "Awaiting response", color: "#d97706" };
+    case "viewed":    return { label: "Viewed by customer", color: "#0891b2" };
+    case "approved":  return { label: "Approved", color: "#059669" };
+    case "converted": return { label: "Approved · converted", color: "#059669" };
+    case "rejected":  return { label: "Declined", color: "#dc2626" };
+    case "expired":   return { label: "Expired", color: "#dc2626" };
+    default:          return { label: "—", color: "var(--text-muted)" };
+  }
+}
+function nextAction(status: QuoteStatus): string {
+  switch (status) {
+    case "draft":     return "Send the quote to the customer";
+    case "sent":      return "Follow up — awaiting the customer's decision";
+    case "viewed":    return "Follow up — customer has viewed it";
+    case "approved":  return "Convert to a job or create an invoice";
+    case "converted": return "Work is underway — create an invoice if needed";
+    case "rejected":  return "Duplicate and revise, or archive";
+    case "expired":   return "Revise & resend, or reopen as draft";
+    default:          return "—";
+  }
+}
 
 // Per-event icon + accent for the activity timeline (mirrors the lead/agreement
 // activity styling). Amber is the default accent; completions are green, the
@@ -157,10 +199,10 @@ function QuoteActionBar(h: ActionHandlers) {
         </button>
       ))}
       <div className="relative" ref={ref}>
-        <button onClick={() => setOpen(o => !o)}
-          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm transition-colors hover:bg-[var(--bg-surface-2)]"
+        <button onClick={() => setOpen(o => !o)} title="More actions" aria-label="More actions"
+          className="flex items-center justify-center p-1.5 rounded-lg transition-colors hover:bg-[var(--bg-surface-2)]"
           style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
-          More <ChevronDown className="w-3.5 h-3.5" />
+          <MoreVertical className="w-4 h-4" />
         </button>
         {open && (
           <div className="absolute right-0 top-full mt-1 w-56 rounded-xl overflow-hidden z-20 py-1"
@@ -290,12 +332,15 @@ function SectionCard({ title, count, action, children, className = "" }: {
   );
 }
 
-// ─── Details (overview) tab ───────────────────────────────
-function DetailsTab({ id, onTab }: { id: string; onTab: (tab: string) => void }) {
+// ─── Overview tab — the quote command center ──────────────
+function OverviewTab({ id, onTab }: { id: string; onTab: (tab: string) => void }) {
   const quote    = getQuote(id)!;
   const customer = getCustomer(quote.customerId);
   const stageConfig = QUOTE_STATUS_STYLE[quote.status];
   const activity = [...getQuoteActivity(quote)].reverse();
+  const mode = quoteModeMeta(quote.quoteMode);
+  const decision = customerDecision(quote.status);
+  const next = nextAction(quote.status);
 
   const LinkedIcon = quote.linkedType === "job" ? Briefcase
     : quote.linkedType === "project" ? FolderKanban
@@ -312,15 +357,15 @@ function DetailsTab({ id, onTab }: { id: string; onTab: (tab: string) => void })
   const summary: { icon: LucideIcon; label: string; value: string; sub?: string; accent?: string }[] = [
     { icon: CheckCircle, label: "Status", value: stageConfig.label, accent: stageConfig.color, sub: quote.archived ? "Archived" : quote.linkedType ? `Linked ${quote.linkedType}` : "Quote" },
     { icon: DollarSign, label: "Total", value: quote.total > 0 ? fmt(quote.total) : "TBD", sub: quote.total > 0 ? `${fmt(quote.subtotal)} + ${fmt(quote.tax)} tax` : `${quote.lineItems.length} item${quote.lineItems.length === 1 ? "" : "s"}` },
-    { icon: Clock, label: "Expires", value: quote.expiresAt ?? "—", accent: exp?.overdue ? "#dc2626" : undefined, sub: exp ? exp.text : "No expiry" },
-    { icon: FileText, label: "Line Items", value: String(quote.lineItems.length), sub: quote.lineItems.length === 1 ? "item" : "items" },
-    { icon: User, label: "Salesperson", value: salesperson || "—", sub: "Owner" },
+    { icon: Clock, label: "Expiration", value: quote.expiresAt ?? "—", accent: exp?.overdue ? "#dc2626" : undefined, sub: exp ? exp.text : "No expiry" },
+    { icon: FileCheck, label: "Customer Decision", value: decision.label, accent: decision.color },
+    { icon: TrendingUp, label: "Next Action", value: next },
   ];
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="h-full flex flex-col gap-5">
       {/* ── Summary cards ───────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5 shrink-0">
         {summary.map(c => (
           <div key={c.label} className="rounded-xl px-3 py-2.5" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
             <div className="flex items-center gap-1.5 mb-1">
@@ -334,13 +379,16 @@ function DetailsTab({ id, onTab }: { id: string; onTab: (tab: string) => void })
       </div>
 
       {/* ── Snapshot grid: quote details (left) · customer/links/activity (right) ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 shrink-0">
         {/* LEFT — wide quote details card */}
-        <OvCard title="Quote Details" className="lg:col-span-2">
+        <OvCard title="Quote Details" className="lg:col-span-2 h-full">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
             <DetailField icon={FileText}    label="Quote #"  value={<span className="font-mono">{quote.quoteNumber}</span>} />
             <DetailField icon={Tag}         label="Title"    value={quote.title} />
+            <DetailField icon={mode.icon}   label="Quote Mode" value={<span style={{ color: mode.color, fontWeight: 600 }}>{mode.label}</span>} />
             <DetailField icon={CheckCircle} label="Status"   value={<span style={{ color: stageConfig.color, fontWeight: 600 }}>{stageConfig.label}</span>} />
+            <DetailField icon={FileCheck}   label="Customer Decision" value={<span style={{ color: decision.color, fontWeight: 600 }}>{decision.label}</span>} />
+            <DetailField icon={TrendingUp}  label="Next Action" value={next} />
             <DetailField icon={DollarSign}  label="Total"    value={quote.total > 0 ? fmt(quote.total) : "TBD"} />
             <DetailField icon={DollarSign}  label="Subtotal" value={fmt(quote.subtotal)} />
             <DetailField icon={Receipt}     label="Tax"      value={fmt(quote.tax)} />
@@ -356,8 +404,8 @@ function DetailsTab({ id, onTab }: { id: string; onTab: (tab: string) => void })
           </div>
         </OvCard>
 
-        {/* RIGHT — customer · linked · recent activity */}
-        <div className="flex flex-col gap-4">
+        {/* RIGHT — customer · linked · recent activity (fills to match the left card) */}
+        <div className="h-full flex flex-col gap-4">
           <OvCard title="Customer">
             {customer ? (
               <Link href={`/customers/${customer.id}`} className="flex items-start gap-3 hover:opacity-80 transition-opacity">
@@ -394,7 +442,7 @@ function DetailsTab({ id, onTab }: { id: string; onTab: (tab: string) => void })
             </OvCard>
           )}
 
-          <SectionCard title="Recent Activity" count={activity.length} action={{ label: "View all", onClick: () => onTab("Activity") }}>
+          <SectionCard title="Recent Activity" count={activity.length} action={{ label: "View all", onClick: () => onTab("Activity") }} className="flex-1 min-h-0">
             {activity.length === 0 ? (
               <div className="px-4 py-8 text-center"><p className="text-sm" style={{ color: "var(--text-muted)" }}>No activity yet</p></div>
             ) : activity.slice(0, 4).map((a, i) => {
@@ -417,8 +465,42 @@ function DetailsTab({ id, onTab }: { id: string; onTab: (tab: string) => void })
         </div>
       </div>
 
-      {/* ── Line items — full width ───────────────────── */}
-      <LineItemsTable quoteId={id} />
+      {/* ── Line items — full-width card that fills the remaining vertical space ── */}
+      <div className="flex-1 min-h-0 rounded-xl flex flex-col overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+        <div className="flex items-center justify-between px-4 py-3 shrink-0" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Line Items</p>
+            {quote.lineItems.length > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "var(--bg-input)", color: "var(--text-muted)" }}>{quote.lineItems.length}</span>}
+          </div>
+          <button onClick={() => onTab("Pricing")} className="text-xs font-medium text-indigo-600 hover:text-indigo-700">View pricing</button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          {quote.lineItems.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-center py-8">
+              <p className="text-sm" style={{ color: "var(--text-muted)" }}>No line items yet</p>
+              <button onClick={() => onTab("Pricing")} className="mt-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-700">Add pricing →</button>
+            </div>
+          ) : (
+            <>
+              {quote.lineItems.map((item, i) => (
+                <div key={item.id} className="grid px-4 py-2.5 items-start" style={{ gridTemplateColumns: "3fr 0.6fr 1fr 1fr", borderBottom: "1px solid var(--border-subtle)" }}>
+                  <div className="min-w-0">
+                    <p className="text-sm truncate" style={{ color: "var(--text-primary)" }}>{item.name || item.description}</p>
+                    {item.name && item.description && item.name !== item.description && <p className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>{item.description}</p>}
+                  </div>
+                  <p className="text-sm text-right" style={{ color: "var(--text-secondary)" }}>{item.quantity}</p>
+                  <p className="text-sm text-right" style={{ color: "var(--text-secondary)" }}>{fmt(item.unitPrice)}</p>
+                  <p className="text-sm text-right font-medium" style={{ color: "var(--text-primary)" }}>{fmt(item.total)}</p>
+                </div>
+              ))}
+              <div className="flex justify-end px-4 py-3 gap-6" style={{ backgroundColor: "var(--bg-surface-2)" }}>
+                <span className="text-sm" style={{ color: "var(--text-muted)" }}>Subtotal {fmt(quote.subtotal)} · Tax {fmt(quote.tax)}</span>
+                <span className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Total {fmt(quote.total)}</span>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -427,7 +509,7 @@ function DetailsTab({ id, onTab }: { id: string; onTab: (tab: string) => void })
 export default function QuoteDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const [tab, setTab] = useState("Details");
+  const [tab, setTab] = useState("Overview");
   const [quote, setQuote] = useState(() => getQuote(id));
   const [showPreview, setShowPreview] = useState(false);
 
@@ -442,7 +524,6 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
     );
   }
 
-  const stageConfig = QUOTE_STATUS_STYLE[quote.status];
   const refresh = () => setQuote(getQuote(id));
 
   function changeStatus(next: QuoteStatus) { updateQuoteStatus(id, next); refresh(); }
@@ -462,10 +543,34 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
   // The full customer-facing proposal used by Preview, instant PDF, and Print —
   // includes every section the quote carries, not just line items.
   const docData = proposalDocFromQuote(quote);
-  const design = getActiveDesign();
+  // Customer-facing Quote Design saved on the quote (drives layout + style). The
+  // design is chosen in the quote editor — the detail page only views it.
+  const resolvedDesign = resolveQuoteDesign(quote.quoteDesignId);
 
-  // Instant PDF: builds and saves "<quote-number>.pdf" — no print dialog.
-  function downloadPdf() { downloadProposalPdf(docData, design); }
+  // Custom proposals are built block-by-block in the Custom Proposal Builder, so
+  // they must render with the SAME block renderer (CustomProposalDocument) here —
+  // the family/sections renderer would not match what the rep built.
+  const isCustom = quote.quoteMode === "custom";
+  const customDoc: CustomDocData | null = isCustom ? (() => {
+    const blocks = (quote.blocks && quote.blocks.length) ? quote.blocks : sectionsToBlocks(quote.sections ?? [], quote.title);
+    const taxRatePct = quote.subtotal > 0 ? Math.round((quote.tax / quote.subtotal) * 1000) / 10 : 0;
+    return {
+      branding: getProposalBranding(), quoteNumber: quote.quoteNumber, customerName: quote.customerName,
+      locationName: quote.locationName, propertyLabel: quote.propertyLabel,
+      createdAt: quote.createdAt, expiresAt: quote.expiresAt,
+      blocks, lineItems: quote.lineItems, options: quote.options ?? [],
+      subtotal: quote.subtotal, tax: quote.tax, total: quote.total, taxRatePct,
+      monthly: quote.pricing?.monthly, customerNotes: quote.customerNotes, stamp: docData.stamp,
+    };
+  })() : null;
+  const customDesign = getActiveDesign();
+
+  // PDF: custom proposals use a block-aware generator (matches the builder); other
+  // modes use the section/family PDF generator. Both download a file directly.
+  function downloadPdf() {
+    if (isCustom && customDoc) { void downloadCustomProposalPdf(customDoc, customDesign); return; }
+    downloadProposalPdf(docData, legacyDesignForQuoteDesign(resolvedDesign.design.id));
+  }
 
   // Print = open the system print dialog showing only the quote document.
   function printQuote() {
@@ -491,18 +596,6 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h1 className="text-base font-semibold font-mono" style={{ color: "var(--text-primary)" }}>{quote.quoteNumber}</h1>
-                  <HoverInfo rows={[
-                    { label: "Customer", node: <span className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>{quote.customerName}</span> },
-                    { label: "Title", node: <span className="text-xs" style={{ color: "var(--text-secondary)" }}>{quote.title}</span> },
-                    { label: "Status", node: <Pill text={stageConfig.label} style={{ backgroundColor: stageConfig.bg, color: stageConfig.color }} /> },
-                    ...(quote.total > 0 ? [{ label: "Total", node: <span className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>{fmt(quote.total)}</span> }] : []),
-                    ...(quote.expiresAt ? [{ label: "Expires", node: <span className="text-xs" style={{ color: "var(--text-secondary)" }}>{quote.expiresAt}</span> }] : []),
-                    ...(quote.createdAt ? [{ label: "Created", node: <span className="text-xs" style={{ color: "var(--text-secondary)" }}>{quote.createdAt}</span> }] : []),
-                  ]} />
-                  <StatusBadge label={stageConfig.label} color={stageConfig.color} />
-                  {quote.total > 0 && (
-                    <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{fmt(quote.total)}</span>
-                  )}
                 </div>
                 <p className="text-xs mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>
                   {quote.title} · {quote.customerName}
@@ -540,21 +633,33 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
       </div>
 
       <div className="flex-1 overflow-y-auto p-6" style={{ backgroundColor: "var(--bg-page)" }}>
-        {tab === "Details" && <DetailsTab id={id} onTab={setTab} />}
-        {tab === "Notes" && <NotesTab quote={quote} onSaved={refresh} />}
+        {tab === "Overview" && <OverviewTab id={id} onTab={setTab} />}
+        {tab === "Pricing"  && <PricingTab quote={quote} onEdit={() => router.push(`/quotes/${id}/${quote.quoteMode === "quick" ? "quick" : quote.quoteMode === "custom" ? "pricing" : "custom"}`)} />}
+        {tab === "Options"  && <OptionsTab quote={quote} onEdit={() => router.push(`/quotes/${id}/${quote.quoteMode === "quick" ? "quick" : "custom"}`)} />}
+        {tab === "Files"    && <FilesTab quote={quote} onDownloadPdf={downloadPdf} />}
         {tab === "Activity" && <ActivityTab quote={quote} />}
       </div>
 
-      {/* Preview modal */}
+      {/* Preview modal — flex-col card: fixed header + scrolling body (clipped by
+          the card's rounded overflow, so the document never spills past the chrome). */}
       {showPreview && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setShowPreview(false)}>
-          <div className="w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-2xl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2 rounded-t-2xl sticky top-0" style={{ backgroundColor: "var(--bg-surface)", borderBottom: "1px solid var(--border-subtle)" }}>
+          <div className="w-full max-w-3xl max-h-[92vh] rounded-2xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()} style={{ backgroundColor: "var(--bg-surface)" }}>
+            <div className="flex items-center justify-between px-4 py-2 shrink-0" style={{ backgroundColor: "var(--bg-surface)", borderBottom: "1px solid var(--border-subtle)" }}>
               <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Proposal Preview</p>
-              <button onClick={() => setShowPreview(false)} style={{ color: "var(--text-muted)" }}><X className="w-4 h-4" /></button>
+              <div className="flex items-center gap-2">
+                {!isCustom && (
+                  <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium" style={{ backgroundColor: "var(--bg-surface-2)", color: "var(--text-muted)" }}>
+                    <Palette className="w-3.5 h-3.5" /> {resolvedDesign.design.name}
+                  </span>
+                )}
+                <button onClick={() => setShowPreview(false)} style={{ color: "var(--text-muted)" }}><X className="w-4 h-4" /></button>
+              </div>
             </div>
-            <div className="p-4" style={{ backgroundColor: "#e5e7eb" }}>
-              <ProposalDocument data={docData} design={design} />
+            <div className="flex-1 overflow-y-auto p-4" style={{ backgroundColor: "#e5e7eb" }}>
+              {isCustom && customDoc
+                ? <CustomProposalDocument data={customDoc} design={customDesign} />
+                : <ProposalFamilyDocument data={docData} family={resolvedDesign.family} variant={resolvedDesign.variant} />}
             </div>
           </div>
         </div>
@@ -562,42 +667,193 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
 
       {/* Hidden printable document — the only thing shown when Print triggers. */}
       <div className="print-doc" aria-hidden>
-        <ProposalDocument data={docData} shadow={false} design={design} />
+        {isCustom && customDoc
+          ? <CustomProposalDocument data={customDoc} shadow={false} design={customDesign} />
+          : <ProposalFamilyDocument data={docData} shadow={false} family={resolvedDesign.family} variant={resolvedDesign.variant} />}
       </div>
     </div>
   );
 }
 
-// ─── Notes tab ────────────────────────────────────────────
-function NotesTab({ quote, onSaved }: { quote: QuoteRecord; onSaved: () => void }) {
-  const [customerNotes, setCustomerNotes] = useState(quote.customerNotes ?? "");
-  const [internalNotes, setInternalNotes] = useState(quote.internalNotes ?? "");
-  const [saved, setSaved] = useState(false);
+// ─── Pricing tab — where the money lives ──────────────────
+function PricingTab({ quote, onEdit }: { quote: QuoteRecord; onEdit: () => void }) {
+  const pricing = quote.pricing;
+  const pct = (n: number) => `${Math.round(n * 1000) / 10}%`;
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>Pricing</h2>
+          <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>Line items, taxes, and totals for this quote.</p>
+        </div>
+        <button onClick={onEdit} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium" style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
+          <Pencil className="w-3.5 h-3.5" /> Edit Pricing
+        </button>
+      </div>
 
-  function save() {
-    setQuoteNotes(quote.id, { customerNotes, internalNotes });
-    setSaved(true); setTimeout(() => setSaved(false), 2000);
-    onSaved();
+      <LineItemsTable quoteId={quote.id} />
+
+      {/* Internal pricing summary — custom quotes that ran the pricing wizard. Team-only. */}
+      {pricing && (
+        <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+          <div className="flex items-center gap-2 px-5 py-3" style={{ borderBottom: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-surface-2)" }}>
+            <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Internal Pricing Summary</p>
+            <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded" style={{ backgroundColor: "#fef3c7", color: "#92400e" }}>Internal only</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4 px-5 py-4">
+            <DetailField icon={DollarSign} label="Total Cost" value={fmt(pricing.totalCost)} />
+            <DetailField icon={DollarSign} label="Sell Price" value={fmt(pricing.sellPrice)} />
+            <DetailField icon={TrendingUp} label="Gross Profit" value={fmt(pricing.grossProfit)} />
+            <DetailField icon={TrendingUp} label="Gross Margin" value={pct(pricing.grossMargin)} />
+            <DetailField icon={TrendingUp} label="Net Profit" value={fmt(pricing.netProfit)} />
+            <DetailField icon={TrendingUp} label="Net Margin" value={pct(pricing.netMargin)} />
+            {pricing.monthly > 0 && <DetailField icon={Receipt} label="Est. Monthly" value={`${fmt(pricing.monthly)}/mo`} />}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Options tab — multiple choices, alternates, add-ons ──
+function OptionsTab({ quote, onEdit }: { quote: QuoteRecord; onEdit: () => void }) {
+  const options = quote.options ?? [];
+  const addOns = quote.lineItems.filter(li => li.optional);
+  const empty = options.length === 0 && addOns.length === 0;
+
+  if (empty) {
+    return (
+      <div className="rounded-xl py-16 text-center" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+        <Layers className="w-8 h-8 mx-auto mb-3" style={{ color: "var(--text-muted)" }} />
+        <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>No alternate options added</p>
+        <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>Add Good / Better / Best options or optional add-ons to give the customer choices.</p>
+        <div className="flex items-center justify-center gap-2 mt-4">
+          <button onClick={onEdit} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white" style={{ backgroundColor: "#4f46e5" }}>
+            <Plus className="w-4 h-4" /> Add Option
+          </button>
+          <button onClick={onEdit} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium" style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
+            <Plus className="w-4 h-4" /> Add Add-On
+          </button>
+        </div>
+      </div>
+    );
   }
-  const dirty = customerNotes !== (quote.customerNotes ?? "") || internalNotes !== (quote.internalNotes ?? "");
 
   return (
-    <div className="max-w-2xl space-y-4">
-      <div className="rounded-xl p-4" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
-        <label className="block text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>Customer Notes <span className="normal-case font-normal">(shown on the quote)</span></label>
-        <textarea value={customerNotes} onChange={e => setCustomerNotes(e.target.value)} rows={4} placeholder="Terms, scope notes, scheduling…"
-          className="w-full rounded-lg px-3 py-2 text-sm outline-none resize-none" style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }} />
+    <div className="flex flex-col gap-5">
+      {options.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>Options <span className="text-xs font-normal" style={{ color: "var(--text-muted)" }}>· {options.length}</span></h2>
+            <button onClick={onEdit} className="text-xs font-medium text-indigo-600 hover:text-indigo-700">Edit options</button>
+          </div>
+          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
+            {options.map(o => <OptionCardLg key={o.id} o={o} />)}
+          </div>
+        </div>
+      )}
+
+      {addOns.length > 0 && (
+        <div>
+          <h2 className="text-base font-semibold mb-3" style={{ color: "var(--text-primary)" }}>Optional Add-ons <span className="text-xs font-normal" style={{ color: "var(--text-muted)" }}>· {addOns.length}</span></h2>
+          <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+            {addOns.map((li, i) => (
+              <div key={li.id} className="flex items-center justify-between px-4 py-3" style={{ borderBottom: i < addOns.length - 1 ? "1px solid var(--border-subtle)" : "none" }}>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{li.name || li.description}</p>
+                  {li.name && li.description && li.name !== li.description && <p className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>{li.description}</p>}
+                </div>
+                <p className="text-sm font-semibold shrink-0" style={{ color: "var(--text-primary)" }}>{fmt(li.total)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OptionCardLg({ o }: { o: QuoteOption }) {
+  const accent = "#4f46e5";
+  return (
+    <div className="rounded-xl overflow-hidden flex flex-col" style={{ backgroundColor: "var(--bg-surface)", border: `1px solid ${o.featured ? accent : "var(--border-subtle)"}`, boxShadow: o.featured ? `0 0 0 3px ${accent}1a` : "var(--shadow-card)" }}>
+      {o.image && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={o.image} alt={o.name} className="w-full" style={{ height: "120px", objectFit: "cover" }} />
+      )}
+      <div className="p-3.5 flex-1 flex flex-col">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {o.tier && <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded" style={{ backgroundColor: accent + "1a", color: accent }}>{o.tier}</span>}
+          {o.featured && <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded" style={{ backgroundColor: "#d1fae5", color: "#065f46" }}>Recommended</span>}
+        </div>
+        <p className="text-sm font-semibold mt-1.5" style={{ color: "var(--text-primary)" }}>{o.name}</p>
+        {(o.brand || o.model) && <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>{[o.brand, o.model].filter(Boolean).join(" · ")}</p>}
+        {o.description && <p className="text-xs mt-1.5 leading-snug" style={{ color: "var(--text-secondary)" }}>{o.description}</p>}
+        <div className="mt-3 pt-2.5 flex items-end justify-between" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+          <div>
+            <p className="text-lg font-bold" style={{ color: "var(--text-primary)" }}>{fmt(o.price)}</p>
+            {o.monthlyPrice ? <p className="text-[11px] font-semibold" style={{ color: accent }}>{fmt(o.monthlyPrice)}/mo</p> : null}
+          </div>
+          {(o.efficiency || o.warranty) && <p className="text-[10px] text-right" style={{ color: "var(--text-muted)" }}>{[o.efficiency, o.warranty].filter(Boolean).join(" · ")}</p>}
+        </div>
       </div>
-      <div className="rounded-xl p-4" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
-        <label className="block text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>Internal Notes <span className="normal-case font-normal">(team only)</span></label>
-        <textarea value={internalNotes} onChange={e => setInternalNotes(e.target.value)} rows={3} placeholder="Internal context not shown to the customer…"
-          className="w-full rounded-lg px-3 py-2 text-sm outline-none resize-none" style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }} />
+    </div>
+  );
+}
+
+// ─── Files tab — attachments & generated documents (mock) ─
+interface QuoteFileEntry { id: string; name: string; kind: string; size?: string }
+function FilesTab({ quote, onDownloadPdf }: { quote: QuoteRecord; onDownloadPdf: () => void }) {
+  const [files, setFiles] = useState<QuoteFileEntry[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(e.target.files ?? []).map((f, i) => ({
+      id: `f-${files.length + i}-${f.name}`, name: f.name, kind: f.type || "file",
+      size: `${Math.max(1, Math.round(f.size / 1024))} KB`,
+    }));
+    if (picked.length) setFiles(p => [...picked, ...p]);
+    if (inputRef.current) inputRef.current.value = "";
+  }
+  function remove(fid: string) { setFiles(p => p.filter(f => f.id !== fid)); }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <input ref={inputRef} type="file" multiple className="hidden" onChange={onUpload} />
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>Files</h2>
+          <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>Photos, documents, brochures, and the generated proposal PDF for {quote.quoteNumber}.</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={() => inputRef.current?.click()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white" style={{ backgroundColor: "#4f46e5" }}><Upload className="w-4 h-4" /> Upload File</button>
+          <button disabled className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium opacity-50" style={{ border: "1px solid var(--border)", color: "var(--text-muted)" }}><ImageIcon className="w-4 h-4" /> Attach from Media Library</button>
+          <button onClick={onDownloadPdf} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium" style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}><FileBox className="w-4 h-4" /> Generate PDF</button>
+        </div>
       </div>
-      <div className="flex justify-end">
-        <button onClick={save} disabled={!dirty && !saved}
-          className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-40"
-          style={{ backgroundColor: saved ? "#10b981" : "#4f46e5" }}>{saved ? "Saved ✓" : "Save Notes"}</button>
-      </div>
+
+      {files.length === 0 ? (
+        <div className="rounded-xl py-16 text-center" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+          <FileBox className="w-8 h-8 mx-auto mb-3" style={{ color: "var(--text-muted)" }} />
+          <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>No files yet</p>
+          <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>Upload photos & documents or generate the proposal PDF. (Local preview — not saved to a server.)</p>
+        </div>
+      ) : (
+        <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+          {files.map((f, i) => (
+            <div key={f.id} className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: i < files.length - 1 ? "1px solid var(--border-subtle)" : "none" }}>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "var(--bg-surface-2)" }}>
+                {f.kind.startsWith("image/") ? <ImageIcon className="w-4 h-4" style={{ color: "#4f46e5" }} /> : <FileText className="w-4 h-4" style={{ color: "#4f46e5" }} />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{f.name}</p>
+                {f.size && <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>{f.size}</p>}
+              </div>
+              <button title="Remove" onClick={() => remove(f.id)} className="p-1.5 rounded-lg shrink-0" style={{ color: "var(--text-muted)" }}><Trash className="w-4 h-4" /></button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

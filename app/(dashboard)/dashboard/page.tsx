@@ -405,13 +405,15 @@ export default function DashboardPage() {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-semibold" style={{ color: "var(--text-primary)" }}>Dashboard</h1>
-            <ContextBadge level={contextLevel} />
             {activeScopeLabel !== "All locations" && (
               <span className="text-base font-normal" style={{ color: "var(--text-muted)" }}>
                 · {activeScopeLabel}
               </span>
             )}
           </div>
+          <p className="text-[13px] mt-0.5 leading-snug" style={{ color: "var(--text-muted)" }}>
+            Overview of today&apos;s work, sales activity, and company performance.
+          </p>
         </div>
 
         {/* Center: greeting */}

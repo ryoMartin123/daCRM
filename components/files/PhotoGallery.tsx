@@ -92,7 +92,7 @@ function linkedRecords(f: PhotoFile): { label: string; value: string }[] {
   return out;
 }
 
-export default function PhotoGallery({ recordLevel, scope = {}, accountName, uploaderName = "Marcus Reyes", externalUpload = false, uploadSignal = 0, onCount }: Props) {
+export default function PhotoGallery({ recordLevel, scope = {}, accountName, uploaderName = "Ryo Martin", externalUpload = false, uploadSignal = 0, onCount }: Props) {
   const categories = useMemo(() => getPhotoCategories().filter(c => c.active), []);
   const catByKey   = useMemo(() => new Map(categories.map(c => [c.key, c])), [categories]);
   const catLabel   = (key: string) => catByKey.get(key)?.name ?? key;

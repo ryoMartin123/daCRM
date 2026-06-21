@@ -16,7 +16,7 @@ export default function QuotesFollowUp() {
 
   return (
     <div className="rounded-xl overflow-hidden h-full min-h-full flex flex-col"
-      style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+      style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)" }}>
       <div className="flex items-center justify-between px-4 py-3"
         style={{ borderBottom: "1px solid var(--border-subtle)" }}>
         <div className="flex items-center gap-2">

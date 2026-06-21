@@ -10,17 +10,18 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft, Send, FileText, Cloud, CloudOff, Plus, Trash2, Package, Tag,
-  Monitor, Pencil, Download, Printer, MoreHorizontal, MapPin, User, Zap,
+  Monitor, Pencil, Download, Printer, MoreHorizontal, MapPin, User, Zap, Palette,
 } from "lucide-react";
 import DatePicker from "@/components/ui/DatePicker";
 import UiSelect from "@/components/ui/Select";
 import CatalogPicker from "@/components/quotes/CatalogPicker";
-import ProposalDocument from "@/components/quotes/ProposalDocument";
+import ProposalFamilyDocument from "@/components/quotes/family/ProposalFamilyDocument";
+import { QuoteDesignPicker } from "@/components/settings/QuoteDesignsManager";
 import { buildProposalDoc } from "@/lib/quotes/proposalDoc";
 import { downloadProposalPdf } from "@/lib/quotes/proposalPdf";
-import { getActiveDesign } from "@/lib/proposals/designs";
+import { resolveQuoteDesign, getQuoteDesign, legacyDesignForQuoteDesign } from "@/lib/quotes/quoteDesigns";
 import {
-  getQuote, autosaveQuote, updateQuoteStatus, computeTotals, fmt,
+  getQuote, autosaveQuote, updateQuote, updateQuoteStatus, computeTotals, fmt,
   type QuoteRecord, type QuoteSection, type LineItem,
 } from "@/lib/quotes/data";
 import { getAllItems, itemToQuoteLine, getItemDefaults, type Item } from "@/lib/items/data";
@@ -63,8 +64,13 @@ export default function QuickQuotePage({ params }: { params: Promise<{ id: strin
   const { id } = use(params);
   const router = useRouter();
   const branding = useMemo(() => getProposalBranding(), []);
-  const design = useMemo(() => getActiveDesign(), []);
   const itemDefaults = useMemo(() => getItemDefaults(), []);
+
+  // Customer-facing Quote Design — resolved from the quote (set on creation from the
+  // default Quick Quote design; the rep can change it here).
+  const [designId, setDesignId] = useState<string | undefined>(undefined);
+  const [designPickerOpen, setDesignPickerOpen] = useState(false);
+  const resolvedDesign = useMemo(() => resolveQuoteDesign(designId), [designId]);
 
   const [loading, setLoading] = useState(true);
   const [quote, setQuote] = useState<QuoteRecord | null>(null);
@@ -87,6 +93,7 @@ export default function QuickQuotePage({ params }: { params: Promise<{ id: strin
     const q = getQuote(id);
     if (q) {
       setQuote(q);
+      setDesignId(getQuoteDesign(q.quoteDesignId).id);
       setTitle(q.title);
       setItems(q.lineItems.length ? q.lineItems.map(lineToDraft) : [blankItem()]);
       setTaxRate(q.subtotal > 0 ? String(Math.round((q.tax / q.subtotal) * 1000) / 10) : "0");
@@ -167,7 +174,8 @@ export default function QuickQuotePage({ params }: { params: Promise<{ id: strin
     window.addEventListener("afterprint", restore);
     window.print();
   }
-  function downloadPdf() { setMoreOpen(false); if (docData) downloadProposalPdf(docData, design); }
+  function downloadPdf() { setMoreOpen(false); if (docData) downloadProposalPdf(docData, legacyDesignForQuoteDesign(designId)); }
+  function chooseDesign(nextId: string) { setDesignId(nextId); setDesignPickerOpen(false); updateQuote(id, { quoteDesignId: nextId }); }
 
   if (loading) return <div className="p-10 text-sm" style={{ color: "var(--text-muted)" }}>Loading…</div>;
   if (!quote) return (
@@ -200,6 +208,12 @@ export default function QuickQuotePage({ params }: { params: Promise<{ id: strin
 
         <div className="flex-1" />
 
+        <button onClick={() => setDesignPickerOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors"
+          style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-secondary)" }}
+          title="Change the customer-facing quote design">
+          <Palette className="w-3.5 h-3.5" /> {resolvedDesign.design.name}
+        </button>
         <button onClick={() => setPreview(p => !p)}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors"
           style={{ border: "1px solid var(--border)", backgroundColor: preview ? "var(--accent-soft-bg)" : "var(--bg-surface)", color: preview ? "var(--accent-text)" : "var(--text-secondary)" }}>
@@ -227,7 +241,7 @@ export default function QuickQuotePage({ params }: { params: Promise<{ id: strin
       {/* Body */}
       <div className="flex-1 overflow-y-auto thin-scroll-y p-6" style={{ backgroundColor: preview ? "#e5e7eb" : undefined }}>
         {preview && docData ? (
-          <ProposalDocument data={docData} design={design} />
+          <ProposalFamilyDocument data={docData} family={resolvedDesign.family} variant={resolvedDesign.variant} />
         ) : (
           <div className="mx-auto space-y-4" style={{ maxWidth: "760px" }}>
             {/* Customer / property summary */}
@@ -334,8 +348,13 @@ export default function QuickQuotePage({ params }: { params: Promise<{ id: strin
 
       {showCatalog && <CatalogPicker items={catalog} showCost={showCost} onAdd={addCatalogItems} onClose={() => setShowCatalog(false)} />}
 
+      {designPickerOpen && (
+        <QuoteDesignPicker activeId={designId} mode="quick_quote"
+          onPick={chooseDesign} onClose={() => setDesignPickerOpen(false)} />
+      )}
+
       {/* Hidden printable document */}
-      {docData && <div className="print-doc" aria-hidden><ProposalDocument data={docData} shadow={false} design={design} /></div>}
+      {docData && <div className="print-doc" aria-hidden><ProposalFamilyDocument data={docData} shadow={false} family={resolvedDesign.family} variant={resolvedDesign.variant} /></div>}
     </div>
   );
 }

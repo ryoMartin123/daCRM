@@ -21,7 +21,8 @@ import { ALL_PROJECTS } from "@/lib/projects/data";
 import { createQuote, type QuoteSection, type QuoteOption } from "@/lib/quotes/data";
 import type { QuoteMode } from "@/lib/quotes/types";
 import { buildSectionsFromKeys } from "@/lib/proposals/data";
-import { getInstalledForCompany, getSalesbookTemplate, INDUSTRY_LABELS, PROPOSAL_TYPE_LABELS, type CompanySalesbook } from "@/lib/salesbooks/data";
+import { getInstalledForCompany, getSalesbookTemplate, salesbookDesignId, INDUSTRY_LABELS, PROPOSAL_TYPE_LABELS, type CompanySalesbook } from "@/lib/salesbooks/data";
+import { getDefaultDesignIdForQuickQuote, getDefaultDesignIdForCustom } from "@/lib/quotes/quoteDesigns";
 
 type RelatedKind = "none" | "lead" | "job" | "project";
 type Step = "type" | "details";
@@ -98,7 +99,7 @@ export default function QuoteTypeChooser({ preset, onClose }: {
   // Resolve the chosen template source into a default title + snapshot-copied
   // sections + option cards. Everything is COPIED so editing the quote later
   // never changes the master salesbook/template.
-  function resolveTemplateSource(): { sections: QuoteSection[]; options: QuoteOption[]; defaultTitle: string; salesbookId?: string; proposalTemplateId?: string; expirationDays: number } | null {
+  function resolveTemplateSource(): { sections: QuoteSection[]; options: QuoteOption[]; defaultTitle: string; salesbookId?: string; proposalTemplateId?: string; quoteDesignId?: string; expirationDays: number } | null {
     if (!sourceKey) return null;
     const [kind, id] = sourceKey.split(":");
     if (kind === "sb") {
@@ -111,7 +112,9 @@ export default function QuoteTypeChooser({ preset, onClose }: {
       const ptId = master?.proposalTemplateId;
       const sections = buildSectionsFromKeys(sb.sections).map(s => ({ key: s.key, label: s.label, body: s.body, visible: s.visible }));
       const options: QuoteOption[] = sb.options.map((o, i) => ({ ...o, id: `qopt-${Date.now()}-${i}` }));
-      return { sections, options, defaultTitle: sb.name, salesbookId: sb.id, proposalTemplateId: ptId, expirationDays: 30 };
+      // Snapshot the salesbook's Quote Design so the customer-facing layout follows
+      // it (the quote can override it later).
+      return { sections, options, defaultTitle: sb.name, salesbookId: sb.id, proposalTemplateId: ptId, quoteDesignId: salesbookDesignId(sb), expirationDays: 30 };
     }
     // Salesbook Library is the only source for the Template path.
     return null;
@@ -148,6 +151,9 @@ export default function QuoteTypeChooser({ preset, onClose }: {
         expiresAt: defaultExpiry(src.expirationDays),
         sections: src.sections, options: src.options,
         salesbookId: src.salesbookId, proposalTemplateId: src.proposalTemplateId,
+        // The salesbook carries its own Quote Design; the quote renders as a
+        // salesbook proposal (the design adapts/falls back if it must).
+        quoteDesignId: src.quoteDesignId, renderMode: "salesbook",
       });
       onClose();
       router.push(`/quotes/${q.id}`);
@@ -161,6 +167,11 @@ export default function QuoteTypeChooser({ preset, onClose }: {
       ...base, quoteMode: mode,
       title: title.trim() || (mode === "quick" ? "Quick Quote" : "Custom Proposal"),
       expiresAt: defaultExpiry(30), sections,
+      // Each quote type starts from its own default Quote Design (Settings →
+      // Salesbook Library → Defaults). A new custom quote with one thing renders as
+      // a single offer; quick quotes render the quick-quote layout.
+      quoteDesignId: mode === "quick" ? getDefaultDesignIdForQuickQuote() : getDefaultDesignIdForCustom(),
+      renderMode: mode === "quick" ? "quick_quote" : "single_offer",
     });
     onClose();
     router.push(mode === "quick" ? `/quotes/${q.id}/quick` : `/quotes/${q.id}/pricing`);

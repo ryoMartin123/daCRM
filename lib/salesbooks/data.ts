@@ -15,7 +15,11 @@
 // import yet (that lands later in Settings → Salesbook Library → Import).
 // Replace with Supabase queries when ready.
 
-import type { SectionKey } from "@/lib/proposals/data";
+import { SECTION_LABELS, getSectionBlock, type SectionKey } from "@/lib/proposals/data";
+import {
+  getQuoteDesign, resolveQuoteDesign, defaultQuoteDesignId,
+  type QuoteDesign, type ResolvedQuoteDesign,
+} from "@/lib/quotes/quoteDesigns";
 
 // ─── Taxonomy ─────────────────────────────────────────────
 export type SalesbookIndustry =
@@ -62,10 +66,42 @@ export interface SalesbookOption {
   monthlyPrice?: number;      // financed monthly estimate
   efficiency?: string;        // e.g. "16 SEER2"
   warranty?: string;          // e.g. "10-yr parts + labor"
-  category?: string;
+  category?: string;          // option group name
   includes?: string[];        // bundled items
   notes?: string;
   image?: string;             // image URL or data-URL (equipment/product photo)
+  featured?: boolean;         // recommended / highlighted option
+}
+
+// ─── Template style, status, media, rich sections ─────────
+export type SalesbookStatus = "draft" | "published";
+
+export type SalesbookMediaCategory =
+  | "equipment" | "cover" | "before_after" | "section" | "brand_logo" | "benefit";
+
+export const MEDIA_CATEGORY_LABELS: Record<SalesbookMediaCategory, string> = {
+  equipment: "Equipment image", cover: "Cover image", before_after: "Before / after photo",
+  section: "Section image", brand_logo: "Brand / manufacturer logo", benefit: "Warranty / benefit image",
+};
+
+export interface SalesbookMedia {
+  id: string;
+  url: string;                // data-URL or remote URL
+  category: SalesbookMediaCategory;
+  caption?: string;
+}
+
+// A configurable proposal section on a salesbook: supports rename, custom default
+// wording, show/hide, required, and duplication. The flat `sections: SectionKey[]`
+// (which quote creation reads) is kept in sync from the visible entries here.
+export interface SalesbookSection {
+  id: string;
+  key: SectionKey;
+  label: string;              // display name (rename)
+  body?: string;              // custom default wording (overrides catalog default)
+  visible: boolean;
+  required: boolean;
+  contentBlockId?: string;    // Content Block this section was inserted from (reference; body is a copy)
 }
 
 // ─── Salesbook shape (shared by master template + company copy) ──
@@ -93,8 +129,30 @@ export interface CompanySalesbook extends SalesbookBase {
   companyId: string;
   locationId?: string;
   copiedFromTemplateId?: string;
-  active: boolean;
+  active: boolean;            // not-deleted flag (install/uninstall). NOT the publish state.
   installedAt: string;
+  // ── Editor-managed (all optional / additive so existing copies keep working) ──
+  status?: SalesbookStatus;          // draft vs published (Preview & Publish)
+  quoteDesignId?: string;            // chosen Quote Design — the complete customer-facing layout + style
+  quoteTemplateKey?: string;         // legacy Quote Template (superseded by quoteDesignId)
+  familyId?: string;                 // legacy direct family (superseded by quoteDesignId)
+  variantId?: string;                // legacy direct variant (superseded by quoteDesignId)
+  styleId?: string;                  // legacy skin id (superseded)
+  sectionLayout?: SalesbookSection[];// rich section config; mirrors `sections`
+  offerGroupIds?: string[];          // Offer Library groups added to this salesbook (for usage tracking)
+  media?: SalesbookMedia[];          // media library
+  coverImageId?: string;             // media id used as cover
+  fallbackImageId?: string;          // media id used when an option has no image
+  // Financing
+  showMonthly?: boolean;             // show a monthly payment on the proposal
+  monthlyEnabled?: boolean;          // allow per-option monthly price field
+  financingDisclaimer?: string;
+  // Warranty & terms
+  workmanship?: string;              // workmanship guarantee wording
+  validityDays?: number;             // proposal validity period
+  depositTerms?: string;             // deposit wording
+  exclusions?: string;               // what's excluded
+  updatedAt?: string;                // last edited stamp
 }
 
 // ─── Master templates (CRM-provided) ──────────────────────
@@ -302,6 +360,15 @@ export function installSalesbook(templateId: string, opts: InstallSalesbookOptio
     financingNote: tmpl.financingNote,
     warranty: tmpl.warranty,
     terms: includeTerms ? tmpl.terms : undefined,
+    // Editor defaults so a freshly installed copy is complete & ready to tune.
+    status: "published",
+    quoteDesignId: defaultQuoteDesignId(tmpl.proposalType),
+    sectionLayout: defaultSectionLayout(tmpl.sections),
+    media: [],
+    showMonthly: !!tmpl.financingNote,
+    monthlyEnabled: true,
+    validityDays: 30,
+    updatedAt: nowStamp(),
   };
   write([copy, ...read()]);
   return copy;
@@ -326,6 +393,110 @@ export function updateCompanySalesbook(id: string, patch: Partial<CompanySalesbo
 // Fresh blank option for the company-salesbook editor.
 export function blankSalesbookOption(): SalesbookOption {
   return { id: `opt-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, name: "New option", price: 0 };
+}
+
+function rid(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+// ─── Quote Design (the customer-facing layout + style) ────
+// A salesbook chooses one Quote Design — the complete customer-facing proposal
+// (layout family + visual variant + sections + pricing presentation). The user
+// never picks family and variant separately; they pick a design.
+
+// The Quote Design a salesbook uses. Source of truth is quoteDesignId; falls back
+// to the proposal-type default for copies installed before the design system.
+export function salesbookDesignId(sb: { quoteDesignId?: string; proposalType: SalesbookProposalType }): string {
+  return sb.quoteDesignId ? getQuoteDesign(sb.quoteDesignId).id : defaultQuoteDesignId(sb.proposalType);
+}
+
+export function salesbookQuoteDesign(sb: { quoteDesignId?: string; proposalType: SalesbookProposalType }): QuoteDesign {
+  return getQuoteDesign(salesbookDesignId(sb));
+}
+
+// Resolve the salesbook's design → renderer inputs (family + variant skin).
+export function resolveSalesbookDesign(sb: { quoteDesignId?: string; proposalType: SalesbookProposalType }): ResolvedQuoteDesign {
+  return resolveQuoteDesign(salesbookDesignId(sb));
+}
+
+// ─── Rich section layout ──────────────────────────────────
+// Build a configurable section layout from a bare list of section keys. Used when
+// a salesbook predates the editor redesign (no sectionLayout yet) and when adding
+// a fresh section. Default wording comes from the Sections Library.
+const ALWAYS_REQUIRED: SectionKey[] = ["cover_header", "terms"];
+
+export function defaultSectionLayout(keys: SectionKey[]): SalesbookSection[] {
+  return keys.map((key, i) => ({
+    id: `sbsec-${key}-${i}-${Math.random().toString(36).slice(2, 5)}`,
+    key,
+    label: SECTION_LABELS[key] ?? key,
+    body: getSectionBlock(key)?.defaultBody || undefined,
+    visible: true,
+    required: ALWAYS_REQUIRED.includes(key),
+  }));
+}
+
+export function blankSalesbookSection(key: SectionKey): SalesbookSection {
+  return {
+    id: rid("sbsec"), key, label: SECTION_LABELS[key] ?? key,
+    body: getSectionBlock(key)?.defaultBody || undefined, visible: true,
+    required: ALWAYS_REQUIRED.includes(key),
+  };
+}
+
+// The flat key list quote creation reads, derived from the visible sections.
+export function sectionsFromLayout(layout: SalesbookSection[]): SectionKey[] {
+  return layout.filter(s => s.visible).map(s => s.key);
+}
+
+// Ensure a salesbook has a usable section layout (older copies stored only keys).
+export function ensureSectionLayout(sb: CompanySalesbook): SalesbookSection[] {
+  return sb.sectionLayout && sb.sectionLayout.length
+    ? sb.sectionLayout
+    : defaultSectionLayout(sb.sections);
+}
+
+// ─── Media ────────────────────────────────────────────────
+export function blankSalesbookMedia(url: string, category: SalesbookMediaCategory = "equipment"): SalesbookMedia {
+  return { id: rid("media"), url, category };
+}
+
+// ─── Status ───────────────────────────────────────────────
+export function salesbookStatus(sb: { status?: SalesbookStatus }): SalesbookStatus {
+  return sb.status ?? "published";
+}
+
+// ─── Publish validation ───────────────────────────────────
+export interface PublishCheck { ok: boolean; issues: string[] }
+
+// Minimum requirements to publish a salesbook (mirrors the editor's checklist).
+// Accepts a draft-shaped object so the editor can validate live, unsaved state.
+export interface SalesbookDraftLike {
+  name: string;
+  industry: SalesbookIndustry;
+  proposalType: SalesbookProposalType;
+  quoteDesignId?: string;
+  sectionLayout: SalesbookSection[];
+  terms?: string;
+  options: SalesbookOption[];
+}
+
+export function validateSalesbookForPublish(d: SalesbookDraftLike): PublishCheck {
+  const issues: string[] = [];
+  if (!d.name.trim())                               issues.push("Add a salesbook name.");
+  if (!d.industry)                                  issues.push("Choose an industry.");
+  if (!d.proposalType)                              issues.push("Choose a proposal type.");
+  if (!d.quoteDesignId)                             issues.push("Choose a quote design.");
+  if (!d.sectionLayout.some(s => s.visible))        issues.push("Add at least one visible proposal section.");
+  if (!(d.terms ?? "").trim())                      issues.push("Add default terms & conditions.");
+
+  if (d.proposalType === "good_better_best") {
+    if (d.options.length < 2)                       issues.push("Good / Better / Best needs at least two options.");
+    if (d.options.some(o => !o.name.trim()))        issues.push("Every option needs a title / name.");
+    if (d.options.some(o => !(o.price > 0)))        issues.push("Every option needs a price.");
+    if (d.options.some(o => !(o.description ?? "").trim())) issues.push("Every option should have a description.");
+  }
+  return { ok: issues.length === 0, issues };
 }
 
 // Soft-remove (active=false) so it drops out of lists without losing the record.

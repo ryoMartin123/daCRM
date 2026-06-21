@@ -267,7 +267,7 @@ export default function JobsPage() {
       {/* Header — title · centered view toggle · action */}
       <div className="flex items-center gap-4 mb-6">
         <div className="flex-1 min-w-0">
-          <PageTitle title="Jobs" count={contextFiltered.length} description="Daily operations — all scheduled and active work" />
+          <PageTitle title="Jobs" count={contextFiltered.length} description="Track scheduled work, job status, assignments, and field progress." />
         </div>
         <ModuleViewToggle view={moduleView} onChange={setModuleView} />
         <div className="flex-1 flex justify-end">

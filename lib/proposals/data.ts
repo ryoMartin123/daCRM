@@ -117,11 +117,19 @@ export interface ProposalBranding {
 }
 
 export interface ProposalDefaults {
-  defaultTemplateId: string;
+  defaultTemplateId: string;           // legacy proposal-template default (kept for back-compat)
+  // Default Quote Design per quote type (ids from lib/quotes/quoteDesigns).
+  defaultQuickQuoteDesignId: string;
+  defaultSalesbookDesignId: string;
+  defaultCustomDesignId: string;
   defaultExpirationDays: number;
-  approvalLanguage: string;
+  defaultTermsBlockId: string;         // default Terms block id (from getProposalTerms)
+  financingNote: string;               // default financing note
+  approvalLanguage: string;            // default approval / signature language
   showOptionalAddons: boolean;
   showPricingBreakdown: boolean;
+  showTax: boolean;                    // show tax line on customer-facing quotes
+  showMonthlyPayment: boolean;         // show estimated monthly payment
 }
 
 // ─── Common merge fields ──────────────────────────────────
@@ -230,10 +238,18 @@ const DEFAULT_TEMPLATES: ProposalTemplate[] = [
 
 const DEFAULT_DEFAULTS: ProposalDefaults = {
   defaultTemplateId: "ptmpl-1",
+  // Seed design ids match the curated Quote Designs in lib/quotes/quoteDesigns.
+  defaultQuickQuoteDesignId: "classic-executive",
+  defaultSalesbookDesignId: "package-stack-bold",
+  defaultCustomDesignId: "classic-executive",
   defaultExpirationDays: 30,
+  defaultTermsBlockId: "pt-terms-1",
+  financingNote: "Financing available with approved credit. Ask your representative for current plans and estimated monthly payments.",
   approvalLanguage: "By signing below, you approve this proposal and authorize the work described.",
   showOptionalAddons: true,
   showPricingBreakdown: true,
+  showTax: true,
+  showMonthlyPayment: true,
 };
 
 // ─── Storage ──────────────────────────────────────────────
@@ -301,8 +317,9 @@ export function saveProposalTerms(list: ProposalTermsBlock[]): void {
 export function getProposalBranding(): ProposalBranding { return readObj(BRAND_KEY, DEFAULT_BRANDING); }
 export function saveProposalBranding(b: ProposalBranding): void { writeObj(BRAND_KEY, b); }
 
-// Defaults
-export function getProposalDefaults(): ProposalDefaults { return readObj(DEF_KEY, DEFAULT_DEFAULTS); }
+// Defaults — merge over the seed so records saved before new fields existed still
+// resolve every key.
+export function getProposalDefaults(): ProposalDefaults { return { ...DEFAULT_DEFAULTS, ...readObj(DEF_KEY, DEFAULT_DEFAULTS) }; }
 export function saveProposalDefaults(d: ProposalDefaults): void { writeObj(DEF_KEY, d); }
 
 // ─── Helpers ──────────────────────────────────────────────

@@ -122,7 +122,7 @@ export default function QuotesPage() {
     <div className="p-6">
       <div className="flex items-center gap-4 mb-6">
         <div className="flex-1 min-w-0">
-          <PageTitle title="Quotes" count={contextFiltered.length} description="Estimates and proposals — track, follow up, and convert" />
+          <PageTitle title="Quotes" count={contextFiltered.length} description="Create, track, and send customer quotes and proposals." />
         </div>
         <ModuleViewToggle view={moduleView} onChange={setModuleView} />
         <div className="flex-1 flex justify-end">

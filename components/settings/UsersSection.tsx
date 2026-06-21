@@ -12,6 +12,7 @@ import { Users, Plus, Pencil, X, Trash2, ShieldCheck, Mail, RotateCcw, CheckCirc
 import UiSelect from "@/components/ui/Select";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
 import { usePermissions } from "@/components/providers/PermissionProvider";
+import StatusBadge from "@/components/shared/StatusBadge";
 import { getAssignableRoles, getOrgRole, getRoleLabel } from "@/lib/roles/store";
 import { assignmentError, allowedLevelsForRole } from "@/lib/roles/validate";
 import type { RoleKey } from "@/lib/roles/types";
@@ -29,10 +30,11 @@ interface DraftAssignment {
   targetId: string;   // company/location/service-area id (empty for org level)
 }
 
-const STATUS_BADGE: Record<UserStatus, { label: string; bg: string; color: string }> = {
-  active:   { label: "Active",   bg: "#d1fae5", color: "#065f46" },
-  invited:  { label: "Invited",  bg: "#fef3c7", color: "#92400e" },
-  inactive: { label: "Inactive", bg: "var(--bg-input)", color: "var(--text-muted)" },
+// Status colors for the dot+text StatusBadge (the dot carries the saturated hue).
+const STATUS_BADGE: Record<UserStatus, { label: string; dot: string }> = {
+  active:   { label: "Active",   dot: "#10b981" },
+  invited:  { label: "Invited",  dot: "#f59e0b" },
+  inactive: { label: "Inactive", dot: "#9ca3af" },
 };
 
 const LEVEL_LABEL: Record<ScopeLevel, string> = {
@@ -126,10 +128,7 @@ export default function UsersSection() {
                 </td>
                 {/* Status */}
                 <td className="px-4 py-3 align-top">
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                    style={{ backgroundColor: STATUS_BADGE[u.status].bg, color: STATUS_BADGE[u.status].color }}>
-                    {STATUS_BADGE[u.status].label}
-                  </span>
+                  <StatusBadge label={STATUS_BADGE[u.status].label} color={STATUS_BADGE[u.status].dot} />
                 </td>
                 {/* Actions */}
                 <td className="px-4 py-3 align-top text-right">
@@ -302,10 +301,7 @@ function UserModal({
           </div>
           <div className="flex items-center gap-2">
             {user && (
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                style={{ backgroundColor: STATUS_BADGE[status].bg, color: STATUS_BADGE[status].color }}>
-                {STATUS_BADGE[status].label}
-              </span>
+              <StatusBadge label={STATUS_BADGE[status].label} color={STATUS_BADGE[status].dot} />
             )}
             <button onClick={onClose} style={{ color: "var(--text-muted)" }}><X className="w-4 h-4" /></button>
           </div>

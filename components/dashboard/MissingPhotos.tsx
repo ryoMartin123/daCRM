@@ -5,7 +5,7 @@ import { ImageIcon } from "lucide-react";
 export default function MissingPhotos() {
   return (
     <div className="rounded-xl p-5 h-full min-h-0 flex flex-col overflow-y-auto dashboard-widget-content"
-      style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+      style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)" }}>
       <div className="flex items-center justify-between mb-3 shrink-0">
         <div className="flex items-center gap-2">
           <ImageIcon className="w-4 h-4" style={{ color: "#2563eb" }} />

@@ -67,8 +67,8 @@ export const MODE_PRESETS: Record<OrgSettings["mode"], Omit<OrgSettings, "projec
 };
 
 // Current signed-in user (prototype). Swap to a Supabase session lookup later.
-// Marcus is an org_admin so all three selectors are demonstrable; change the
-// membership to see the selectors collapse for narrower roles.
+// Ryo Martin is the org admin/owner so all three selectors are demonstrable;
+// change the membership to see the selectors collapse for narrower roles.
 export const currentUser: CurrentUser = {
   id: "user_marcus",
   fullName: "Ryo Martin",

@@ -30,7 +30,7 @@ export default function CompanyPerformance() {
 
   return (
     <div className="rounded-xl overflow-hidden h-full min-h-0 flex flex-col"
-      style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+      style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)" }}>
       <div className="flex items-center gap-2 px-5 py-4 shrink-0"
         style={{ borderBottom: "1px solid var(--border-subtle)" }}>
         <Building2 className="w-4 h-4" style={{ color: "#4f46e5" }} />

@@ -48,7 +48,7 @@ export default function FilesPage() {
     <div className="p-6 space-y-5">
       <div className="flex items-center gap-4">
         <div className="flex-1 min-w-0">
-          <PageTitle title="Photos & Files" count={fileCount} description="Global media library — search across accounts, properties, jobs, projects, and more" />
+          <PageTitle title="Photos & Files" count={fileCount} description="Manage customer, job, property, and proposal files." />
         </div>
         <ModuleViewToggle view={moduleView} onChange={setModuleView} listLabel="Library" />
         <div className="flex-1 flex justify-end">

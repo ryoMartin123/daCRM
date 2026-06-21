@@ -5,6 +5,7 @@ import { CustomerProvider } from "@/components/providers/CustomerProvider";
 import { PermissionProvider } from "@/components/providers/PermissionProvider";
 import { Suspense } from "react";
 import { CommentsProvider } from "@/components/providers/CommentsProvider";
+import AppLoadingOverlay from "@/components/platform/AppLoadingOverlay";
 import CommentsDrawer from "@/components/comments/CommentsDrawer";
 import CommentModeController from "@/components/comments/CommentModeController";
 import CommentDeepLinkWatcher from "@/components/comments/CommentDeepLinkWatcher";
@@ -23,6 +24,8 @@ export default function DashboardLayout({
         <Sidebar />
         <MainArea>{children}</MainArea>
       </div>
+      {/* Brief branded loader when entering the CRM app — holds, then fades. */}
+      <AppLoadingOverlay appId="crm" />
       <CommentsDrawer />
       <Suspense fallback={null}><CommentModeController /></Suspense>
       <Suspense fallback={null}><CommentDeepLinkWatcher /></Suspense>

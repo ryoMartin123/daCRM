@@ -121,9 +121,7 @@ export default function InvoicesPage() {
       <div className="flex items-center gap-4 mb-6">
         <div className="flex-1 min-w-0">
           <PageTitle title="Invoices" count={contextFiltered.length}
-            description={totalOutstanding > 0
-              ? `${fmt(totalOutstanding)} outstanding across ${contextFiltered.filter(i => i.balanceDue > 0).length} invoices`
-              : "All invoices up to date"} />
+            description="Track customer invoices, balances, payments, and billing status." />
         </div>
         <ModuleViewToggle view={moduleView} onChange={setModuleView} />
         <div className="flex-1 flex justify-end">
