@@ -19,6 +19,7 @@ import {
   getJob, updateJob, getWorkOrder,
   type Job, type JobStatus, type JobStatusEvent,
 } from "./data";
+import { workOrderPolicyForType } from "@/lib/job-config/data";
 import { can, accessLevel, hasFlag, principalRoles } from "@/lib/roles/resolver";
 import type { Principal, PermissionContext } from "@/lib/roles/types";
 import { completeAgreementVisitForJob, revertAgreementVisitForJob, reopenAgreementVisitForJob } from "@/lib/agreements/data";
@@ -99,11 +100,18 @@ function jobCtx(job: Job, ownedByMe: boolean): PermissionContext {
   return { companyId: job.companyId, locationId: job.locationId, ownedByMe };
 }
 
-// Are there required checklist items still open on the job's work order?
-function hasOpenRequiredChecklist(jobId: string): boolean {
-  const wo = getWorkOrder(jobId);
-  if (!wo) return false;
-  return wo.checklist.some(c => c.required && !c.isComplete);
+// Why completion is blocked (if at all): a "required" work-order policy with no
+// WO at all, or a WO with unfinished required checklist items. Override bypasses.
+function completionGateReason(job: Job): string | undefined {
+  const wo = getWorkOrder(job.id);
+  if (!wo) {
+    return workOrderPolicyForType(job.type) === "required"
+      ? "This job type requires a completed work order."
+      : undefined;
+  }
+  return wo.checklist.some(c => c.required && !c.isComplete)
+    ? "Required checklist items aren't finished."
+    : undefined;
 }
 
 // Can `actor` move `job` to `to`? Returns whether it's a normal step, an
@@ -133,11 +141,14 @@ export function checkTransition(job: Job, to: string, actor: TransitionActor): T
     return canOverride ? { ok: true, needsOverride: true, reason: why } : { ok: false, needsOverride: true, reason: why };
   }
 
-  // Completion gate — required checklist must be done first (override bypasses).
-  if (edge.gate === "checklist" && hasOpenRequiredChecklist(job.id)) {
-    return canOverride
-      ? { ok: true, needsOverride: true, reason: "Required checklist items aren't finished." }
-      : { ok: false, needsOverride: true, reason: "Finish the required checklist items first." };
+  // Completion gate — required work order / checklist must be done (override bypasses).
+  if (edge.gate === "checklist") {
+    const gateReason = completionGateReason(job);
+    if (gateReason) {
+      return canOverride
+        ? { ok: true, needsOverride: true, reason: gateReason }
+        : { ok: false, needsOverride: true, reason: gateReason };
+    }
   }
 
   return { ok: true, needsOverride: false };

@@ -6,6 +6,16 @@
 export type JobTypeCategory =
   | "service" | "maintenance" | "install" | "sales" | "warranty" | "emergency" | "project";
 
+// How a job of this type gets its work order (the field checklist/instructions doc).
+//   auto     — materialize a WO from the matching template when the job is created
+//   optional — no WO by default; office/field can add one (template or blank)
+//   required — a completed WO is needed before the job can be marked complete
+export type WorkOrderPolicy = "auto" | "optional" | "required";
+
+export const WORK_ORDER_POLICY_LABELS: Record<WorkOrderPolicy, string> = {
+  auto: "Auto-create", optional: "Optional", required: "Required",
+};
+
 export interface JobTypeDef {
   id:          string;
   name:        string;
@@ -20,6 +30,12 @@ export interface JobTypeDef {
   // "agreement_visit" type). They can't be deleted/deactivated and their key — the
   // foreign key everything resolves against — is locked. Name/color/etc. stay editable.
   core?:       boolean;
+  // ─── Work order behavior (see WorkOrderPolicy) ───
+  // Which WO template auto-materializes for this type. When omitted, the template
+  // whose jobTypeKey matches this type's key is used (suggestTemplateForJobType).
+  defaultWorkOrderTemplateId?: string;
+  // Defaults to "optional" when unset.
+  workOrderPolicy?: WorkOrderPolicy;
 }
 
 export const JOB_TYPE_CATEGORY_LABELS: Record<JobTypeCategory, string> = {
@@ -37,15 +53,15 @@ export const JOB_TYPE_CATEGORY_LABELS: Record<JobTypeCategory, string> = {
 // always existing. (The legacy "maintenance" key still resolves for old data via
 // JOB_TYPE_CONFIG, but it's no longer a configurable type.)
 const DEFAULT_JOB_TYPES: JobTypeDef[] = [
-  { id: "jt-agr", name: "Maintenance",  key: "agreement_visit", description: "Preventive maintenance — also used for recurring agreement visits", duration: 90,  category: "maintenance", color: "#6366f1", active: true, order: 1, core: true },
-  { id: "jt-2", name: "Repair",       key: "repair",       description: "Diagnose and fix a problem",       duration: 60,  category: "service",     color: "#ef4444", active: true, order: 2 },
-  { id: "jt-3", name: "Installation", key: "installation", description: "New equipment install",            duration: 240, category: "install",     color: "#10b981", active: true, order: 3 },
-  { id: "jt-4", name: "Inspection",   key: "inspection",   description: "Site or equipment inspection",     duration: 60,  category: "service",     color: "#3b82f6", active: true, order: 4 },
-  { id: "jt-5", name: "Emergency",    key: "emergency",    description: "Urgent / after-hours dispatch",    duration: 120, category: "emergency",   color: "#dc2626", active: true, order: 5 },
-  { id: "jt-6", name: "Estimate",     key: "estimate",     description: "On-site estimate or consult",      duration: 45,  category: "sales",       color: "#8b5cf6", active: true, order: 6 },
-  { id: "jt-7", name: "Warranty",     key: "warranty",     description: "Warranty-covered work",            duration: 90,  category: "warranty",    color: "#f59e0b", active: true, order: 7 },
-  { id: "jt-8", name: "Replacement",  key: "replacement",  description: "Replace existing equipment",       duration: 240, category: "install",     color: "#0891b2", active: true, order: 8 },
-  { id: "jt-9", name: "Other",        key: "other",        description: "Anything else",                    duration: 60,  category: "service",     color: "#6b7280", active: true, order: 9 },
+  { id: "jt-agr", name: "Maintenance",  key: "agreement_visit", description: "Preventive maintenance — also used for recurring agreement visits", duration: 90,  category: "maintenance", color: "#6366f1", active: true, order: 1, core: true, workOrderPolicy: "auto" },
+  { id: "jt-2", name: "Repair",       key: "repair",       description: "Diagnose and fix a problem",       duration: 60,  category: "service",     color: "#ef4444", active: true, order: 2, workOrderPolicy: "auto" },
+  { id: "jt-3", name: "Installation", key: "installation", description: "New equipment install",            duration: 240, category: "install",     color: "#10b981", active: true, order: 3, workOrderPolicy: "auto" },
+  { id: "jt-4", name: "Inspection",   key: "inspection",   description: "Site or equipment inspection",     duration: 60,  category: "service",     color: "#3b82f6", active: true, order: 4, workOrderPolicy: "auto" },
+  { id: "jt-5", name: "Emergency",    key: "emergency",    description: "Urgent / after-hours dispatch",    duration: 120, category: "emergency",   color: "#dc2626", active: true, order: 5, workOrderPolicy: "auto" },
+  { id: "jt-6", name: "Estimate",     key: "estimate",     description: "On-site estimate or consult",      duration: 45,  category: "sales",       color: "#8b5cf6", active: true, order: 6, workOrderPolicy: "optional" },
+  { id: "jt-7", name: "Warranty",     key: "warranty",     description: "Warranty-covered work",            duration: 90,  category: "warranty",    color: "#f59e0b", active: true, order: 7, workOrderPolicy: "auto" },
+  { id: "jt-8", name: "Replacement",  key: "replacement",  description: "Replace existing equipment",       duration: 240, category: "install",     color: "#0891b2", active: true, order: 8, workOrderPolicy: "auto" },
+  { id: "jt-9", name: "Other",        key: "other",        description: "Anything else",                    duration: 60,  category: "service",     color: "#6b7280", active: true, order: 9, workOrderPolicy: "optional" },
 ];
 
 // ─── Job Statuses ─────────────────────────────────────────
@@ -174,6 +190,17 @@ function humanizeKey(key: string): string {
 export function jobTypeLabel(key: string): string {
   if (!key) return "";
   return getJobTypes().find(t => t.key === key)?.name ?? humanizeKey(key);
+}
+
+// Resolve a job-type key to its full definition (undefined for stale keys).
+export function getJobType(key: string): JobTypeDef | undefined {
+  return getJobTypes().find(t => t.key === key);
+}
+
+// The work-order policy for a job type — defaults to "optional" when unset or
+// the type is unknown.
+export function workOrderPolicyForType(key: string): WorkOrderPolicy {
+  return getJobType(key)?.workOrderPolicy ?? "optional";
 }
 
 // Normalize a value that may be a key OR a display name into the canonical key.

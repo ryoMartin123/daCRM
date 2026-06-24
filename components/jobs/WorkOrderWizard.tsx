@@ -5,9 +5,12 @@
 // snapshots the template's checklist into the job's work order. One WO per job.
 
 import { useMemo, useState } from "react";
-import { X, ClipboardList, Check, Camera } from "lucide-react";
+import { X, ClipboardList, Check, Camera, Plus, Trash2 } from "lucide-react";
 import UiSelect from "@/components/ui/Select";
 import { getAllJobs, getWorkOrder, createWorkOrder } from "@/lib/jobs/data";
+
+// Sentinel template id for the hand-built (no template) path.
+const BLANK = "__blank__";
 import {
   getTemplates, getChecklist, getPhotos, getInstructions, suggestTemplateForJobType,
 } from "@/lib/work-order-templates/data";
@@ -36,25 +39,42 @@ export default function WorkOrderWizard({ preset, onClose, onCreated }: {
   // Keep the suggestion in sync when the job changes (unless the user picked one).
   const [touchedTemplate, setTouchedTemplate] = useState(false);
   const effectiveTemplateId = touchedTemplate ? templateId : (suggested?.id ?? templateId);
-  const template = templates.find(t => t.id === effectiveTemplateId);
+  const isBlank = effectiveTemplateId === BLANK;
+  const template = isBlank ? undefined : templates.find(t => t.id === effectiveTemplateId);
 
   const checklist    = template ? getChecklist(template.id).filter(c => c.active) : [];
   const photos       = template ? getPhotos(template.id).filter(p => p.required) : [];
   const instructions = template ? getInstructions(template.id) : null;
 
+  // Hand-built checklist (the Blank / Custom path).
+  const [customItems, setCustomItems] = useState<{ label: string; required: boolean }[]>([]);
+  const [newItem, setNewItem] = useState("");
+  function addCustomItem() {
+    const label = newItem.trim();
+    if (!label) return;
+    setCustomItems(items => [...items, { label, required: false }]);
+    setNewItem("");
+  }
+
   const lockedJob = Boolean(preset?.jobId);
   const alreadyHasWO = Boolean(jobId && getWorkOrder(jobId));
-  const canCreate = Boolean(jobId && template);
+  const canCreate = Boolean(jobId) && (isBlank ? customItems.length > 0 : Boolean(template));
 
   function handleCreate() {
-    if (!job || !template) return;
-    createWorkOrder({
-      jobId: job.id,
-      title: template.name,
-      instructions: instructions?.customerFacing || instructions?.internal || template.description,
-      templateId: template.id,
-      checklist: checklist.map(c => c.label),
-    });
+    if (!job) return;
+    if (isBlank) {
+      if (customItems.length === 0) return;
+      createWorkOrder({ jobId: job.id, title: "Work Order", instructions: "", checklist: customItems });
+    } else {
+      if (!template) return;
+      createWorkOrder({
+        jobId: job.id,
+        title: template.name,
+        instructions: instructions?.customerFacing || instructions?.internal || template.description,
+        templateId: template.id,
+        checklist: checklist.map(c => ({ label: c.label, required: c.required })),
+      });
+    }
     onCreated(job.id);
   }
 
@@ -117,6 +137,13 @@ export default function WorkOrderWizard({ preset, onClose, onCreated }: {
                       </button>
                     );
                   })}
+                  {/* Blank / custom — for one-off jobs with no matching template */}
+                  <button onClick={() => { setTemplateId(BLANK); setTouchedTemplate(true); }}
+                    className="text-left rounded-xl p-3 transition-all"
+                    style={{ border: `2px solid ${isBlank ? "#4f46e5" : "var(--border)"}`, backgroundColor: isBlank ? "var(--accent-soft-bg)" : "var(--bg-surface-2)" }}>
+                    <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Blank / Custom</p>
+                    <p className="text-[11px] mt-0.5 leading-snug" style={{ color: "var(--text-muted)" }}>Build a checklist by hand for a one-off or custom job.</p>
+                  </button>
                 </div>
               </div>
 
@@ -143,6 +170,45 @@ export default function WorkOrderWizard({ preset, onClose, onCreated }: {
                         <span>Photo: {p.category}{p.minCount > 1 ? ` (×${p.minCount})` : ""}</span>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Custom checklist editor (Blank path) */}
+              {isBlank && (
+                <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--border-subtle)" }}>
+                  <div className="px-3 py-2 flex items-center justify-between" style={{ backgroundColor: "var(--bg-surface-2)", borderBottom: "1px solid var(--border-subtle)" }}>
+                    <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>Custom checklist</p>
+                    <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{customItems.length} steps</span>
+                  </div>
+                  <div className="px-3 py-2 space-y-1.5">
+                    {customItems.map((it, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <Check className="w-3 h-3 shrink-0" style={{ color: "var(--text-muted)" }} />
+                        <span className="text-xs flex-1 min-w-0 truncate" style={{ color: "var(--text-secondary)" }}>{it.label}</span>
+                        <button onClick={() => setCustomItems(items => items.map((x, idx) => idx === i ? { ...x, required: !x.required } : x))}
+                          className="text-[9px] font-semibold px-1.5 py-0.5 rounded shrink-0"
+                          style={it.required ? { backgroundColor: "#fef3c7", color: "#92400e" } : { backgroundColor: "var(--bg-input)", color: "var(--text-muted)" }}>
+                          {it.required ? "required" : "optional"}
+                        </button>
+                        <button onClick={() => setCustomItems(items => items.filter((_, idx) => idx !== i))} className="shrink-0" style={{ color: "var(--text-muted)" }}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                    {customItems.length === 0 && (
+                      <p className="text-xs py-1" style={{ color: "var(--text-muted)" }}>No steps yet — add the work this job needs.</p>
+                    )}
+                    <div className="flex items-center gap-2 pt-1">
+                      <input value={newItem} onChange={e => setNewItem(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addCustomItem(); } }}
+                        placeholder="Add a checklist step…" className="flex-1 rounded-lg px-2.5 py-1.5 text-xs outline-none"
+                        style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)" }} />
+                      <button onClick={addCustomItem} disabled={!newItem.trim()}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-40" style={{ backgroundColor: "#4f46e5" }}>
+                        <Plus className="w-3.5 h-3.5" /> Add
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}

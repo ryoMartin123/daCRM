@@ -178,7 +178,8 @@ export function woSlug(name: string): string {
 
 // Maps a job's `type` enum to the job-config job type key used by templates.
 const JOBTYPE_TO_JOBKEY: Record<string, string> = {
-  maintenance:  "maintenance_visit",
+  maintenance:     "maintenance_visit",
+  agreement_visit: "maintenance_visit",
   repair:       "service_call",
   installation: "installation",
   inspection:   "inspection",

@@ -168,7 +168,20 @@ export default function ProjectsPage() {
           row sits ABOVE the views, so search & filter stay in line with the tabs
           and apply across List / Kanban / Calendar — never buried in the table. */}
       {view !== "overview" && (
-        <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+        <div className="relative flex items-center justify-between flex-wrap gap-2 mb-4">
+          {/* Calendar month nav — inline with the tabs/search, but absolutely
+              centered to the section (not floating between the two groups). */}
+          {view === "calendar" && (
+            <div className="absolute left-1/2 -translate-x-1/2 hidden lg:flex items-center gap-0.5">
+              <button onClick={() => setCalFocus(f => new Date(f.getFullYear(), f.getMonth() - 1, 1))} title="Previous month"
+                className="p-1 rounded-md transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-muted)" }}><ChevronLeft className="w-4 h-4" /></button>
+              <span className="text-sm font-semibold text-center" style={{ color: "var(--text-primary)", minWidth: 150 }}>
+                {calFocus.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+              </span>
+              <button onClick={() => setCalFocus(f => new Date(f.getFullYear(), f.getMonth() + 1, 1))} title="Next month"
+                className="p-1 rounded-md transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-muted)" }}><ChevronRight className="w-4 h-4" /></button>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-0.5">
             {PROJECT_LENSES.map(l => (
               <button key={l.key} onClick={() => selectLens(l.key)}
@@ -188,20 +201,6 @@ export default function ProjectsPage() {
               </button>
             ))}
           </div>
-
-          {/* Calendar month nav — only in calendar view, sits in line with the
-              tabs/search so the row doesn't jump when switching views. */}
-          {view === "calendar" && (
-            <div className="flex items-center gap-0.5">
-              <button onClick={() => setCalFocus(f => new Date(f.getFullYear(), f.getMonth() - 1, 1))} title="Previous"
-                className="p-1 rounded-md transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-muted)" }}><ChevronLeft className="w-4 h-4" /></button>
-              <span className="text-sm font-semibold text-center" style={{ color: "var(--text-primary)", minWidth: 128 }}>
-                {calFocus.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
-              </span>
-              <button onClick={() => setCalFocus(f => new Date(f.getFullYear(), f.getMonth() + 1, 1))} title="Next"
-                className="p-1 rounded-md transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-muted)" }}><ChevronRight className="w-4 h-4" /></button>
-            </div>
-          )}
 
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-2 rounded-lg px-3 py-1.5" style={{ backgroundColor: "var(--bg-input)" }}>

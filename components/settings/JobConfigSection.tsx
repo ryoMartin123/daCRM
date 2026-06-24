@@ -6,13 +6,15 @@ import {
   getJobTypes, saveJobTypes, resetJobTypes,
   getJobStatuses, saveJobStatuses, resetJobStatuses,
   jcId, jcSlug,
-  JOB_TYPE_CATEGORY_LABELS, JOB_STATUS_CATEGORY_LABELS, STATUS_COLORS,
-  type JobTypeDef, type JobTypeCategory, type JobStatusDef, type JobStatusCategory,
+  JOB_TYPE_CATEGORY_LABELS, JOB_STATUS_CATEGORY_LABELS, STATUS_COLORS, WORK_ORDER_POLICY_LABELS,
+  type JobTypeDef, type JobTypeCategory, type JobStatusDef, type JobStatusCategory, type WorkOrderPolicy,
 } from "@/lib/job-config/data";
+import { getTemplates } from "@/lib/work-order-templates/data";
 import UiSelect from "@/components/ui/Select";
 
 const TYPE_CATS   = Object.keys(JOB_TYPE_CATEGORY_LABELS)   as JobTypeCategory[];
 const STATUS_CATS = Object.keys(JOB_STATUS_CATEGORY_LABELS) as JobStatusCategory[];
+const WO_POLICIES = Object.keys(WORK_ORDER_POLICY_LABELS)   as WorkOrderPolicy[];
 
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -40,8 +42,8 @@ function CoreBadge() {
 type Saver = (save: () => void, reset: () => void, dirty: boolean, saved: boolean) => void;
 
 // ─── Job Types tab ────────────────────────────────────────
-type TypeForm = { name: string; key: string; description: string; duration: number; category: JobTypeCategory; color: string; active: boolean };
-const EMPTY_TYPE: TypeForm = { name: "", key: "", description: "", duration: 60, category: "service", color: STATUS_COLORS[0], active: true };
+type TypeForm = { name: string; key: string; description: string; duration: number; category: JobTypeCategory; color: string; active: boolean; workOrderPolicy: WorkOrderPolicy; defaultWorkOrderTemplateId: string };
+const EMPTY_TYPE: TypeForm = { name: "", key: "", description: "", duration: 60, category: "service", color: STATUS_COLORS[0], active: true, workOrderPolicy: "optional", defaultWorkOrderTemplateId: "" };
 
 function JobTypesTab({ register }: { register: Saver }) {
   const [items, setItems] = useState<JobTypeDef[]>([]);
@@ -52,6 +54,7 @@ function JobTypesTab({ register }: { register: Saver }) {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => { setItems(getJobTypes()); }, []);
+  const woTemplates = getTemplates().filter(t => t.active);
   function mark() { setDirty(true); setSaved(false); }
 
   function move(id: string, dir: -1 | 1) {
@@ -62,7 +65,7 @@ function JobTypesTab({ register }: { register: Saver }) {
     setItems([...sorted]); mark();
   }
   function startEdit(t: JobTypeDef) {
-    setForm({ name: t.name, key: t.key, description: t.description, duration: t.duration, category: t.category, color: t.color ?? STATUS_COLORS[0], active: t.active });
+    setForm({ name: t.name, key: t.key, description: t.description, duration: t.duration, category: t.category, color: t.color ?? STATUS_COLORS[0], active: t.active, workOrderPolicy: t.workOrderPolicy ?? "optional", defaultWorkOrderTemplateId: t.defaultWorkOrderTemplateId ?? "" });
     setEditingId(t.id); setShowAdd(false);
   }
   function startAdd() { setForm({ ...EMPTY_TYPE }); setShowAdd(true); setEditingId(null); }
@@ -148,6 +151,27 @@ function JobTypesTab({ register }: { register: Saver }) {
                 style={{ backgroundColor: c, outline: form.color === c ? "2px solid var(--text-primary)" : "none", outlineOffset: "1px" }} />
             ))}
           </div>
+        </div>
+        {/* Work order behavior for this job type */}
+        <div className="rounded-lg p-3 space-y-2.5" style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border-subtle)" }}>
+          <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Work Order</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Policy</label>
+              <UiSelect value={form.workOrderPolicy} onChange={v => setForm(f => ({ ...f, workOrderPolicy: v as WorkOrderPolicy }))}
+                options={WO_POLICIES.map(p => ({ value: p, label: WORK_ORDER_POLICY_LABELS[p] }))} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Default Template</label>
+              <UiSelect value={form.defaultWorkOrderTemplateId} onChange={v => setForm(f => ({ ...f, defaultWorkOrderTemplateId: v }))}
+                options={[{ value: "", label: "Auto — match job type" }, ...woTemplates.map(t => ({ value: t.id, label: t.name }))]} />
+            </div>
+          </div>
+          <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+            {form.workOrderPolicy === "auto" ? "A work order is created automatically from the template when a job of this type is booked."
+              : form.workOrderPolicy === "required" ? "A completed work order is required before a job of this type can be finished."
+              : "No work order by default — add one (template or blank) from the job when needed."}
+          </p>
         </div>
         <div className="flex items-center justify-between pt-1">
           <label className="flex items-center gap-2 cursor-pointer">

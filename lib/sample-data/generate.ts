@@ -175,7 +175,13 @@ export function genWorkOrder(job: Job): { entry: SampleEntry } {
   const wo = createWorkOrder({
     jobId: job.id, title: `${job.title} — Work Order`,
     instructions: "Confirm scope with customer on arrival. Photograph before and after.",
-    checklist: ["Confirm equipment & model", "Complete service tasks", "Test system operation", "Review with customer", "Capture photos"],
+    checklist: [
+      { label: "Confirm equipment & model", required: true },
+      { label: "Complete service tasks", required: true },
+      { label: "Test system operation", required: false },
+      { label: "Review with customer", required: false },
+      { label: "Capture photos", required: true },
+    ],
   });
   // id = wo.id (unique); ref = jobId is the store key used to delete it.
   return { entry: entry("workorder", wo.id, [job.id], job.id) };

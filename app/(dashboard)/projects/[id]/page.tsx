@@ -21,8 +21,9 @@ import Commentable from "@/components/comments/Commentable";
 import QuoteTypeChooser from "@/components/quotes/create/QuoteTypeChooser";
 import PhotoGallery from "@/components/files/PhotoGallery";
 import DetailTabs from "@/components/shared/DetailTabs";
+import ProjectMaterialsVendors from "@/components/projects/ProjectMaterialsVendors";
 
-const TABS = ["Overview", "Phases", "Jobs", "Tasks", "Photos & Files", "Scope", "Estimates", "Invoices", "Notes", "Timeline"];
+const TABS = ["Overview", "Phases", "Jobs", "Tasks", "Materials & Vendors", "Photos & Files", "Scope", "Estimates", "Invoices", "Notes", "Timeline"];
 
 // Link to a job opened from this project — carries ?back so the job's Back button
 // returns to this project's Jobs tab instead of the global Jobs list.
@@ -432,6 +433,7 @@ function ProjectDetailContent({ params }: { params: Promise<{ id: string }> }) {
         {tab === "Phases"        && <PhasesTab   projectId={id} onChange={() => setRefreshKey(k => k + 1)} />}
         {tab === "Jobs"          && <JobsTab     projectId={id} />}
         {tab === "Tasks"         && <TasksTab    projectId={id} />}
+        {tab === "Materials & Vendors" && <ProjectMaterialsVendors projectId={id} projectName={project.name} />}
         {tab === "Scope"         && <ScopeTab    projectId={id} />}
         {tab === "Photos & Files"&& <PhotoGallery recordLevel="project" scope={{ accountId: project.accountId, projectId: id }} accountName={project.customerName} />}
         {tab === "Estimates"     && <ProjectEstimatesTab projectId={id} />}

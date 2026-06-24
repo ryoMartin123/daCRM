@@ -5,14 +5,14 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, CheckCircle, Circle, ChevronRight, Phone, MapPin, User, Clock, Calendar, DollarSign, Briefcase, AlertTriangle, Camera, ListChecks, Plus, Trash2, Ban, RotateCcw, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getJob, updateJob, deleteJob, getWorkOrder, getJobNotes, resolveJobStatus, type JobNoteType } from "@/lib/jobs/data";
+import { getJob, updateJob, deleteJob, getWorkOrder, updateWorkOrder, getJobNotes, resolveJobStatus, type JobNoteType } from "@/lib/jobs/data";
 import WorkOrderWizard from "@/components/jobs/WorkOrderWizard";
 import { getJobStatuses } from "@/lib/job-config/data";
 import StatusBadge from "@/components/shared/StatusBadge";
 import ActionsMenu from "@/components/shared/ActionsMenu";
 import {
   suggestTemplateForJobType, getChecklist, getPhotos, getInstructions,
-  CHECKLIST_TYPE_LABELS, type ChecklistItem as TemplateChecklistItem,
+  CHECKLIST_TYPE_LABELS,
 } from "@/lib/work-order-templates/data";
 import { getProject } from "@/lib/projects/data";
 import { getCustomer } from "@/lib/customers/data";
@@ -210,7 +210,7 @@ function WorkOrderTab({ jobId }: { jobId: string }) {
           <>
             <div>
               <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>No work order yet</p>
-              <p className="text-xs" style={{ color: "var(--text-muted)" }}>Generate one from a template to give the tech their checklist.</p>
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>Create one from a template — or build a custom checklist — to give the tech their work order.</p>
             </div>
             <button onClick={() => setWizard(true)} className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg transition-colors">
               <Plus className="w-3.5 h-3.5" /> Create Work Order
@@ -335,79 +335,58 @@ function WorkOrderTab({ jobId }: { jobId: string }) {
   );
 }
 
-// ─── Checklist tab — interactive, driven by the template ──
+// ─── Checklist tab — execute the job's actual work order ──
+// Operates on the WO INSTANCE (not the template): toggling an item persists its
+// completion, which is what the lifecycle completion gate reads. No WO → prompt
+// to create one in the Work Order tab.
 function ChecklistTab({ jobId }: { jobId: string }) {
-  const job = getJob(jobId)!;
-  const template = suggestTemplateForJobType(job.type);
-  const templateItems: TemplateChecklistItem[] = template ? getChecklist(template.id).filter(c => c.active) : [];
+  const [version, setVersion] = useState(0);
+  const wo = React.useMemo(() => getWorkOrder(jobId), [jobId, version]);
 
-  // Local execution state for this job's work order instance.
-  const [done, setDone] = useState<Record<string, boolean>>({});
-
-  if (!template || templateItems.length === 0) {
-    return <StubContent label="No checklist configured for this job type. Add items in Settings → Work Orders → Checklists." />;
+  if (!wo || wo.checklist.length === 0) {
+    return <StubContent label="No work order checklist yet. Create a work order in the Work Order tab (from a template or blank) to give this job a checklist." />;
   }
 
-  function toggle(id: string) { setDone(prev => ({ ...prev, [id]: !prev[id] })); }
+  const items = [...wo.checklist].sort((a, b) => a.sortOrder - b.sortOrder);
+  function toggle(id: string) {
+    updateWorkOrder(jobId, { checklist: items.map(c => c.id === id ? { ...c, isComplete: !c.isComplete } : c) });
+    setVersion(v => v + 1);
+  }
 
-  // Only checkbox/photo/signature items are "completable"; others are data fields.
-  const completable = templateItems.filter(c => ["checkbox", "photo", "signature"].includes(c.type));
-  const doneCount = completable.filter(c => done[c.id]).length;
-  const pct = completable.length > 0 ? Math.round((doneCount / completable.length) * 100) : 0;
+  const doneCount = items.filter(c => c.isComplete).length;
+  const requiredOpen = items.filter(c => c.required && !c.isComplete).length;
+  const pct = items.length > 0 ? Math.round((doneCount / items.length) * 100) : 0;
 
   return (
     <div className="max-w-xl space-y-4">
       {/* Progress */}
       <div className="rounded-xl p-4" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
         <div className="flex items-center justify-between mb-1">
-          <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{doneCount} of {completable.length} complete</span>
+          <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{doneCount} of {items.length} complete</span>
           <span className="text-sm font-bold" style={{ color: pct === 100 ? "#10b981" : "#4f46e5" }}>{pct}%</span>
         </div>
-        <p className="text-[10px] mb-2" style={{ color: "var(--text-muted)" }}>Template: {template.name}</p>
+        <p className="text-[10px] mb-2" style={{ color: "var(--text-muted)" }}>
+          {wo.title}{requiredOpen > 0 ? ` · ${requiredOpen} required item${requiredOpen === 1 ? "" : "s"} left` : " · all required items done"}
+        </p>
         <div className="h-2 rounded-full" style={{ backgroundColor: "var(--bg-input)" }}>
           <div className="h-2 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: pct === 100 ? "#10b981" : "#4f46e5" }} />
         </div>
       </div>
 
-      {/* Items rendered by type */}
+      {/* Items — completion drives the job's completion gate */}
       <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
-        {templateItems.map((item, i) => {
-          const isCompletable = ["checkbox", "photo", "signature"].includes(item.type);
-          const checked = done[item.id];
-          const border = i < templateItems.length - 1 ? { borderBottom: "1px solid var(--border-subtle)" } : undefined;
-          const badge = CHECK_TYPE_BADGE[item.type] ?? CHECK_TYPE_BADGE.checkbox;
-
-          if (isCompletable) {
-            return (
-              <button key={item.id} onClick={() => toggle(item.id)}
-                className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--bg-surface-2)]" style={border}>
-                {checked
-                  ? <CheckCircle className="w-5 h-5 shrink-0 text-emerald-500" />
-                  : <Circle className="w-5 h-5 shrink-0" style={{ color: "var(--border)" }} />}
-                <span className={cn("text-sm flex-1", checked ? "line-through" : "")}
-                  style={{ color: checked ? "var(--text-muted)" : "var(--text-primary)" }}>{item.label}</span>
-                {item.required && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: "#fee2e2", color: "#991b1b" }}>Required</span>}
-                <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full shrink-0" style={{ backgroundColor: badge.bg, color: badge.color }}>{CHECKLIST_TYPE_LABELS[item.type]}</span>
-              </button>
-            );
-          }
-          // Data-entry items (text/number/dropdown/datetime) shown as labeled inputs
+        {items.map((item, i) => {
+          const border = i < items.length - 1 ? { borderBottom: "1px solid var(--border-subtle)" } : undefined;
           return (
-            <div key={item.id} className="px-4 py-3" style={border}>
-              <div className="flex items-center gap-2 mb-1.5">
-                <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{item.label}</span>
-                {item.required && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: "#fee2e2", color: "#991b1b" }}>Required</span>}
-                <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full ml-auto" style={{ backgroundColor: badge.bg, color: badge.color }}>{CHECKLIST_TYPE_LABELS[item.type]}</span>
-              </div>
-              {item.type === "long_text" ? (
-                <textarea rows={2} placeholder="Enter…" className="w-full rounded-lg px-3 py-1.5 text-sm outline-none resize-none"
-                  style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface-2)", color: "var(--text-primary)" }} />
-              ) : (
-                <input type={item.type === "number" ? "number" : item.type === "datetime" ? "datetime-local" : "text"} placeholder="Enter…"
-                  className="w-full rounded-lg px-3 py-1.5 text-sm outline-none"
-                  style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface-2)", color: "var(--text-primary)" }} />
-              )}
-            </div>
+            <button key={item.id} onClick={() => toggle(item.id)}
+              className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--bg-surface-2)]" style={border}>
+              {item.isComplete
+                ? <CheckCircle className="w-5 h-5 shrink-0 text-emerald-500" />
+                : <Circle className="w-5 h-5 shrink-0" style={{ color: "var(--border)" }} />}
+              <span className={cn("text-sm flex-1", item.isComplete ? "line-through" : "")}
+                style={{ color: item.isComplete ? "var(--text-muted)" : "var(--text-primary)" }}>{item.label}</span>
+              {item.required && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: "#fee2e2", color: "#991b1b" }}>Required</span>}
+            </button>
           );
         })}
       </div>

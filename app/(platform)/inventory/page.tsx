@@ -13,32 +13,39 @@ import {
 import { PageHeader, StatCard } from "@/components/platform/ui";
 import {
   getInventoryItems, getLowStockItems, getOpenPurchaseOrders, getVendors,
-  getSubcontractors, getInventoryActivity, PO_STATUS_STYLE, VENDOR_TYPE_LABELS,
+  getSubcontractors, getInventoryActivity, getPartiallyReceivedPOs, complianceIssueCount,
+  poSubtotal, PO_STATUS_STYLE, VENDOR_TYPE_LABELS,
 } from "@/lib/inventory/data";
 
 const ACCENT = "#f97316";
 const fmt = (n: number) => `$${n.toLocaleString()}`;
 
-const ACTIVITY_ICON = { received: PackageCheck, truck_adjusted: Truck, po_created: ShoppingCart, doc_uploaded: FileText } as const;
+const ACTIVITY_ICON = {
+  received: PackageCheck, truck_adjusted: Truck, po_created: ShoppingCart, doc_uploaded: FileText,
+  sub_assigned: HardHat, compliance: AlertTriangle, material_request: FileText,
+} as const;
 
 export default function InventoryDashboard() {
   const items = getInventoryItems();
   const lowStock = getLowStockItems();
   const openPOs = getOpenPurchaseOrders();
+  const pendingReceiving = getPartiallyReceivedPOs();
   const vendors = getVendors();
   const subs = getSubcontractors();
+  const complianceIssues = complianceIssueCount();
   const activity = getInventoryActivity();
 
   return (
     <div className="p-6 space-y-5">
       <PageHeader title="Dashboard" subtitle="Materials, truck stock, purchase orders, vendors, and subcontractors." />
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatCard label="Inventory Items" value={String(items.length)} hint="Tracked SKUs" icon={Boxes} accent={ACCENT} />
-        <StatCard label="Low Stock" value={String(lowStock.length)} hint="At/below reorder" icon={AlertTriangle} accent="#ef4444" />
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
         <StatCard label="Open Purchase Orders" value={String(openPOs.length)} hint="Awaiting receipt" icon={ShoppingCart} accent="#0ea5e9" />
+        <StatCard label="Low Stock" value={String(lowStock.length)} hint="At/below reorder" icon={AlertTriangle} accent="#ef4444" />
+        <StatCard label="Pending Receiving" value={String(pendingReceiving.length)} hint="Partially received" icon={PackageCheck} accent={ACCENT} />
         <StatCard label="Active Vendors" value={String(vendors.length)} hint="Suppliers" icon={Building2} accent="#6366f1" />
         <StatCard label="Active Subcontractors" value={String(subs.length)} hint="Trades" icon={HardHat} accent="#10b981" />
+        <StatCard label="Compliance Issues" value={String(complianceIssues)} hint="Vendors & subs" icon={AlertTriangle} accent="#f59e0b" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -63,8 +70,8 @@ export default function InventoryDashboard() {
             {openPOs.map(p => (
               <li key={p.id} className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{p.vendor}</p>
-                  <p className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{p.number} · {p.items} items · {fmt(p.total)}</p>
+                  <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{p.vendorName}</p>
+                  <p className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{p.number} · {p.lines.length} items · {fmt(poSubtotal(p))}</p>
                 </div>
                 <Dot style={PO_STATUS_STYLE[p.status]} />
               </li>

@@ -5,7 +5,10 @@
 // Maps to future DB tables:
 //   projects, jobs, work_orders, checklist_items, job_notes
 
-import { getJobTypes } from "@/lib/job-config/data";
+import { getJobTypes, getJobType, workOrderPolicyForType } from "@/lib/job-config/data";
+import {
+  getTemplates, getChecklist, getInstructions, suggestTemplateForJobType,
+} from "@/lib/work-order-templates/data";
 
 // ─── Agreement-visit revert hook ──────────────────────────
 // deleteJob must return a materialized agreement visit to the schedule queue,
@@ -227,6 +230,8 @@ export function deleteJob(id: string): void {
     _jobOverrides = all;
     try { localStorage.setItem(JOBS_OV_KEY, JSON.stringify(all)); } catch { /* ignore */ }
   }
+  // Don't leave the job's work order behind.
+  deleteWorkOrder(id);
   // Don't orphan the agreement visit when its job is deleted. Routed through the
   // registered handler (see registerAgreementJobDeletedHandler) to avoid a static
   // jobs⇄agreements import cycle.
@@ -268,6 +273,8 @@ export function createJob(input: NewJobInput): Job {
   };
   _extraJobs = [job, ...extraJobs()];
   try { localStorage.setItem(JOBS_KEY, JSON.stringify(_extraJobs)); } catch { /* ignore */ }
+  // Auto-create the work order if the job type's policy calls for it.
+  materializeWorkOrderForJob(job);
   return job;
 }
 
@@ -302,8 +309,9 @@ export interface NewWorkOrderInput {
   title: string;
   instructions?: string;
   templateId?: string;
-  // Checklist labels snapshotted from the chosen template (in order).
-  checklist: string[];
+  // Checklist items snapshotted from the chosen template (in order). `required`
+  // items gate job completion (see lib/jobs/lifecycle).
+  checklist: { label: string; required?: boolean }[];
 }
 export function createWorkOrder(input: NewWorkOrderInput): WorkOrder {
   const wo: WorkOrder = {
@@ -312,13 +320,44 @@ export function createWorkOrder(input: NewWorkOrderInput): WorkOrder {
     title: input.title,
     instructions: input.instructions ?? "",
     status: "pending",
-    checklist: input.checklist.map((label, i) => ({
-      id: `ci-${Date.now()}-${i}`, label, isComplete: false, sortOrder: i + 1,
+    checklist: input.checklist.map((c, i) => ({
+      id: `ci-${Date.now()}-${i}`, label: c.label, isComplete: false, sortOrder: i + 1, required: c.required,
     })),
   };
   _woByJob = { ...woStore(), [input.jobId]: wo };
   persistWO();
   return wo;
+}
+
+// ─── Auto-materialize a work order from the job type's policy ──────────
+// auto/required types get a WO created from their template the moment the job is
+// created; optional types (and types with no matching template) get none — the
+// office/field adds one later. See lib/job-config workOrderPolicy.
+function resolveTemplateForJobType(type: string) {
+  const jt = getJobType(type);
+  if (jt?.defaultWorkOrderTemplateId) {
+    const explicit = getTemplates().find(t => t.id === jt.defaultWorkOrderTemplateId && t.active);
+    if (explicit) return explicit;
+  }
+  return suggestTemplateForJobType(type);
+}
+
+export function materializeWorkOrderForJob(job: Job): WorkOrder | undefined {
+  const existing = getWorkOrder(job.id);
+  if (existing) return existing;
+  if (workOrderPolicyForType(job.type) === "optional") return undefined;
+  const tmpl = resolveTemplateForJobType(job.type);
+  if (!tmpl) return undefined;
+  const items = getChecklist(tmpl.id).filter(c => c.active);
+  if (items.length === 0) return undefined;
+  const instr = getInstructions(tmpl.id);
+  return createWorkOrder({
+    jobId: job.id,
+    title: tmpl.name,
+    instructions: instr.customerFacing || instr.internal || tmpl.description,
+    templateId: tmpl.id,
+    checklist: items.map(c => ({ label: c.label, required: c.required })),
+  });
 }
 export function updateWorkOrder(jobId: string, patch: Partial<WorkOrder>): WorkOrder | undefined {
   const existing = woStore()[jobId] ?? WORK_ORDERS[jobId];

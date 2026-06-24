@@ -132,6 +132,8 @@ export const APP_NAV: Partial<Record<PlatformAppId, AppNavItem[]>> = {
     { name: "Sales Documents", href: "/documents/sales", icon: FileBadge },
     { name: "Safety", href: "/documents/safety", icon: HardHat },
     { name: "System Management", href: "/documents/system", icon: Settings },
+    { name: "Vendor Documents", href: "/documents/vendor-documents", icon: Building2 },
+    { name: "Subcontractor Documents", href: "/documents/subcontractor-documents", icon: HardHat },
     { name: "Archived", href: "/documents/archived", icon: Archive },
   ],
   admin: [
