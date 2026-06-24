@@ -13,7 +13,7 @@ const OPERATIONAL_PREFIXES = [
   "/tasks", "/dispatching", "/calendar", "/files", "/agreements", "/marketing", "/reports",
   // Platform apps that filter by the active company/location context. Portal
   // (self-service) and Admin (platform-wide management) intentionally omitted.
-  "/hr", "/accounting", "/documents",
+  "/hr", "/accounting", "/documents", "/team-workspace", "/inventory",
 ];
 
 function isOperational(pathname: string) {
@@ -156,7 +156,7 @@ export default function HierarchySelector() {
       {/* ── Trigger button ────────────────────────────── */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all"
+        className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all max-w-[260px] overflow-hidden"
         style={{
           backgroundColor: open ? "var(--bg-surface-2)" : "var(--bg-input)",
           border: `1px solid ${open ? "var(--border)" : "transparent"}`,
@@ -177,7 +177,7 @@ export default function HierarchySelector() {
             {organization.name}
           </span>
         ) : (
-          <span className="flex items-center gap-1">
+          <span className="flex items-center gap-1 min-w-0 whitespace-nowrap overflow-hidden">
             {crumbs.map((crumb, i) => (
               <span key={i} className="flex items-center gap-1">
                 {i > 0 && (

@@ -290,9 +290,12 @@ export default function CalendarPage() {
     const collect = (b: DispatchBoard) => (membersByBoard[b.id] ?? new Set<string>()).forEach(n => names.add(n));
     if (activeBoardDef) collect(activeBoardDef);
     else boards.forEach(collect);
-    return Array.from(names).map(name =>
-      roster.find(r => r.name === name) ?? { name, initials: initials(name), status: "available" as const },
-    );
+    // Only current staffed users appear as rows — a name left over in a board's
+    // members from a since-deleted user is dropped (any jobs they still hold fall
+    // into the Unassigned lane via isOrphan).
+    return Array.from(names)
+      .map(name => roster.find(r => r.name === name))
+      .filter((r): r is TechRosterEntry => Boolean(r));
   })();
   const activeDispatcherLabel = activeBoardDef?.dispatchers.join(", ");
   // Primary/secondary text for the board switcher control (header, top-right).

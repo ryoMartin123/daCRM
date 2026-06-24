@@ -25,3 +25,6 @@ dev-server.log
 # OS files
 .DS_Store
 Thumbs.db
+
+# local npm cache
+.npm-cache/

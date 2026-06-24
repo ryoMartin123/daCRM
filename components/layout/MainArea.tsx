@@ -34,7 +34,10 @@ export default function MainArea({ children }: { children: React.ReactNode }) {
           <ChevronDown className="w-3.5 h-3.5" /> Show search &amp; location bar
         </button>
       )}
-      <main className="flex-1 overflow-y-auto flex flex-col">
+      {/* scrollbar-gutter:stable reserves the scrollbar lane so the content width
+          never jumps when the bar appears/disappears during a route or skeleton
+          swap (the "screen shake"). */}
+      <main className="flex-1 overflow-y-auto flex flex-col" style={{ scrollbarGutter: "stable" }}>
         {/* Positioned wrapper so comment pins can anchor to page coordinates and
             scroll with the content. flex-1 gives it a definite height (so full-
             height pages like the inbox fill correctly) while still growing taller

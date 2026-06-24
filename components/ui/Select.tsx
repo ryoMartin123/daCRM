@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, Check } from "lucide-react";
 
 export interface SelectOption {
@@ -26,20 +27,26 @@ export default function Select({
 }: SelectProps) {
   const [open, setOpen] = useState(false);
   const [activeIdx, setActiveIdx] = useState<number>(-1);
-  // Flip the popup above the trigger (and cap its height) when there isn't
-  // enough room below — keeps it on-screen inside scrolling drawers/wizards.
-  const [placement, setPlacement] = useState<{ dropUp: boolean; maxH: number }>({ dropUp: false, maxH: 260 });
+  // The popup is portaled to <body> with position:fixed so it floats ABOVE any
+  // scrolling modal/drawer/wizard instead of being clipped by their overflow
+  // (no more scrolling the dialog to see the options). We measure the trigger to
+  // place it, and flip above when there isn't enough room below.
+  const [pos, setPos] = useState<{ left: number; width: number; maxH: number; dropUp: boolean; top?: number; bottom?: number } | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
 
   const selected = options.find(o => o.value === value);
   const pad = size === "sm" ? "px-2.5 py-1.5 text-xs" : "px-3 py-2 text-sm";
 
-  // Close on outside click
+  // Close on outside click — the popup lives in a portal (outside wrapRef), so
+  // clicks inside it must NOT count as "outside" or selecting would close first.
   useEffect(() => {
     if (!open) return;
     function onDoc(e: MouseEvent) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (wrapRef.current?.contains(t) || popRef.current?.contains(t)) return;
+      setOpen(false);
     }
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
@@ -50,7 +57,9 @@ export default function Select({
     if (open) setActiveIdx(options.findIndex(o => o.value === value));
   }, [open, value, options]);
 
-  // Decide drop direction + max height from the room around the trigger.
+  // Measure the trigger to position the fixed popup; flip up + cap height when
+  // there isn't enough room below. Re-runs on scroll/resize so it tracks the
+  // trigger (e.g. while the dialog body scrolls underneath).
   useLayoutEffect(() => {
     if (!open || !btnRef.current) return;
     const GAP = 6, MARGIN = 8, IDEAL = 260;
@@ -59,7 +68,10 @@ export default function Select({
       const below = window.innerHeight - rect.bottom - GAP - MARGIN;
       const above = rect.top - GAP - MARGIN;
       const dropUp = below < Math.min(IDEAL, options.length * 38 + 8) && above > below;
-      setPlacement({ dropUp, maxH: Math.max(120, Math.min(IDEAL, dropUp ? above : below)) });
+      const maxH = Math.max(120, Math.min(IDEAL, dropUp ? above : below));
+      setPos(dropUp
+        ? { left: rect.left, width: rect.width, maxH, dropUp, bottom: window.innerHeight - rect.top + GAP }
+        : { left: rect.left, width: rect.width, maxH, dropUp, top: rect.bottom + GAP });
     };
     measure();
     window.addEventListener("resize", measure);
@@ -119,16 +131,22 @@ export default function Select({
           style={{ color: "var(--text-muted)", transform: open ? "rotate(180deg)" : "none" }} />
       </button>
 
-      {/* Popup */}
-      {open && (
+      {/* Popup — portaled to <body> with position:fixed so it layers above any
+          scrolling dialog and is never clipped. */}
+      {open && pos && typeof document !== "undefined" && createPortal(
         <div
-          className="absolute left-0 right-0 z-50 p-1 rounded-xl overflow-y-auto"
+          ref={popRef}
+          className="p-1 rounded-xl overflow-y-auto thin-scroll-y"
           style={{
+            position: "fixed",
+            left: pos.left,
+            width: pos.width,
+            zIndex: 1000,
             backgroundColor: "var(--bg-surface)",
             border: "1px solid var(--border)",
             boxShadow: "0 12px 32px rgba(0,0,0,0.16)",
-            maxHeight: placement.maxH,
-            ...(placement.dropUp ? { bottom: "100%", marginBottom: 6 } : { top: "100%", marginTop: 6 }),
+            maxHeight: pos.maxH,
+            ...(pos.dropUp ? { bottom: pos.bottom } : { top: pos.top }),
           }}
           role="listbox"
         >
@@ -155,7 +173,8 @@ export default function Select({
               </button>
             );
           })}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

@@ -16,6 +16,18 @@ export default function VisitScheduleSection({ d }: { d: UseAgreementDraft }) {
   const boardOptions = useMemo(() => [{ value: "", label: "Any board" }, ...getBoardsForContext().map(b => ({ value: b.id, label: b.name }))], []);
   const freqName = (key: string) => d.visitRules.find(r => r.key === key)?.name ?? key;
 
+  // Valid window for explicit visit dates: no earlier than the agreement start
+  // (and never in the past), no later than the term end.
+  const visitBounds = useMemo(() => {
+    const toYMD = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+    const parse = (s: string) => { const [y, m, dd] = (s || "").split("-").map(Number); return (y && m && dd) ? new Date(y, m - 1, dd) : null; };
+    const start = parse(d.startDate);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const min = start ? (start > today ? start : today) : today;
+    const end = start ? new Date(start.getFullYear(), start.getMonth() + (parseInt(d.termMonths) || 12), start.getDate()) : null;
+    return { minDate: toYMD(min), maxDate: end ? toYMD(end) : undefined };
+  }, [d.startDate, d.termMonths]);
+
   return (
     <div>
       <SectionHead title="Visit Schedule" subtitle="When we go — the recurring visits this agreement generates."
@@ -60,7 +72,7 @@ export default function VisitScheduleSection({ d }: { d: UseAgreementDraft }) {
                   <Mini label="Dispatch Board (optional)"><UiSelect size="sm" value={v.dispatchBoardId} onChange={k => d.setVisit(v.id, { dispatchBoardId: k })} options={boardOptions} /></Mini>
                 </div>
                 {v.frequencyKey === "custom" && (
-                  <CustomVisitBuilder config={v.customVisit} onChange={cfg => d.setVisit(v.id, { customVisit: cfg })} />
+                  <CustomVisitBuilder config={v.customVisit} onChange={cfg => d.setVisit(v.id, { customVisit: cfg })} minDate={visitBounds.minDate} maxDate={visitBounds.maxDate} />
                 )}
                 <div className="grid grid-cols-1 gap-2">
                   <ToggleRow label="Auto-generate visit" hint="Create planned visits automatically (otherwise booked on demand)." on={v.autoGenerate} onChange={val => d.setVisit(v.id, { autoGenerate: val })} />

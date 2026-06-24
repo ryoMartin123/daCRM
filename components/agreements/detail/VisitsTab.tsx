@@ -53,6 +53,11 @@ export default function VisitsTab({ agreement, onRefresh }: { agreement: Custome
   }
 
   const rules = agreement.visitPlan ?? [];
+  // How many generated visits each schedule rule produced — labels are
+  // "<rule name>" or "<rule name> N of M", so match by name/prefix. Makes it
+  // clear that one visit type with a frequency of N yields N visits.
+  const genCountFor = (name: string) =>
+    agreement.visits.filter(x => x.label === name || x.label.startsWith(`${name} `)).length;
 
   return (
     <div className="space-y-4">
@@ -73,7 +78,12 @@ export default function VisitsTab({ agreement, onRefresh }: { agreement: Custome
         )}
         {rules.map((v, i) => (
           <div key={v.id} className="grid px-4 py-3 items-center" style={{ gridTemplateColumns: "2fr 1fr 1.2fr 0.8fr 1fr 1.4fr", gap: "0.75rem", borderBottom: i < rules.length - 1 ? "1px solid var(--border-subtle)" : "none" }}>
-            <span className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{v.name}</span>
+            <div className="min-w-0">
+              <span className="text-sm font-medium truncate block" style={{ color: "var(--text-primary)" }}>{v.name}</span>
+              {(() => { const n = genCountFor(v.name); return n > 0 ? (
+                <span className="text-[10px] font-semibold mt-0.5 inline-block px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--accent-soft-bg)", color: "var(--accent-text)" }}>{n} visit{n === 1 ? "" : "s"} / term</span>
+              ) : null; })()}
+            </div>
             <span className="text-xs" style={{ color: "var(--text-secondary)" }}>{visitRuleName(v.frequencyKey)}</span>
             <span className="text-xs truncate" style={{ color: "var(--text-secondary)" }}>{v.preferredWindow ?? "—"}</span>
             <span className="text-xs" style={{ color: "var(--text-secondary)" }}>{v.durationMin}m</span>

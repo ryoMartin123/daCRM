@@ -5,21 +5,82 @@
 // loading. Pure presentational + CSS shimmer (.skeleton-block in globals.css).
 // Compose the building blocks, or drop in a ready-made <PageSkeleton variant />.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
-// ─── Delay gate ───────────────────────────────────────────
-// Renders nothing for the first `delay` ms, then reveals its children. As a
-// Suspense fallback this means: if the page is ready quickly the fallback
-// unmounts before the timer fires (no skeleton flash); only a genuinely slow
-// load crosses the threshold and shows the skeleton.
-export function Delayed({ delay = 200, children }: { delay?: number; children: React.ReactNode }) {
+// ─── Delay gate + minimum-visible hold ────────────────────
+// Two-sided anti-flash for skeleton fallbacks:
+//   • delay      — render nothing for the first `delay` ms. If the page is ready
+//     quickly the fallback unmounts before the timer fires, so a fast load never
+//     flashes a skeleton.
+//   • minVisible — ONCE the skeleton has appeared, guarantee it stays on screen
+//     for at least this long. A Next.js route `loading.tsx` fallback is unmounted
+//     the instant the page is ready, so we can't hold it in React; instead, on
+//     unmount we hand the rendered skeleton off to a lightweight DOM overlay that
+//     lingers for the remaining time and fades out. The result: a load that
+//     finishes just after `delay` still shows a calm skeleton for ~minVisible
+//     rather than a sub-frame flash. (Mirrors AppLoadingOverlay's self-control.)
+export function Delayed({
+  delay = 200, minVisible = 600, fadeMs = 220, children,
+}: { delay?: number; minVisible?: number; fadeMs?: number; children: React.ReactNode }) {
   const [show, setShow] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const shownAtRef = useRef<number | null>(null);
+  // Bumped on every effect run; lets the deferred hand-off tell a real unmount
+  // from React StrictMode's mount→unmount→mount double-invoke in development.
+  const runIdRef = useRef(0);
+
   useEffect(() => {
     const t = setTimeout(() => setShow(true), delay);
     return () => clearTimeout(t);
   }, [delay]);
-  return show ? <>{children}</> : null;
+
+  useEffect(() => {
+    if (!show) return;
+    shownAtRef.current = Date.now();
+    const runId = ++runIdRef.current;
+    // Snapshot the skeleton's markup + content-region position NOW, while it's
+    // mounted and laid out. The cleanup below is a passive effect that runs AFTER
+    // React has already detached this node, so measuring there yields an empty
+    // rect — which is why earlier the hand-off never appeared. The skeleton is
+    // static, so a snapshot taken at appear-time is identical to teardown-time.
+    const node = ref.current;
+    const host = node?.parentElement;     // the page-content region (not the chrome)
+    const r = host?.getBoundingClientRect();
+    const snap = node && r && r.width > 0 && r.height > 0
+      ? { html: node.innerHTML, top: r.top, left: r.left, width: r.width, height: r.height }
+      : null;
+    return () => {
+      const shownAt = shownAtRef.current;
+      if (shownAt == null || !snap) return;
+      const remaining = minVisible - (Date.now() - shownAt);
+      if (remaining <= 0) return;            // already on screen long enough
+      // Defer one tick: if a new effect run bumps runId first, this was a
+      // StrictMode remount, not a teardown — skip the hand-off.
+      setTimeout(() => {
+        // Reading the *latest* runIdRef.current here is intentional — a bump means
+        // a StrictMode remount happened, so this teardown isn't real.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        if (runIdRef.current !== runId || typeof document === "undefined") return;
+        try {
+          const overlay = document.createElement("div");
+          overlay.setAttribute("aria-hidden", "true");
+          overlay.style.cssText = `position:fixed;top:${snap.top}px;left:${snap.left}px;width:${snap.width}px;height:${snap.height}px;overflow:hidden;z-index:30;background:var(--bg-page);transition:opacity ${fadeMs}ms ease;`;
+          overlay.innerHTML = snap.html;
+          document.body.appendChild(overlay);
+          window.setTimeout(() => {
+            overlay.style.opacity = "0";
+            window.setTimeout(() => overlay.remove(), fadeMs);
+          }, remaining);
+        } catch { /* best-effort hold */ }
+      }, 0);
+    };
+  }, [show, minVisible, fadeMs]);
+
+  if (!show) return null;
+  // display:contents — the wrapper gives us a ref to snapshot on hand-off without
+  // generating a box, so the skeleton's own layout (e.g. h-full) is unaffected.
+  return <div ref={ref} style={{ display: "contents" }}>{children}</div>;
 }
 
 // Base shimmer block. Size it with className (w-/h-) or style.

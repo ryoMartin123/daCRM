@@ -1,10 +1,5 @@
-import DocumentsExplorer from "@/components/platform/DocumentsExplorer";
+import DocumentsDashboard from "@/components/platform/DocumentsDashboard";
 
 export default function DocumentsPage() {
-  // Full-height 3-panel explorer.
-  return (
-    <div className="h-full">
-      <DocumentsExplorer />
-    </div>
-  );
+  return <DocumentsDashboard />;
 }

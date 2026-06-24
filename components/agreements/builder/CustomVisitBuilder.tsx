@@ -17,7 +17,11 @@ import { Mini, TextInput, RuleCard, RuleSummary, cardStyle } from "./ui";
 
 const MONTH_OPTIONS = MONTH_LABELS.map((m, i) => ({ value: String(i + 1), label: m }));
 
-export default function CustomVisitBuilder({ config, onChange }: { config?: CustomVisitConfig; onChange: (c: CustomVisitConfig) => void }) {
+export default function CustomVisitBuilder({ config, onChange, minDate, maxDate }: {
+  config?: CustomVisitConfig; onChange: (c: CustomVisitConfig) => void;
+  minDate?: string;   // earliest valid visit date (agreement start / today)
+  maxDate?: string;   // latest valid visit date (agreement term end)
+}) {
   const c = config;
   const set = (patch: Partial<CustomVisitConfig>) => { if (c) onChange({ ...c, ...patch }); };
 
@@ -73,7 +77,7 @@ export default function CustomVisitBuilder({ config, onChange }: { config?: Cust
           )}
 
           {c.ruleType === "specific_dates" && (
-            <DateEditor dates={c.dates ?? []} onChange={d => set({ dates: d })} />
+            <DateEditor dates={c.dates ?? []} onChange={d => set({ dates: d })} minDate={minDate} maxDate={maxDate} />
           )}
 
           {c.ruleType === "on_demand_allowance" && (
@@ -111,7 +115,8 @@ function WindowEditor({ windows, onChange }: { windows: CustomVisitWindow[]; onC
   );
 }
 
-function DateEditor({ dates, onChange }: { dates: string[]; onChange: (d: string[]) => void }) {
+function DateEditor({ dates, onChange, minDate, maxDate }: { dates: string[]; onChange: (d: string[]) => void; minDate?: string; maxDate?: string }) {
+  const outOfRange = (d: string) => !!d && ((minDate && d < minDate) || (maxDate && d > maxDate));
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
@@ -121,11 +126,15 @@ function DateEditor({ dates, onChange }: { dates: string[]; onChange: (d: string
       </div>
       {dates.length === 0 && <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>No dates yet.</p>}
       {dates.map((d, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <div className="flex-1"><DatePicker value={d} onChange={v => onChange(dates.map((x, j) => j === i ? v : x))} placeholder="Pick a date" /></div>
-          <button type="button" onClick={() => onChange(dates.filter((_, j) => j !== i))} className="p-1.5 rounded-lg hover:bg-red-50 shrink-0" style={{ color: "#9ca3af" }} title="Remove"><Trash2 className="w-3.5 h-3.5" /></button>
+        <div key={i}>
+          <div className="flex items-center gap-2">
+            <div className="flex-1"><DatePicker value={d} onChange={v => onChange(dates.map((x, j) => j === i ? v : x))} placeholder="Pick a date" min={minDate} max={maxDate} /></div>
+            <button type="button" onClick={() => onChange(dates.filter((_, j) => j !== i))} className="p-1.5 rounded-lg hover:bg-red-50 shrink-0" style={{ color: "#9ca3af" }} title="Remove"><Trash2 className="w-3.5 h-3.5" /></button>
+          </div>
+          {outOfRange(d) && <p className="text-[11px] mt-1" style={{ color: "#dc2626" }}>Date must be within the agreement term (no past dates).</p>}
         </div>
       ))}
+      {(minDate || maxDate) && <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>Dates are limited to the agreement term — past dates and dates after the term aren&apos;t allowed.</p>}
     </div>
   );
 }

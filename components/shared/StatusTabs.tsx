@@ -12,14 +12,22 @@ export interface StatusTab {
   dividerBefore?: boolean;   // render a vertical bar before this tab to group sections
 }
 
-export default function StatusTabs({ tabs, active, onChange, className = "" }: {
+export default function StatusTabs({ tabs, active, onChange, className = "", accent }: {
   tabs: StatusTab[];
   active: string;
   onChange: (key: string) => void;
   className?: string;
+  accent?: string;        // override the accent (per-app theming); defaults to the global indigo
 }) {
+  // Recolor by overriding the accent tokens the buttons read.
+  const accentVars = accent ? ({
+    ["--accent-soft-bg" as string]: accent + "1f",
+    ["--accent-soft-2-bg" as string]: accent + "33",
+    ["--accent-soft-border" as string]: accent + "59",
+    ["--accent-text" as string]: accent,
+  } as React.CSSProperties) : undefined;
   return (
-    <div className={`flex items-center gap-0.5 flex-wrap ${className}`}>
+    <div className={`flex items-center gap-0.5 flex-wrap ${className}`} style={accentVars}>
       {tabs.map(t => {
         const on = active === t.key;
         return (

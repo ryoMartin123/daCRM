@@ -9,10 +9,11 @@
 //   • OfferGroupPicker     — reusable "Add from Offer Library" (used by the Salesbook editor)
 //   • OfferGroupPreview    — customer-facing preview of an offer group's options
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Package, Plus, Upload, Eye, Pencil, Copy, Archive, X, ArrowLeft, Check, Star,
   Trash2, ChevronUp, ChevronDown, Image as ImageIcon, Search, Layers, CreditCard, Settings2, Wrench, ListChecks,
+  MoreHorizontal, MoreVertical, LayoutGrid, List, AlertTriangle, FileText, History, FolderOpen,
 } from "lucide-react";
 import UiSelect from "@/components/ui/Select";
 import StatusTabs from "@/components/shared/StatusTabs";
@@ -20,7 +21,7 @@ import { MediaPickerModal } from "@/components/settings/MediaLibrarySection";
 import { getAllItems } from "@/lib/items/data";
 import { getCompanySalesbooks } from "@/lib/salesbooks/data";
 import {
-  getOfferGroups, getOfferGroup, createOfferGroup, updateOfferGroup, duplicateOfferGroup, archiveOfferGroup,
+  getOfferGroups, getAllOfferGroups, getOfferGroup, createOfferGroup, updateOfferGroup, duplicateOfferGroup, archiveOfferGroup,
   blankOption, offerPriceRange,
   OFFER_TIER_LABELS, OFFER_TIERS, OFFER_LAYOUT_LABELS, OFFER_LAYOUTS, PRICE_DISPLAY_LABELS, PRICE_DISPLAYS,
   INDUSTRY_LABELS,
@@ -36,68 +37,153 @@ const STATUS_STYLE: Record<OfferStatus, { bg: string; color: string; label: stri
 };
 
 // ─── Page ─────────────────────────────────────────────────
+// Offer Library workspace (lives under Proposal Library). Owns its own header so
+// the parent module page suppresses the generic one — no duplicated heading.
+type OfferView = "cards" | "table";
+
+// A group "needs attention" when any option is missing a price or an image.
+function attentionFor(g: OfferGroup) {
+  const missingPrices = g.options.filter(o => !(o.price > 0)).length;
+  const missingImages = g.options.filter(o => o.images.length === 0).length;
+  return { missingPrices, missingImages, needs: missingPrices > 0 || missingImages > 0 };
+}
+const fmtPriceRange = (g: OfferGroup): string => {
+  const r = offerPriceRange(g);
+  return r ? (r.min === r.max ? fmtMoney(r.min) : `${fmtMoney(r.min)}–${fmtMoney(r.max)}`) : "—";
+};
+
 export default function OfferLibrarySection() {
   const [tick, setTick] = useState(0);
   const refresh = () => setTick(t => t + 1);
   const [editId, setEditId] = useState<string | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
 
-  const groups = useMemo(() => getOfferGroups(), [tick]);
+  // Filters + view
+  const [view, setView] = useState<OfferView>("cards");
+  const [q, setQ] = useState("");
+  const [fIndustry, setFIndustry] = useState("all");
+  const [fCategory, setFCategory] = useState("all");
+  const [fStatus, setFStatus] = useState("all");
+  const [fUsed, setFUsed] = useState("all");          // all | used | unused
+  const [fNeeds, setFNeeds] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+
+  const allGroups = useMemo(() => getAllOfferGroups(), [tick]);
+  const groups = useMemo(() => showArchived ? allGroups : allGroups.filter(g => g.status !== "archived"), [allGroups, showArchived]);
   const salesbooks = useMemo(() => getCompanySalesbooks(), [tick]);
   const usageCount = (gid: string) => salesbooks.filter(sb => (sb.offerGroupIds ?? []).includes(gid)).length;
+
+  const categories = useMemo(() => [...new Set(groups.map(g => g.category).filter(Boolean))].sort(), [groups]);
 
   if (editId) {
     return <OfferGroupEditor groupId={editId} onBack={() => { setEditId(null); refresh(); }} />;
   }
 
+  // Summary (over the visible, non-filtered set)
   const totalOptions = groups.reduce((n, g) => n + g.options.length, 0);
   const missingPrices = groups.reduce((n, g) => n + g.options.filter(o => !(o.price > 0)).length, 0);
   const missingImages = groups.reduce((n, g) => n + g.options.filter(o => o.images.length === 0).length, 0);
   const activeGroups = groups.filter(g => g.status === "active").length;
-  const previewGroup = groups.find(g => g.id === previewId) ?? null;
+  const usedInProposals = groups.reduce((n, g) => n + usageCount(g.id), 0);
 
-  function create() {
-    const g = createOfferGroup();
-    refresh(); setEditId(g.id);
-  }
+  const ql = q.trim().toLowerCase();
+  const filtered = groups.filter(g => {
+    if (ql && !`${g.name} ${g.category} ${g.systemType ?? ""} ${g.tags.join(" ")} ${INDUSTRY_LABELS[g.industry]}`.toLowerCase().includes(ql)) return false;
+    if (fIndustry !== "all" && g.industry !== fIndustry) return false;
+    if (fCategory !== "all" && g.category !== fCategory) return false;
+    if (fStatus !== "all" && g.status !== fStatus) return false;
+    const used = usageCount(g.id) > 0;
+    if (fUsed === "used" && !used) return false;
+    if (fUsed === "unused" && used) return false;
+    if (fNeeds && !attentionFor(g).needs) return false;
+    return true;
+  });
+
+  const previewGroup = groups.find(g => g.id === previewId) ?? null;
+  const activeFilters = [fIndustry !== "all", fCategory !== "all", fStatus !== "all", fUsed !== "all", fNeeds].filter(Boolean).length;
+  function clearFilters() { setFIndustry("all"); setFCategory("all"); setFStatus("all"); setFUsed("all"); setFNeeds(false); }
+
+  function create() { const g = createOfferGroup(); refresh(); setEditId(g.id); }
 
   return (
     <div className="space-y-5">
+      {/* Workspace header — title · subtitle · actions */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h3 className="text-base font-semibold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
-            <Package className="w-4.5 h-4.5" style={{ color: "var(--accent-text)" }} /> Offer Library
-          </h3>
-          <p className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>Reusable packages, options, equipment, pricing, and monthly payments for salesbooks.</p>
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
+            <Package className="w-5 h-5" style={{ color: "var(--accent-text)" }} /> Offer Library
+          </h2>
+          <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>Reusable offer groups, packages, equipment options, pricing, and monthly payments.</p>
         </div>
         <div className="flex items-center gap-2">
           <button disabled className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium opacity-50" style={{ border: "1px solid var(--border)", color: "var(--text-muted)" }}><Upload className="w-4 h-4" /> Import Offers</button>
           <button onClick={create} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white" style={{ backgroundColor: "var(--accent-text)" }}><Plus className="w-4 h-4" /> Create Offer Group</button>
+          <MoreMenu align="right" items={[
+            { label: showArchived ? "Hide archived" : "Show archived", icon: Archive, onClick: () => setShowArchived(s => !s) },
+            { label: "Import from spreadsheet", icon: Upload, onClick: () => {}, disabled: true },
+          ]}>
+            <button className="p-2 rounded-lg" style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}><MoreHorizontal className="w-4 h-4" /></button>
+          </MoreMenu>
         </div>
       </div>
 
-      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))" }}>
+      {/* Summary — 4 cards */}
+      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))" }}>
         <SummaryCard label="Active Offer Groups" value={activeGroups} icon={Package} />
         <SummaryCard label="Options / Packages" value={totalOptions} icon={Layers} />
-        <SummaryCard label="Missing Prices" value={missingPrices} icon={CreditCard} warn />
-        <SummaryCard label="Missing Images" value={missingImages} icon={ImageIcon} warn />
+        <SummaryCard label="Needs Attention" value={missingImages + missingPrices} icon={AlertTriangle}
+          warn sub={`${missingImages} missing images · ${missingPrices} missing prices`} />
+        <SummaryCard label="Used in Proposals" value={usedInProposals} icon={FileText} />
+      </div>
+
+      {/* Filter row */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 rounded-lg px-3 py-1.5" style={{ backgroundColor: "var(--bg-input)" }}>
+          <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted)" }} />
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search offer groups..." className="bg-transparent text-sm outline-none w-44" style={{ color: "var(--text-primary)" }} />
+        </div>
+        <div className="w-36"><UiSelect size="sm" value={fIndustry} onChange={setFIndustry} options={[{ value: "all", label: "Any industry" }, ...(Object.keys(INDUSTRY_LABELS) as SalesbookIndustry[]).map(k => ({ value: k, label: INDUSTRY_LABELS[k] }))]} /></div>
+        <div className="w-40"><UiSelect size="sm" value={fCategory} onChange={setFCategory} options={[{ value: "all", label: "Any category" }, ...categories.map(c => ({ value: c, label: c }))]} /></div>
+        <div className="w-32"><UiSelect size="sm" value={fStatus} onChange={setFStatus} options={[{ value: "all", label: "Any status" }, { value: "active", label: "Active" }, { value: "draft", label: "Draft" }, ...(showArchived ? [{ value: "archived", label: "Archived" }] : [])]} /></div>
+        <div className="w-32"><UiSelect size="sm" value={fUsed} onChange={setFUsed} options={[{ value: "all", label: "Used / Unused" }, { value: "used", label: "Used in proposals" }, { value: "unused", label: "Not used" }]} /></div>
+        <button onClick={() => setFNeeds(v => !v)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors"
+          style={{ border: `1px solid ${fNeeds ? "#fcd34d" : "var(--border)"}`, backgroundColor: fNeeds ? "#fef3c7" : "var(--bg-surface)", color: fNeeds ? "#92400e" : "var(--text-secondary)" }}>
+          <AlertTriangle className="w-3.5 h-3.5" /> Needs attention
+        </button>
+        {activeFilters > 0 && <button onClick={clearFilters} className="text-xs px-2 py-1.5" style={{ color: "var(--accent-text)" }}>Clear</button>}
+        <div className="ml-auto flex items-center rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+          {([["cards", LayoutGrid], ["table", List]] as const).map(([k, Icon]) => {
+            const on = view === k;
+            return (
+              <button key={k} onClick={() => setView(k)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm capitalize transition-colors"
+                style={{ backgroundColor: on ? "#4f46e5" : "var(--bg-surface)", color: on ? "#fff" : "var(--text-secondary)" }}>
+                <Icon className="w-3.5 h-3.5" /> {k}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {groups.length === 0 ? (
-        <div className="rounded-xl py-16 text-center" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
-          <Package className="w-8 h-8 mx-auto mb-3" style={{ color: "var(--text-muted)" }} />
-          <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>No offer groups yet</p>
-          <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>Create one to build reusable Good / Better / Best offers and packages.</p>
+        <EmptyState />
+      ) : filtered.length === 0 ? (
+        <div className="rounded-xl py-14 text-center" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>No offer groups match the current filters.</p>
         </div>
-      ) : (
+      ) : view === "cards" ? (
         <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))" }}>
-          {groups.map(g => (
+          {filtered.map(g => (
             <GroupCard key={g.id} g={g} usedIn={usageCount(g.id)}
-              onEdit={() => setEditId(g.id)} onPreview={() => setPreviewId(g.id)}
+              onOpen={() => setEditId(g.id)} onPreview={() => setPreviewId(g.id)}
               onDuplicate={() => { duplicateOfferGroup(g.id); refresh(); }}
               onArchive={() => { archiveOfferGroup(g.id); refresh(); }} />
           ))}
         </div>
+      ) : (
+        <OfferTable groups={filtered} usageCount={usageCount}
+          onOpen={id => setEditId(id)} onPreview={id => setPreviewId(id)}
+          onDuplicate={id => { duplicateOfferGroup(id); refresh(); }}
+          onArchive={id => { archiveOfferGroup(id); refresh(); }} />
       )}
 
       {previewGroup && <OfferGroupPreviewModal group={previewGroup} onClose={() => setPreviewId(null)} />}
@@ -105,7 +191,17 @@ export default function OfferLibrarySection() {
   );
 }
 
-function SummaryCard({ label, value, icon: Icon, warn }: { label: string; value: number; icon: typeof Package; warn?: boolean }) {
+function EmptyState() {
+  return (
+    <div className="rounded-xl py-16 text-center" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+      <Package className="w-8 h-8 mx-auto mb-3" style={{ color: "var(--text-muted)" }} />
+      <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>No offer groups yet</p>
+      <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>Create one to build reusable Good / Better / Best offers and packages.</p>
+    </div>
+  );
+}
+
+function SummaryCard({ label, value, icon: Icon, warn, sub }: { label: string; value: number; icon: typeof Package; warn?: boolean; sub?: string }) {
   const danger = warn && value > 0;
   return (
     <div className="rounded-xl p-3.5" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
@@ -114,21 +210,48 @@ function SummaryCard({ label, value, icon: Icon, warn }: { label: string; value:
         <Icon className="w-4 h-4" style={{ color: danger ? "#b45309" : "var(--text-muted)" }} />
       </div>
       <p className="text-2xl font-bold mt-1" style={{ color: danger ? "#b45309" : "var(--text-primary)" }}>{value}</p>
+      {sub && <p className="text-[11px] mt-0.5 truncate" style={{ color: danger ? "#b45309" : "var(--text-muted)" }}>{sub}</p>}
     </div>
   );
 }
 
-function GroupCard({ g, usedIn, onEdit, onPreview, onDuplicate, onArchive }: {
-  g: OfferGroup; usedIn: number; onEdit: () => void; onPreview: () => void; onDuplicate: () => void; onArchive: () => void;
+// Tier preview — the option tiers present, in order (Budget / Good / Better / Best…).
+function TierPreview({ g }: { g: OfferGroup }) {
+  const tiers = [...g.options].sort((a, b) => a.order - b.order).map(o => o.tier).filter(Boolean) as OfferTier[];
+  if (tiers.length === 0) return null;
+  return (
+    <div className="flex items-center gap-1 flex-wrap">
+      {tiers.map((t, i) => (
+        <span key={i} className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--bg-input)", color: "var(--text-secondary)" }}>{OFFER_TIER_LABELS[t]}</span>
+      ))}
+    </div>
+  );
+}
+
+function NeedsAttentionPill({ g, compact }: { g: OfferGroup; compact?: boolean }) {
+  const a = attentionFor(g);
+  if (!a.needs) return compact ? <span className="text-xs" style={{ color: "var(--text-muted)" }}>—</span> : null;
+  const parts = [a.missingImages > 0 && `${a.missingImages} img`, a.missingPrices > 0 && `${a.missingPrices} price`].filter(Boolean).join(" · ");
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: "#fef3c7", color: "#92400e" }} title="Missing images or prices">
+      <AlertTriangle className="w-3 h-3" /> {parts}
+    </span>
+  );
+}
+
+function GroupCard({ g, usedIn, onOpen, onPreview, onDuplicate, onArchive }: {
+  g: OfferGroup; usedIn: number; onOpen: () => void; onPreview: () => void; onDuplicate: () => void; onArchive: () => void;
 }) {
-  const range = offerPriceRange(g);
   const st = STATUS_STYLE[g.status];
   return (
     <div className="rounded-2xl overflow-hidden flex flex-col" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
-      <div className="px-4 pt-3.5 pb-3">
+      <div className="px-4 pt-3.5 pb-3 flex-1">
         <div className="flex items-start justify-between gap-2">
-          <p className="text-sm font-semibold leading-snug" style={{ color: "var(--text-primary)" }}>{g.name}</p>
-          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0" style={{ backgroundColor: st.bg, color: st.color }}>{st.label}</span>
+          <button onClick={onOpen} className="text-sm font-semibold leading-snug text-left hover:underline" style={{ color: "var(--text-primary)" }}>{g.name}</button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <NeedsAttentionPill g={g} />
+            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: st.bg, color: st.color }}>{st.label}</span>
+          </div>
         </div>
         <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
           <Chip>{INDUSTRY_LABELS[g.industry]}</Chip>
@@ -136,18 +259,77 @@ function GroupCard({ g, usedIn, onEdit, onPreview, onDuplicate, onArchive }: {
           {g.size && <Chip subtle>{g.size}</Chip>}
         </div>
         {g.description && <p className="text-xs mt-2 leading-snug" style={{ color: "var(--text-muted)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{g.description}</p>}
+        <div className="mt-2.5"><TierPreview g={g} /></div>
       </div>
       <div className="px-4 py-2.5 grid grid-cols-3 gap-2 text-center" style={{ borderTop: "1px solid var(--border-subtle)", borderBottom: "1px solid var(--border-subtle)" }}>
         <Stat label="Options" value={`${g.options.length}`} />
-        <Stat label="Price range" value={range ? (range.min === range.max ? fmtMoney(range.min) : `${fmtMoney(range.min)}–${fmtMoney(range.max)}`) : "—"} />
-        <Stat label="In salesbooks" value={`${usedIn}`} />
+        <Stat label="Price range" value={fmtPriceRange(g)} />
+        <Stat label="Used in" value={`${usedIn}`} />
       </div>
+      {/* Cleaner action row — Open (primary) · Preview (secondary) · More */}
       <div className="px-3 py-2.5 flex items-center gap-1.5">
-        <button onClick={onEdit} className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium text-white" style={{ backgroundColor: "var(--accent-text)" }}><Pencil className="w-3.5 h-3.5" /> Edit</button>
+        <button onClick={onOpen} className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium" style={{ border: "1px solid var(--accent-text)", color: "var(--accent-text)" }}><FolderOpen className="w-3.5 h-3.5" /> Open</button>
         <button onClick={onPreview} className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium" style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}><Eye className="w-3.5 h-3.5" /> Preview</button>
-        <button onClick={onDuplicate} title="Duplicate" className="p-1.5 rounded-lg" style={{ border: "1px solid var(--border)", color: "var(--text-muted)" }}><Copy className="w-3.5 h-3.5" /></button>
-        <button onClick={onArchive} title="Archive" className="p-1.5 rounded-lg" style={{ border: "1px solid var(--border)", color: "var(--text-muted)" }}><Archive className="w-3.5 h-3.5" /></button>
+        <MoreMenu align="right" items={[
+          { label: "Duplicate", icon: Copy, onClick: onDuplicate },
+          { label: "Archive", icon: Archive, onClick: onArchive, danger: true },
+        ]}>
+          <button title="More" className="p-1.5 rounded-lg" style={{ border: "1px solid var(--border)", color: "var(--text-muted)" }}><MoreVertical className="w-3.5 h-3.5" /></button>
+        </MoreMenu>
       </div>
+    </div>
+  );
+}
+
+// ─── Table view (better for managing many groups) ─────────
+function OfferTable({ groups, usageCount, onOpen, onPreview, onDuplicate, onArchive }: {
+  groups: OfferGroup[]; usageCount: (id: string) => number;
+  onOpen: (id: string) => void; onPreview: (id: string) => void; onDuplicate: (id: string) => void; onArchive: (id: string) => void;
+}) {
+  return (
+    <div className="rounded-xl overflow-hidden overflow-x-auto thin-scroll-x" style={{ border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+      <table className="w-full text-sm" style={{ backgroundColor: "var(--bg-surface)", minWidth: 980 }}>
+        <thead>
+          <tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+            {["Offer Group", "Industry", "Category", "Options", "Price Range", "Used In", "Status", "Needs Attention", "Last Updated", ""].map((h, i) => (
+              <th key={i} className="text-left font-semibold px-3 py-2.5 text-[11px] uppercase tracking-wide whitespace-nowrap" style={{ color: "var(--text-muted)" }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {groups.map(g => {
+            const st = STATUS_STYLE[g.status];
+            return (
+              <tr key={g.id} className="transition-[background-color] hover:bg-[var(--bg-surface-2)]" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                <td className="px-3 py-2.5">
+                  <button onClick={() => onOpen(g.id)} className="font-medium text-left hover:underline" style={{ color: "var(--text-primary)" }}>{g.name}</button>
+                  {g.size && <span className="ml-1.5 text-[11px]" style={{ color: "var(--text-muted)" }}>· {g.size}</span>}
+                </td>
+                <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--text-secondary)" }}>{INDUSTRY_LABELS[g.industry]}</td>
+                <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--text-secondary)" }}>{g.category}</td>
+                <td className="px-3 py-2.5" style={{ color: "var(--text-secondary)" }}>{g.options.length}</td>
+                <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--text-secondary)" }}>{fmtPriceRange(g)}</td>
+                <td className="px-3 py-2.5" style={{ color: "var(--text-secondary)" }}>{usageCount(g.id)}</td>
+                <td className="px-3 py-2.5"><span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: st.bg, color: st.color }}>{st.label}</span></td>
+                <td className="px-3 py-2.5"><NeedsAttentionPill g={g} compact /></td>
+                <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--text-muted)" }}>{g.updatedAt}</td>
+                <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                  <div className="inline-flex items-center gap-1">
+                    <button onClick={() => onOpen(g.id)} className="px-2 py-1 rounded-lg text-xs" style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}>Open</button>
+                    <button onClick={() => onPreview(g.id)} title="Preview" className="p-1.5 rounded-lg" style={{ border: "1px solid var(--border)", color: "var(--text-muted)" }}><Eye className="w-3.5 h-3.5" /></button>
+                    <MoreMenu align="right" items={[
+                      { label: "Duplicate", icon: Copy, onClick: () => onDuplicate(g.id) },
+                      { label: "Archive", icon: Archive, onClick: () => onArchive(g.id), danger: true },
+                    ]}>
+                      <button title="More" className="p-1.5 rounded-lg" style={{ border: "1px solid var(--border)", color: "var(--text-muted)" }}><MoreVertical className="w-3.5 h-3.5" /></button>
+                    </MoreMenu>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -159,8 +341,38 @@ function Chip({ children, subtle }: { children: React.ReactNode; subtle?: boolea
   return <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={subtle ? { backgroundColor: "var(--bg-input)", color: "var(--text-muted)" } : { backgroundColor: "var(--accent-soft-bg)", color: "var(--accent-text)" }}>{children}</span>;
 }
 
+// ─── Lightweight dropdown menu ────────────────────────────
+interface MenuItemDef { label: string; icon: typeof Copy; onClick: () => void; danger?: boolean; disabled?: boolean }
+function MoreMenu({ items, children, align = "right" }: { items: MenuItemDef[]; children: React.ReactNode; align?: "left" | "right" }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+  return (
+    <div className="relative" ref={ref}>
+      <div onClick={() => setOpen(o => !o)}>{children}</div>
+      {open && (
+        <div className={`absolute ${align === "right" ? "right-0" : "left-0"} top-full mt-1 z-50 w-44 rounded-xl overflow-hidden py-1`}
+          style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "0 12px 32px rgba(0,0,0,0.18)" }}>
+          {items.map((it, i) => (
+            <button key={i} disabled={it.disabled} onClick={() => { if (it.disabled) return; setOpen(false); it.onClick(); }}
+              className="flex items-center gap-2 w-full px-3 py-2 text-sm transition-colors hover:bg-[var(--bg-surface-2)] disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ color: it.danger ? "#dc2626" : "var(--text-primary)" }}>
+              <it.icon className="w-3.5 h-3.5" /> {it.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Group editor ─────────────────────────────────────────
-type EditorTab = "overview" | "options" | "included" | "equipment" | "images" | "pricing" | "display" | "usage";
+type EditorTab = "overview" | "options" | "included" | "equipment" | "images" | "pricing" | "display" | "usage" | "activity";
 const EDITOR_TABS: { key: EditorTab; label: string; icon: typeof Package }[] = [
   { key: "overview", label: "Overview", icon: Settings2 },
   { key: "options", label: "Options / Tiers", icon: Layers },
@@ -170,6 +382,7 @@ const EDITOR_TABS: { key: EditorTab; label: string; icon: typeof Package }[] = [
   { key: "pricing", label: "Pricing & Financing", icon: CreditCard },
   { key: "display", label: "Display Settings", icon: Eye },
   { key: "usage", label: "Usage", icon: Package },
+  { key: "activity", label: "Activity", icon: History },
 ];
 
 function OfferGroupEditor({ groupId, onBack }: { groupId: string; onBack: () => void }) {
@@ -222,6 +435,7 @@ function OfferGroupEditor({ groupId, onBack }: { groupId: string; onBack: () => 
         {tab === "pricing" && <PricingTab g={g} patch={patch} updateOption={updateOption} />}
         {tab === "display" && <DisplayTab g={g} patch={patch} />}
         {tab === "usage" && <UsageTab g={g} />}
+        {tab === "activity" && <ActivityTab g={g} />}
       </div>
 
       {previewOpen && <OfferGroupPreviewModal group={g} onClose={() => setPreviewOpen(false)} />}
@@ -272,12 +486,22 @@ function OptionsTab({ g, setOptions, onEditDetails }: { g: OfferGroup; setOption
       </div>
       {opts.length === 0 ? <Empty msg="No options yet — add one." /> : (
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))" }}>
-          {opts.map((o, i) => (
+          {opts.map((o, i) => {
+            const primary = o.primaryImageId ? o.images.find(im => im.id === o.primaryImageId) : o.images[0];
+            const missing = [!(o.price > 0) && "price", o.images.length === 0 && "image", !o.title.trim() && "title"].filter(Boolean) as string[];
+            return (
             <div key={o.id} className="rounded-xl p-3 space-y-2" style={{ backgroundColor: "var(--bg-surface-2)", border: o.recommended ? "1.5px solid var(--accent-text)" : "1px solid var(--border-subtle)" }}>
               <div className="flex items-center gap-1.5">
-                <div className="w-28"><UiSelect size="sm" value={o.tier ?? ""} onChange={v => update(o.id, { tier: (v || undefined) as OfferTier })} placeholder="No tier" options={[{ value: "", label: "No tier" }, ...OFFER_TIERS.map(t => ({ value: t, label: OFFER_TIER_LABELS[t] }))]} /></div>
+                {/* Primary image thumbnail */}
+                {primary ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={primary.url} alt="" className="w-8 h-8 rounded-md object-cover shrink-0" style={{ border: "1px solid var(--border-subtle)" }} />
+                ) : (
+                  <span className="w-8 h-8 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: "var(--bg-input)" }}><ImageIcon className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} /></span>
+                )}
+                <div className="flex-1 min-w-0"><UiSelect size="sm" value={o.tier ?? ""} onChange={v => update(o.id, { tier: (v || undefined) as OfferTier })} placeholder="No tier" options={[{ value: "", label: "No tier" }, ...OFFER_TIERS.map(t => ({ value: t, label: OFFER_TIER_LABELS[t] }))]} /></div>
                 <button onClick={() => feature(o.id)} title="Recommended" className="p-1" style={{ color: o.recommended ? "var(--accent-text)" : "var(--text-muted)" }}><Star className="w-3.5 h-3.5" fill={o.recommended ? "currentColor" : "none"} /></button>
-                <div className="ml-auto flex items-center gap-0.5">
+                <div className="flex items-center gap-0.5">
                   <button onClick={() => move(o.id, -1)} disabled={i === 0} className="disabled:opacity-20 p-0.5" style={{ color: "var(--text-muted)" }}><ChevronUp className="w-3.5 h-3.5" /></button>
                   <button onClick={() => move(o.id, 1)} disabled={i === opts.length - 1} className="disabled:opacity-20 p-0.5" style={{ color: "var(--text-muted)" }}><ChevronDown className="w-3.5 h-3.5" /></button>
                   <button onClick={() => remove(o.id)} className="p-0.5" style={{ color: "var(--text-muted)" }}><Trash2 className="w-3.5 h-3.5" /></button>
@@ -290,12 +514,18 @@ function OptionsTab({ g, setOptions, onEditDetails }: { g: OfferGroup; setOption
                 <div className="flex items-center gap-1"><span className="text-[10px]" style={{ color: "var(--text-muted)" }}>$</span><input type="number" min={0} value={o.price} onChange={e => update(o.id, { price: numOr(e.target.value) })} className="w-24 rounded-lg px-2 py-1 text-xs outline-none" style={inpStyle} /></div>
                 <div className="flex items-center gap-1"><span className="text-[10px]" style={{ color: "var(--text-muted)" }}>$/mo</span><input type="number" min={0} value={o.monthlyPrice ?? ""} onChange={e => update(o.id, { monthlyPrice: e.target.value === "" ? undefined : numOr(e.target.value) })} className="w-20 rounded-lg px-2 py-1 text-xs outline-none" style={inpStyle} /></div>
               </div>
-              <div className="flex items-center justify-between pt-1">
+              <div className="flex items-center justify-between gap-2 pt-1">
                 <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{o.includedItems.length} items · {o.images.length} images</span>
-                <button onClick={() => onEditDetails(o.id)} className="text-[11px] font-medium" style={{ color: "var(--accent-text)" }}>Edit details →</button>
+                <button onClick={() => onEditDetails(o.id)} className="text-[11px] font-medium shrink-0" style={{ color: "var(--accent-text)" }}>Edit details →</button>
               </div>
+              {missing.length > 0 && (
+                <div className="flex items-center gap-1 text-[10px] font-medium px-2 py-1 rounded" style={{ backgroundColor: "#fef3c7", color: "#92400e" }}>
+                  <AlertTriangle className="w-3 h-3 shrink-0" /> Missing: {missing.join(", ")}
+                </div>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -500,25 +730,64 @@ function DisplayTab({ g, patch }: { g: OfferGroup; patch: (p: Partial<OfferGroup
   );
 }
 
-// Usage
+// Usage — where this offer group is used (proposal templates now; quotes & kits later)
 function UsageTab({ g }: { g: OfferGroup }) {
   const using = useMemo(() => getCompanySalesbooks().filter(sb => (sb.offerGroupIds ?? []).includes(g.id)), [g.id]);
   return (
-    <div className="space-y-3 max-w-2xl">
-      <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Used in {using.length} salesbook{using.length === 1 ? "" : "s"}</p>
-      {using.length === 0 ? (
-        <p className="text-xs" style={{ color: "var(--text-muted)" }}>Not added to any salesbook yet. Open a salesbook&apos;s Options tab and choose &quot;Add from Offer Library.&quot;</p>
-      ) : (
-        <div className="space-y-1.5">
-          {using.map(sb => (
-            <div key={sb.id} className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border-subtle)" }}>
-              <Package className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
-              <span className="text-sm" style={{ color: "var(--text-primary)" }}>{sb.name}</span>
-            </div>
-          ))}
+    <div className="space-y-4 max-w-2xl">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>Proposal templates · {using.length}</p>
+        {using.length === 0 ? (
+          <p className="text-xs" style={{ color: "var(--text-muted)" }}>Not added to any proposal template yet. Open a template&apos;s Offer Library tab and choose &quot;Add from Offer Library.&quot;</p>
+        ) : (
+          <div className="space-y-1.5">
+            {using.map(sb => (
+              <div key={sb.id} className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border-subtle)" }}>
+                <Package className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
+                <span className="text-sm" style={{ color: "var(--text-primary)" }}>{sb.name}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>Quotes created from it</p>
+        <p className="text-xs" style={{ color: "var(--text-muted)" }}>Quote-level usage tracking is coming soon. Quotes copy this offer&apos;s data at creation time.</p>
+      </div>
+      <div className="rounded-lg px-3 py-2.5 flex items-start gap-2" style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border-subtle)" }}>
+        <Copy className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: "var(--text-muted)" }} />
+        <p className="text-[11px] leading-snug" style={{ color: "var(--text-muted)" }}>When a proposal or quote uses this offer group, its data is <strong>copied</strong> into that proposal/quote — so older quotes never change when you edit this master offer group later.</p>
+      </div>
+    </div>
+  );
+}
+
+// Activity — mock audit trail derived from the group's timestamps + state.
+function ActivityTab({ g }: { g: OfferGroup }) {
+  const events: { icon: typeof Package; label: string; when: string }[] = [
+    { icon: Package, label: "Offer group created", when: g.createdAt },
+    { icon: Layers, label: `${g.options.length} option${g.options.length === 1 ? "" : "s"} configured`, when: g.updatedAt },
+    ...(g.status === "active" ? [{ icon: Check, label: "Marked active", when: g.updatedAt }] : []),
+    ...(attentionFor(g).needs ? [{ icon: AlertTriangle, label: "Needs attention — missing images or prices", when: g.updatedAt }] : []),
+    { icon: Pencil, label: "Last updated", when: g.updatedAt },
+  ];
+  return (
+    <div className="max-w-2xl">
+      {events.map((e, i) => (
+        <div key={i} className="flex gap-3">
+          <div className="flex flex-col items-center">
+            <span className="w-7 h-7 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border-subtle)" }}>
+              <e.icon className="w-3.5 h-3.5" style={{ color: "var(--text-secondary)" }} />
+            </span>
+            {i < events.length - 1 && <span className="w-px flex-1 my-1" style={{ backgroundColor: "var(--border-subtle)" }} />}
+          </div>
+          <div className="pb-4 min-w-0">
+            <p className="text-sm" style={{ color: "var(--text-primary)" }}>{e.label}</p>
+            <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>{e.when}</p>
+          </div>
         </div>
-      )}
-      <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>When a quote is created from a salesbook, this offer&apos;s data is copied into the quote — editing the quote later won&apos;t change this master offer group.</p>
+      ))}
+      <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>Detailed change history will be recorded once activity logging is connected.</p>
     </div>
   );
 }

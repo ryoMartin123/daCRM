@@ -12,23 +12,21 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AppWindow, Check, Minus, Pencil, Users as UsersIcon, ChevronRight, Search, SlidersHorizontal } from "lucide-react";
-import { PageHeader, StatCard } from "@/components/platform/ui";
+import { AppWindow, Check, Minus, Pencil, Users as UsersIcon, ChevronRight, Search, SlidersHorizontal, ShieldCheck } from "lucide-react";
+import { PageHeader } from "@/components/platform/ui";
 import StatusTabs from "@/components/shared/StatusTabs";
-import ModuleViewToggle, { type ModuleView } from "@/components/shared/ModuleViewToggle";
 import UiSelect from "@/components/ui/Select";
 import StatusBadge from "@/components/shared/StatusBadge";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
 import { getUsers, type AppUser, type RoleAssignment } from "@/lib/users/data";
-import { getOrgRoles, getOrgRole, getRoleLabel } from "@/lib/roles/store";
-import { appAccessForUser, type AppAccess } from "@/lib/platform/access";
+import { getOrgRoles, getRoleLabel } from "@/lib/roles/store";
+import { appAccessForUser, hasAppOverride, type AppAccess } from "@/lib/platform/access";
 import { roleApps, roleDataScope, SCOPE_LABEL, APP_META, APP_ORDER } from "@/lib/roles/appmap";
 import type { PlatformAppId } from "@/lib/platform/apps";
 import type { RoleDefinition } from "@/lib/roles/types";
 
-// Apps shown as matrix columns / summary cards (Portal first — always on).
-const MATRIX_APPS = APP_ORDER; // portal, crm, hr, accounting, documents, admin
-const SUMMARY_APPS: PlatformAppId[] = ["crm", "hr", "accounting", "documents", "admin"];
+// Apps shown as matrix columns (Portal first — always on).
+const MATRIX_APPS = APP_ORDER; // portal, crm, team_workspace, inventory, hr, accounting, documents, admin
 
 const STATUS_BADGE: Record<string, { label: string; dot: string }> = {
   active:   { label: "Active",   dot: "#10b981" },
@@ -36,18 +34,13 @@ const STATUS_BADGE: Record<string, { label: string; dot: string }> = {
   inactive: { label: "Inactive", dot: "#9ca3af" },
 };
 
-// Empty access map (portal forced on) — the override-comparison baseline.
-const NONE: AppAccess = { portal: true, crm: false, hr: false, accounting: false, documents: false, admin: false };
-
-export default function AppAccessMatrix({ embedded = false }: { embedded?: boolean }) {
+export default function AppAccessMatrix({ embedded = false, onOpenUser }: { embedded?: boolean; onOpenUser?: (id: string) => void }) {
   const router = useRouter();
   const { allCompanies, allLocations, allServiceAreas } = useHierarchy();
 
   const users = useMemo(() => getUsers(), []);
   const roles = useMemo(() => getOrgRoles(), []);
 
-  // Matrix = the working tables (default); Overview = the KPI cards.
-  const [view, setView] = useState<ModuleView>("list");
   const [tab, setTab] = useState("by_user");
 
   // Search + condensed Filter (right side, CRM-style).
@@ -79,28 +72,6 @@ export default function AppAccessMatrix({ embedded = false }: { embedded?: boole
     return labels.length ? labels.join(", ") : "—";
   }
 
-  // Role-derived default access (ignores the user's explicit override) — the
-  // baseline we diff against to flag a custom override.
-  function roleDefaultAccess(u: AppUser): AppAccess {
-    if (u.isOrgOwner) return { portal: true, crm: true, hr: true, accounting: true, documents: true, admin: true };
-    const out: AppAccess = { ...NONE };
-    for (const a of u.assignments) {
-      const def = getOrgRole(a.role);
-      if (!def) continue;
-      for (const app of roleApps(def)) out[app] = true;
-    }
-    out.portal = true;
-    return out;
-  }
-  function hasOverride(u: AppUser): boolean {
-    const resolved = appAccessForUser(u);
-    const base = roleDefaultAccess(u);
-    return MATRIX_APPS.some((app) => resolved[app] !== base[app]);
-  }
-
-  // ── Summary: how many users can open each app ──
-  const usersWithApp = (app: PlatformAppId) => users.filter((u) => appAccessForUser(u)[app]).length;
-
   // ── Search + filter applied per tab ──
   const s = search.trim().toLowerCase();
   const filteredUsers = users.filter((u) => {
@@ -125,44 +96,21 @@ export default function AppAccessMatrix({ embedded = false }: { embedded?: boole
   });
 
   return (
-    <div className="space-y-6">
-      {/* Header — title · centered Overview/Matrix toggle · spacer.
-          When embedded under Users & Access the title is supplied by the parent. */}
-      <div className="flex items-center justify-between gap-4">
-        {embedded ? <div className="flex-1" /> : (
-          <div className="flex-1 min-w-0">
-            <PageHeader
-              title="App Access"
-              subtitle="Audit and manage which users and roles can open each platform app."
-              accent="#a855f7"
-            />
-          </div>
-        )}
-        <ModuleViewToggle view={view} onChange={setView} listLabel="Matrix" />
-        <div className="flex-1" />
-      </div>
-
-      {/* Overview — KPI cards (kept off the main Matrix view) */}
-      {view === "overview" && (
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-          {SUMMARY_APPS.map((app) => (
-            <StatCard
-              key={app}
-              label={`${APP_META[app].name} Access`}
-              value={String(usersWithApp(app))}
-              hint="Users with access"
-              icon={AppWindow}
-              accent={APP_META[app].accent}
-            />
-          ))}
-        </div>
+    <div className="space-y-5">
+      {/* Standalone (non-embedded) header. Under Users & Access the parent owns it. */}
+      {!embedded && (
+        <PageHeader
+          title="App Access"
+          subtitle="Audit which users and roles can open each platform app."
+          accent="#a855f7"
+        />
       )}
 
-      {view === "list" && (
+      {/* Secondary segmented control — By User / By Role / By App — plus the
+          per-lens search + condensed Filter. This is the only nested layer here. */}
       <>
-        {/* Toolbar — tabs (left) · search + condensed Filter (right) */}
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <StatusTabs active={tab} onChange={setTab}
+          <StatusTabs accent="#a855f7" active={tab} onChange={setTab}
             tabs={[
               { key: "by_user", label: "By User", count: users.length },
               { key: "by_role", label: "By Role", count: roles.length },
@@ -206,8 +154,8 @@ export default function AppAccessMatrix({ embedded = false }: { embedded?: boole
             userRoles={userRoles}
             userScope={userScope}
             access={appAccessForUser}
-            hasOverride={hasOverride}
-            onUser={(id) => router.push(`/admin/users?user=${id}`)}
+            hasOverride={hasAppOverride}
+            onUser={(id) => (onOpenUser ? onOpenUser(id) : router.push(`/admin/users?user=${id}`))}
           />
         )}
 
@@ -223,7 +171,6 @@ export default function AppAccessMatrix({ embedded = false }: { embedded?: boole
           <ByApp apps={filteredApps} roles={roles} users={users} />
         )}
       </>
-      )}
     </div>
   );
 }
@@ -270,7 +217,7 @@ function AppHeaderCells() {
 }
 
 // ─── By User ──────────────────────────────────────────────
-const USER_COLS = "1.6fr 1.3fr 1.2fr repeat(6, 0.7fr) 1fr 0.8fr";
+const USER_COLS = `1.6fr 1.3fr 1.2fr repeat(${MATRIX_APPS.length}, 0.7fr) 1fr 0.8fr`;
 
 function ByUser({ users, userRoles, userScope, access, hasOverride, onUser }: {
   users: AppUser[];
@@ -283,7 +230,7 @@ function ByUser({ users, userRoles, userScope, access, hasOverride, onUser }: {
   return (
     <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
       <div className="overflow-x-auto thin-scroll-x">
-        <div style={{ minWidth: 1120 }}>
+        <div style={{ minWidth: 1320 }}>
           <div className="grid px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider items-center" style={{ gridTemplateColumns: USER_COLS, color: "var(--text-muted)", borderBottom: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-surface-2)" }}>
             <span>User</span><span>Role</span><span>Company / Location</span>
             <AppHeaderCells />
@@ -301,11 +248,15 @@ function ByUser({ users, userRoles, userScope, access, hasOverride, onUser }: {
                 className="grid px-4 py-3 items-center cursor-pointer transition-[background-color] hover:bg-[var(--bg-surface-2)]"
                 style={{ gridTemplateColumns: USER_COLS, borderBottom: "1px solid", borderBottomColor: i === users.length - 1 ? "transparent" : "var(--border-subtle)" }}>
                 {/* User */}
-                <div className="flex items-center gap-2.5 min-w-0 pr-2">
-                  <span className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+                <div className="flex items-center gap-3 min-w-0 pr-2">
+                  <span className="w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
                     style={{ backgroundColor: u.isOrgOwner ? "#4f46e5" : "#6b7280" }}>{u.initials}</span>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{u.fullName}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{u.fullName}</p>
+                      {u.id === "user_marcus" && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: "var(--bg-input)", color: "var(--text-muted)" }}>YOU</span>}
+                      {u.isOrgOwner && <ShieldCheck className="w-3.5 h-3.5 shrink-0" style={{ color: "#4f46e5" }} />}
+                    </div>
                     <p className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>{u.email}</p>
                   </div>
                 </div>
@@ -335,7 +286,7 @@ function ByUser({ users, userRoles, userScope, access, hasOverride, onUser }: {
 }
 
 // ─── By Role ──────────────────────────────────────────────
-const ROLE_COLS = "1.6fr 0.8fr 1.1fr repeat(6, 0.7fr) 0.9fr";
+const ROLE_COLS = `1.6fr 0.8fr 1.1fr repeat(${MATRIX_APPS.length}, 0.7fr) 0.9fr`;
 
 function ByRole({ roles, usersByRole, onEdit }: {
   roles: RoleDefinition[];
@@ -345,7 +296,7 @@ function ByRole({ roles, usersByRole, onEdit }: {
   return (
     <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
       <div className="overflow-x-auto thin-scroll-x">
-        <div style={{ minWidth: 1040 }}>
+        <div style={{ minWidth: 1240 }}>
           <div className="grid px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider items-center" style={{ gridTemplateColumns: ROLE_COLS, color: "var(--text-muted)", borderBottom: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-surface-2)" }}>
             <span>Role</span><span className="text-center">Users</span><span>Default Scope</span>
             <AppHeaderCells />

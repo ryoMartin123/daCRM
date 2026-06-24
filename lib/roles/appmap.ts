@@ -14,15 +14,17 @@ import { getRolePreset } from "./presets";
 export type RoleAppId = Exclude<PlatformAppId, never>;
 
 export const APP_META: Record<PlatformAppId, { name: string; description: string; accent: string }> = {
-  portal:     { name: "My Portal",  description: "Personal home — schedule, pay, tasks, documents.", accent: "#6366f1" },
-  crm:        { name: "CRM",        description: "Customers, leads, quotes, jobs, dispatching.",      accent: "#0ea5e9" },
-  hr:         { name: "HR",         description: "Employees, hiring, onboarding, time off.",          accent: "#ec4899" },
-  accounting: { name: "Accounting", description: "Invoices, payments, expenses, reports.",            accent: "#22c55e" },
-  documents:  { name: "Documents",  description: "Company library, SOPs, policies, files.",           accent: "#f59e0b" },
-  admin:      { name: "Admin",      description: "Users, roles, structure, security, billing.",       accent: "#a855f7" },
+  portal:         { name: "My Portal",       description: "Personal home — schedule, pay, tasks, documents.",    accent: "#0ea5e9" },
+  crm:            { name: "CRM",             description: "Customers, leads, quotes, jobs, dispatching.",        accent: "#6366f1" },
+  team_workspace: { name: "Team Workspace",  description: "Channels, meetings, announcements, action items.",    accent: "#2563eb" },
+  inventory:      { name: "Inventory & Procurement", description: "Materials, truck stock, POs, vendors, subs.", accent: "#f97316" },
+  hr:             { name: "HR",              description: "Employees, hiring, onboarding, time off.",            accent: "#ec4899" },
+  accounting:     { name: "Accounting",      description: "Invoices, payments, expenses, reports.",              accent: "#22c55e" },
+  documents:      { name: "Documents",       description: "Company library, SOPs, policies, files.",             accent: "#f59e0b" },
+  admin:          { name: "Admin",           description: "Users, roles, structure, security, billing.",         accent: "#a855f7" },
 };
 
-export const APP_ORDER: PlatformAppId[] = ["portal", "crm", "hr", "accounting", "documents", "admin"];
+export const APP_ORDER: PlatformAppId[] = ["portal", "crm", "team_workspace", "inventory", "hr", "accounting", "documents", "admin"];
 
 // Which app each CRM resource belongs to (for grouped permission accordions and
 // app-access derivation). HR has no granular resources in the v1 model.
@@ -41,16 +43,16 @@ export function resourcesForApp(app: PlatformAppId): Resource[] {
 
 // System-role app access mirrors lib/platform/access ROLE_DEFAULTS.
 const SYSTEM_ROLE_APPS: Record<string, PlatformAppId[]> = {
-  org_owner: ["portal", "crm", "hr", "accounting", "documents", "admin"],
-  org_admin: ["portal", "crm", "hr", "accounting", "documents", "admin"],
-  branch_manager: ["portal", "crm", "documents", "admin"],
-  location_manager: ["portal", "crm", "documents"],
-  dispatcher: ["portal", "crm", "documents"],
-  field_technician: ["portal", "crm", "documents"],
-  installer: ["portal", "crm", "documents"],
-  salesperson: ["portal", "crm", "documents"],
-  accounting: ["portal", "crm", "accounting", "documents"],
-  hr_manager: ["portal", "hr", "documents"],
+  org_owner: ["portal", "crm", "team_workspace", "inventory", "hr", "accounting", "documents", "admin"],
+  org_admin: ["portal", "crm", "team_workspace", "inventory", "hr", "accounting", "documents", "admin"],
+  branch_manager: ["portal", "crm", "team_workspace", "inventory", "documents", "admin"],
+  location_manager: ["portal", "crm", "team_workspace", "documents"],
+  dispatcher: ["portal", "crm", "team_workspace", "documents"],
+  field_technician: ["portal", "crm", "team_workspace", "documents"],
+  installer: ["portal", "crm", "team_workspace", "documents"],
+  salesperson: ["portal", "crm", "team_workspace", "documents"],
+  accounting: ["portal", "crm", "inventory", "accounting", "documents"],
+  hr_manager: ["portal", "team_workspace", "hr", "documents"],
 };
 
 const ADMIN_FLAG_SET: SensitiveFlag[] = ["users_manage", "roles_manage", "hierarchy_manage", "billing_manage", "security_manage"];

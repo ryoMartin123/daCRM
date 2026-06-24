@@ -6,8 +6,9 @@
 // (or the user being previewed via View-as) can't open this app, we show a
 // locked state instead of the app, with a way back to the launcher.
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Lock } from "lucide-react";
+import { Lock, ChevronDown } from "lucide-react";
 import PlatformSidebar from "@/components/platform/PlatformSidebar";
 import PlatformTopBar from "@/components/platform/PlatformTopBar";
 import AppSwitcher from "@/components/platform/AppSwitcher";
@@ -26,6 +27,11 @@ export default function PlatformShell({
   const { actingUser } = usePermissionContext();
   const allowed = appAccessForUser(actingUser)[appId];
   const app = appById(appId);
+
+  // Hideable top bar (matches the CRM) — preference persisted per browser.
+  const [showBar, setShowBar] = useState(true);
+  useEffect(() => { try { if (localStorage.getItem("platform-topbar-hidden") === "1") setShowBar(false); } catch { /* ignore */ } }, []);
+  function toggleBar(next: boolean) { setShowBar(next); try { localStorage.setItem("platform-topbar-hidden", next ? "0" : "1"); } catch { /* ignore */ } }
 
   if (!allowed) {
     return (
@@ -61,8 +67,22 @@ export default function PlatformShell({
     <div className="flex h-screen overflow-hidden" style={{ backgroundColor: "var(--bg-page)" }}>
       <PlatformSidebar appId={appId} />
       <div className="flex flex-col flex-1 min-w-0">
-        <PlatformTopBar />
-        <main className="flex-1 overflow-y-auto" data-route-fade>{children}</main>
+        {showBar ? (
+          <PlatformTopBar onHide={() => toggleBar(false)} />
+        ) : (
+          <button
+            onClick={() => toggleBar(true)}
+            title="Show top bar"
+            className="flex items-center justify-center gap-1.5 py-1 text-xs transition-colors hover:bg-[var(--bg-surface-2)]"
+            style={{ backgroundColor: "var(--topbar-bg)", borderBottom: "1px solid var(--topbar-border)", color: "var(--text-muted)" }}
+          >
+            <ChevronDown className="w-3.5 h-3.5" /> Show top bar
+          </button>
+        )}
+        {/* scrollbar-gutter:stable reserves the scrollbar lane so the content
+            width never jumps when the bar appears/disappears during a route or
+            skeleton swap (the "screen shake"). */}
+        <main className="flex-1 overflow-y-auto" data-route-fade style={{ scrollbarGutter: "stable" }}>{children}</main>
       </div>
       {/* Brief branded loader on app entry — holds, then fades out. */}
       <AppLoadingOverlay appId={appId} />

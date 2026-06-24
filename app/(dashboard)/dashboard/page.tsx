@@ -21,7 +21,20 @@ import {
   type LayoutItem as DashItem,
 } from "@/lib/dashboard/layouts";
 
-const GREET_DATE = "Friday, May 30";
+// Live date + time-of-day greeting. Computed after mount (empty on the server)
+// so the client fills in the real local date without a hydration mismatch.
+function useGreeting() {
+  const [g, setG] = useState<{ date: string; part: string }>({ date: "", part: "morning" });
+  useEffect(() => {
+    const now = new Date();
+    const h = now.getHours();
+    setG({
+      date: now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }),
+      part: h < 12 ? "morning" : h < 18 ? "afternoon" : "evening",
+    });
+  }, []);
+  return g;
+}
 
 // ─── Context badge ────────────────────────────────────────
 const CTX_COLORS: Record<ContextLevel, { bg: string; color: string }> = {
@@ -304,6 +317,7 @@ export default function DashboardPage() {
   } = useHierarchy();
 
   const contextLevel = getContextLevel(effectiveCompanyId, effectiveLocationId, effectiveServiceAreaId);
+  const greeting = useGreeting();
 
   const [layout,       setLayout]       = useState<DashItem[]>(() => loadLayout());
   const [draft,        setDraft]        = useState<DashItem[]>(layout);
@@ -418,7 +432,7 @@ export default function DashboardPage() {
 
         {/* Center: greeting */}
         <p className="flex-1 text-center text-sm" style={{ color: "var(--text-secondary)" }}>
-          {GREET_DATE} — good morning, {userName}
+          {greeting.date && `${greeting.date} — `}good {greeting.part}, {userName}
         </p>
 
         {/* Right: customize / edit dock */}

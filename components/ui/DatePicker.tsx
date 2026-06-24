@@ -15,6 +15,7 @@ interface Props {
   size?: "sm" | "md";
   className?: string;
   min?: string;          // "yyyy-mm-dd" — earliest selectable date
+  max?: string;          // "yyyy-mm-dd" — latest selectable date
   clearable?: boolean;
 }
 
@@ -34,7 +35,7 @@ function sameDay(a: Date, b: Date): boolean {
 const POP_W = 256;
 const POP_H = 312;   // approx height for flip math
 
-export default function DatePicker({ value, onChange, placeholder = "Select date", size = "md", className, min, clearable = true }: Props) {
+export default function DatePicker({ value, onChange, placeholder = "Select date", size = "md", className, min, max, clearable = true }: Props) {
   const [open, setOpen] = useState(false);
   const sel = parseYMD(value);
   const [view, setView] = useState<Date>(() => sel ?? new Date());
@@ -83,6 +84,8 @@ export default function DatePicker({ value, onChange, placeholder = "Select date
   const pad = size === "sm" ? "px-2.5 py-1.5 text-xs" : "px-3 py-2 text-sm";
   const today = new Date();
   const minD = parseYMD(min ?? "");
+  const maxD = parseYMD(max ?? "");
+  const outOfRange = (d: Date) => (minD && d < minD && !sameDay(d, minD)) || (maxD && d > maxD && !sameDay(d, maxD));
 
   const monthStart = new Date(view.getFullYear(), view.getMonth(), 1);
   const gridStart = new Date(monthStart); gridStart.setDate(gridStart.getDate() - gridStart.getDay());
@@ -126,7 +129,7 @@ export default function DatePicker({ value, onChange, placeholder = "Select date
               const inMonth = d.getMonth() === view.getMonth();
               const isSel = sel ? sameDay(d, sel) : false;
               const isToday = sameDay(d, today);
-              const disabled = minD ? d < minD && !sameDay(d, minD) : false;
+              const disabled = !!outOfRange(d);
               return (
                 <button key={i} type="button" disabled={disabled} onClick={() => choose(d)}
                   className={`h-8 rounded-lg text-xs flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${isSel ? "" : "hover:bg-[var(--bg-surface-2)]"}`}
@@ -143,7 +146,7 @@ export default function DatePicker({ value, onChange, placeholder = "Select date
           </div>
 
           <div className="flex items-center justify-between mt-2 pt-2" style={{ borderTop: "1px solid var(--border-subtle)" }}>
-            <button type="button" onClick={() => choose(new Date())} className="text-xs font-medium" style={{ color: "var(--accent-text)" }}>Today</button>
+            <button type="button" disabled={!!outOfRange(today)} onClick={() => choose(new Date())} className="text-xs font-medium disabled:opacity-30 disabled:cursor-not-allowed" style={{ color: "var(--accent-text)" }}>Today</button>
             {clearable && value && (
               <button type="button" onClick={() => { onChange(""); setOpen(false); }} className="text-xs" style={{ color: "var(--text-muted)" }}>Clear</button>
             )}

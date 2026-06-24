@@ -87,7 +87,7 @@ export default function BusinessStructureManager() {
             Manage companies, branches, service areas, and operating structure across every app.
           </p>
         </div>
-        <ModuleViewToggle view={view} onChange={setView} listLabel="Structure" />
+        <ModuleViewToggle view={view} onChange={setView} listLabel="Structure" accent="#a855f7" />
         <div className="flex-1 flex justify-end">
           {view === "list" && (
             <AddMenu
@@ -219,7 +219,7 @@ function AddMenu({ open, setOpen, onPick }: {
   return (
     <div className="relative shrink-0">
       <button onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3.5 py-2 rounded-lg transition-colors">
+        className="flex items-center gap-1.5 text-white text-sm font-medium px-3.5 py-2 rounded-lg transition-colors hover:brightness-110" style={{ backgroundColor: "#a855f7" }}>
         <Plus className="w-4 h-4" /> Add
         <ChevronDown className="w-3.5 h-3.5 opacity-80" />
       </button>

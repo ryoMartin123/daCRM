@@ -317,6 +317,26 @@ export function resetStore(): DispatchStore {
   return d;
 }
 
+// Scrub a person's name from every board's explicit membership (dispatchers +
+// techNames) across all scopes. Called when a user is deleted so they stop
+// appearing as a board row — boards reference people by name, independent of the
+// user directory. Role-based membership (roleKeys) resolves live, so a deleted
+// user already drops out of those automatically.
+export function removeMemberFromAllBoards(name: string): void {
+  const store = getStore();
+  let changed = false;
+  for (const b of store.boards) {
+    const dispatchers = b.dispatchers.filter(n => n !== name);
+    const techNames = b.techNames.filter(n => n !== name);
+    if (dispatchers.length !== b.dispatchers.length || techNames.length !== b.techNames.length) {
+      b.dispatchers = dispatchers;
+      b.techNames = techNames;
+      changed = true;
+    }
+  }
+  if (changed) saveStore(store);
+}
+
 // ─── Scope keys ───────────────────────────────────────────
 export function scopeKeyOf(level: ScopeLevel, companyId?: string, locationId?: string): string {
   if (level === "company") return `company:${companyId}`;

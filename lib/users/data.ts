@@ -8,6 +8,7 @@
 
 import type { RoleKey } from "@/lib/roles/types";
 import type { AppAccess } from "@/lib/platform/access";
+import { removeMemberFromAllBoards } from "@/lib/calendar/settings";
 
 export type UserStatus = "active" | "invited" | "inactive";
 export type ScopeLevel = "org" | "company" | "location" | "service_area";
@@ -28,10 +29,12 @@ export interface AppUser {
   fullName: string;
   initials: string;
   email: string;
+  phone?: string;               // optional contact number (shown in the detail drawer)
   status: UserStatus;
   isOrgOwner?: boolean;          // the owner grant — can't be removed/deactivated
   assignments: RoleAssignment[];
   createdAt: string;            // ISO date
+  lastLoginAt?: string;         // ISO date — surfaced in the Security tab (mock)
   // Platform-layer 1: explicit app-access override. When set it wins over the
   // role-derived default (portal is always forced on). See lib/platform/access.
   appAccess?: Partial<AppAccess>;
@@ -55,10 +58,12 @@ const SEED: AppUser[] = [
     fullName: "Ryo Martin",
     initials: "RM",
     email: "ryo@northstar.example",
+    phone: "+1 (706) 555-0100",
     status: "active",
     isOrgOwner: true,
     assignments: [{ id: "asg-owner", role: "org_owner", level: "org" }],
     createdAt: "2026-01-01",
+    lastLoginAt: "2026-06-22",
   },
   // ── Mock platform users — exercise app-access via the View-as menu ──
   // Each carries an explicit appAccess override so the launcher and shell show
@@ -68,9 +73,11 @@ const SEED: AppUser[] = [
     fullName: "Tucker Hayes",
     initials: "TH",
     email: "tucker@northstar.example",
+    phone: "+1 (706) 555-0142",
     status: "active",
     assignments: [{ id: "asg-tucker", role: "field_technician", level: "location", companyId: "co_hvac", locationId: "loc_augusta" }],
     createdAt: "2026-02-01",
+    lastLoginAt: "2026-06-21",
     appAccess: { crm: true, documents: true },
   },
   {
@@ -107,7 +114,20 @@ const SEED: AppUser[] = [
 
 // ─── localStorage-backed store ────────────────────────────
 const STORAGE_KEY = "crm-users";
+// Tombstones for SEED users the user has deleted — without this the union-in
+// below would resurrect them on every fresh load (so deletes never "stuck").
+const DELETED_SEEDS_KEY = "crm-users-deleted-seeds";
+const SEED_IDS = new Set(SEED.map((s) => s.id));
 let _users: AppUser[] | null = null;
+
+function readDeletedSeeds(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try { return new Set(JSON.parse(localStorage.getItem(DELETED_SEEDS_KEY) || "[]") as string[]); }
+  catch { return new Set(); }
+}
+function writeDeletedSeeds(ids: Set<string>): void {
+  try { localStorage.setItem(DELETED_SEEDS_KEY, JSON.stringify([...ids])); } catch { /* ignore */ }
+}
 
 function init(): AppUser[] {
   if (_users) return _users;
@@ -117,10 +137,12 @@ function init(): AppUser[] {
     const stored = raw ? (JSON.parse(raw) as AppUser[]) : [];
     // Union in any SEED users missing from a previously-cached directory so the
     // mock platform users (and the owner) always exist for the demo. New seed
-    // users added later show up without a manual reset.
+    // users added later show up without a manual reset — but NOT ones the user
+    // has explicitly deleted (those are tombstoned).
+    const deleted = readDeletedSeeds();
     const haveIds = new Set(stored.map((u) => u.id));
-    const missing = SEED.filter((s) => !haveIds.has(s.id));
-    _users = stored.length ? [...stored, ...missing] : [...SEED];
+    const missing = SEED.filter((s) => !haveIds.has(s.id) && !deleted.has(s.id));
+    _users = stored.length ? [...stored, ...missing] : SEED.filter((s) => !deleted.has(s.id));
     if (missing.length && stored.length) persist();
   } catch {
     _users = [...SEED];
@@ -146,6 +168,7 @@ export interface UpsertUserInput {
   id?: string;
   fullName: string;
   email: string;
+  phone?: string;
   status?: UserStatus;
   assignments: Omit<RoleAssignment, "id">[];
 }
@@ -164,6 +187,7 @@ export function upsertUser(input: UpsertUserInput): AppUser {
         fullName: input.fullName,
         initials: initialsOf(input.fullName),
         email: input.email,
+        phone: input.phone ?? existing.phone,
         status: input.status ?? existing.status,
         // The owner keeps its owner grant regardless of edits.
         assignments: existing.isOrgOwner ? existing.assignments : assignments,
@@ -179,6 +203,7 @@ export function upsertUser(input: UpsertUserInput): AppUser {
     fullName: input.fullName,
     initials: initialsOf(input.fullName),
     email: input.email,
+    phone: input.phone,
     status: input.status ?? "invited",
     assignments,
     createdAt: new Date().toISOString().slice(0, 10),
@@ -197,13 +222,38 @@ export function setUserStatus(id: string, status: UserStatus): void {
   persist();
 }
 
-// Permanently remove a user from the directory. The org owner can't be deleted.
+// Set (or clear) a user's explicit app-access override. Portal is always forced
+// on by the resolver, so it's never written here. Passing undefined removes the
+// override entirely, dropping the user back to their role-derived defaults. The
+// owner is full-access and ignores overrides.
+export function setUserAppAccess(id: string, appAccess: Partial<AppAccess> | undefined): void {
+  const list = init();
+  const u = list.find(x => x.id === id);
+  if (!u || u.isOrgOwner) return;
+  if (appAccess) {
+    const { portal: _portal, ...rest } = appAccess;
+    void _portal;
+    u.appAccess = rest;
+  } else {
+    delete u.appAccess;
+  }
+  persist();
+}
+
+// Permanently remove a user from the directory AND from the rest of the system.
+// The org owner can't be deleted.
 export function deleteUser(id: string): void {
   const list = init();
   const u = list.find(x => x.id === id);
   if (!u || u.isOrgOwner) return;
+  const name = u.fullName;
   _users = list.filter(x => x.id !== id);
+  // Tombstone deleted SEED users so init() doesn't resurrect them on reload.
+  if (SEED_IDS.has(id)) { const d = readDeletedSeeds(); d.add(id); writeDeletedSeeds(d); }
   persist();
+  // Cascade: scrub them from dispatch boards (boards reference people by name, so
+  // a delete wouldn't otherwise remove them from the board). Best-effort.
+  try { removeMemberFromAllBoards(name); } catch { /* dispatch store may be absent */ }
 }
 
 // ─── Derived people lists (rosters / assignee pickers) ────

@@ -293,18 +293,16 @@ export function BusinessStructureSection() {
 // ─── Organization ─────────────────────────────────────────
 export function OrganizationSection() {
   const { organization, orgSettings, updateOrganization } = useHierarchy();
-  const [name, setName]   = useState(organization.name);
-  const [saved, setSaved] = useState(false);
+  const [name, setName] = useState(organization.name);
 
   useEffect(() => { setName(organization.name); }, [organization.name]);
 
-  const dirty = name.trim() !== organization.name && name.trim().length > 0;
-
-  function handleSave() {
-    if (!dirty) return;
-    updateOrganization({ name: name.trim() });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  // Auto-save: commit the name when the field loses focus (or on Enter). No Save
+  // button — edits persist immediately, matching the rest of the admin sections.
+  function commit() {
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === organization.name) { setName(organization.name); return; }
+    updateOrganization({ name: trimmed });
   }
 
   return (
@@ -314,7 +312,8 @@ export function OrganizationSection() {
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>Organization Name</label>
-            <input value={name} onChange={e => setName(e.target.value)}
+            <input value={name} onChange={e => setName(e.target.value)} onBlur={commit}
+              onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
               className="w-full rounded-lg px-3 py-2 text-sm outline-none"
               style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface-2)", color: "var(--text-primary)" }} />
           </div>
@@ -331,13 +330,6 @@ export function OrganizationSection() {
                 {orgSettings.mode.replace(/_/g, " ")}
               </p>
             </div>
-          </div>
-          <div className="flex justify-end pt-2">
-            <button onClick={handleSave} disabled={!dirty && !saved}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-40"
-              style={{ backgroundColor: saved ? "#10b981" : "#4f46e5" }}>
-              {saved ? "Saved ✓" : "Save Changes"}
-            </button>
           </div>
         </div>
       </Card>

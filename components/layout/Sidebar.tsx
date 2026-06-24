@@ -193,7 +193,7 @@ export default function Sidebar() {
   }
 
   return (
-    <div data-app-nav className={cn("flex flex-col shrink-0 transition-[width] duration-150", collapsed ? "w-16" : "w-56")} style={{ backgroundColor: "var(--sidebar-bg)" }}>
+    <div data-app-nav className={cn("flex flex-col shrink-0 transition-[width] duration-300 ease-in-out", collapsed ? "w-16" : "w-56")} style={{ backgroundColor: "var(--sidebar-bg)" }}>
       {/* App identity header — [app icon] App Name / Organization */}
       <div className={cn("flex items-center px-4 py-4", collapsed ? "justify-center" : "justify-between gap-2")} style={{ borderBottom: "1px solid var(--sidebar-border)" }}>
         {!collapsed && (

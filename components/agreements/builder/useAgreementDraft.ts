@@ -74,10 +74,61 @@ const uid = (p: string) => `${p}-${Date.now()}-${_seq++}`;
 const parseInput = (s?: string): Date | null => { if (!s) return null; const d = new Date(s + "T00:00:00"); return isNaN(d.getTime()) ? null : d; };
 const fmtHuman = (d: Date): string => d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 const addMonths = (d: Date, n: number): Date => new Date(d.getFullYear(), d.getMonth() + n, d.getDate());
+const addDays = (d: Date, n: number): Date => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 const toInput = (d: Date): string => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 // Cadences that never pre-generate planned visits (created on demand instead).
 const NO_GEN_CADENCE = new Set(["no_visits", "on_demand"]);
+
+// Calendar dates ONE visit type generates over the term. Custom schedules honor
+// their explicit timing (specific dates/months, every-X interval, seasonal
+// windows); everything else spreads the type's own occurrences evenly from the
+// start date — so a visit never drifts to the term end unless its cadence says so.
+function datesForVisit(v: DraftVisit, start: Date, termMonths: number, termEnd: Date, vpy: number): Date[] {
+  const inRange = (d: Date) => d >= start && d < termEnd;
+  const years = Math.max(1, Math.ceil(termMonths / 12));
+  const c = v.frequencyKey === "custom" ? v.customVisit : undefined;
+
+  if (c) {
+    if (c.ruleType === "specific_dates" && c.dates?.length) {
+      // Only dates within the term generate visits — past/after-term dates are dropped.
+      return c.dates.map(parseInput).filter((d): d is Date => !!d && inRange(d)).sort((a, b) => a.getTime() - b.getTime());
+    }
+    if (c.ruleType === "specific_months" && c.months?.length) {
+      const out: Date[] = [];
+      for (let y = 0; y < years; y++) for (const m of [...c.months].sort((a, b) => a - b)) {
+        const d = new Date(start.getFullYear() + y, m - 1, Math.min(start.getDate(), 28));
+        if (inRange(d)) out.push(d);
+      }
+      return out.sort((a, b) => a.getTime() - b.getTime());
+    }
+    if (c.ruleType === "every_x") {
+      const n = Math.max(1, c.intervalCount || 1);
+      const out: Date[] = [];
+      let d = new Date(start);
+      while (inRange(d) && out.length < 200) {
+        out.push(new Date(d));
+        d = c.intervalUnit === "days" ? addDays(d, n) : c.intervalUnit === "months" ? addMonths(d, n) : addDays(d, n * 7);
+      }
+      return out;
+    }
+    if (c.ruleType === "fixed_per_year" && c.windows?.length) {
+      const out: Date[] = [];
+      for (let y = 0; y < years; y++) for (const w of c.windows) {
+        const d = new Date(start.getFullYear() + y, (w.startMonth || 1) - 1, Math.min(start.getDate(), 28));
+        if (inRange(d)) out.push(d);
+      }
+      if (out.length) return out.sort((a, b) => a.getTime() - b.getTime());
+    }
+    // fixed_per_year (no windows) falls through to an even spread below.
+  }
+
+  const occ = Math.max(1, Math.round((vpy || 1) * (termMonths / 12)));
+  const step = occ > 0 ? termMonths / occ : termMonths;
+  const out: Date[] = [];
+  for (let i = 0; i < occ; i++) out.push(addMonths(start, Math.round(i * step)));
+  return out;
+}
 
 export type BuilderMode = "create" | "edit";
 
@@ -363,27 +414,29 @@ export function useAgreementDraft(opts: { mode: BuilderMode; agreementId?: strin
 
   const generatedVisits = useMemo<AgreementVisit[]>(() => {
     const start = parseInput(startDate) ?? new Date();
-    // Only auto-generate visits with a generating cadence produce planned visits.
-    // Custom schedules only generate when their config implies on-calendar visits.
+    const termM = parseInt(termMonths) || 12;
+    const termEnd = addMonths(start, termM);
+    // Only cadences that produce calendar visits generate planned visits. Custom
+    // schedules generate only when their config implies on-calendar visits.
     const plan = visits.filter(v => v.name.trim() && v.autoGenerate && !NO_GEN_CADENCE.has(v.frequencyKey)
       && (v.frequencyKey !== "custom" || customVisitsPerYear(v.customVisit) > 0));
     if (plan.length === 0) return [];
-    const perVisit = plan.map(v => { const vpy = effVisitsPerYear(v); return vpy > 0 ? Math.max(1, Math.round(vpy / plan.length)) : 1; });
-    const total = perVisit.reduce((a, b) => a + b, 0) || plan.length;
-    const stepMonths = total > 0 ? 12 / total : 12;
+
     const out: AgreementVisit[] = [];
-    let idx = 0;
-    for (let pi = 0; pi < plan.length; pi++) {
-      for (let k = 0; k < perVisit[pi]; k++) {
-        const d = addMonths(start, Math.round(idx * stepMonths));
-        const occ = perVisit[pi] > 1 ? ` ${k + 1}` : "";
-        out.push({ id: uid("av"), label: `${plan[pi].name}${occ}`, scheduled: fmtHuman(d), status: "planned", tech: "Unassigned" });
-        idx++;
-      }
+    for (const v of plan) {
+      // Each visit TYPE generates its OWN occurrences over the term (its frequency
+      // is independent of the other types — 2 types × 2/yr = 4 over a 1-yr term),
+      // and dates follow that type's own cadence/custom timing — never an even
+      // interleave that can drift a visit out to the term end (e.g. December).
+      const dates = datesForVisit(v, start, termM, termEnd, effVisitsPerYear(v));
+      dates.forEach((d, k) => {
+        const occ = dates.length > 1 ? ` ${k + 1} of ${dates.length}` : "";
+        out.push({ id: uid("av"), label: `${v.name}${occ}`, scheduled: fmtHuman(d), status: "planned", tech: "Unassigned" });
+      });
     }
     return out.sort((a, b) => new Date(a.scheduled).getTime() - new Date(b.scheduled).getTime());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visits, startDate, visitRules]);
+  }, [visits, startDate, termMonths, visitRules]);
 
   const totalVisitsPerYear = generatedVisits.length;
   const primaryBilling = billings[0];

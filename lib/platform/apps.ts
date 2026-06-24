@@ -15,12 +15,16 @@ import {
   Calculator,
   FolderTree,
   ShieldCheck,
+  MessagesSquare,
+  Boxes,
   type LucideIcon,
 } from "lucide-react";
 
 export type PlatformAppId =
   | "portal"
   | "crm"
+  | "team_workspace"
+  | "inventory"
   | "hr"
   | "accounting"
   | "documents"
@@ -51,7 +55,7 @@ export const PLATFORM_APPS: PlatformApp[] = [
     icon: LayoutDashboard,
     href: "/portal",
     routePrefix: "/portal",
-    accent: "#6366f1",
+    accent: "#0ea5e9",
     always: true,
   },
   {
@@ -62,7 +66,27 @@ export const PLATFORM_APPS: PlatformApp[] = [
     icon: Headset,
     href: "/dashboard",
     routePrefix: "", // CRM lives at the root
-    accent: "#0ea5e9",
+    accent: "#6366f1",
+  },
+  {
+    id: "team_workspace",
+    name: "Team Workspace",
+    description:
+      "Internal collaboration, team meetings, announcements, action items, shared boards, and company communication.",
+    icon: MessagesSquare,
+    href: "/team-workspace",
+    routePrefix: "/team-workspace",
+    accent: "#2563eb",
+  },
+  {
+    id: "inventory",
+    name: "Inventory & Procurement",
+    description:
+      "Manage materials, truck stock, warehouses, purchase orders, vendors, subcontractors, and material requests.",
+    icon: Boxes,
+    href: "/inventory",
+    routePrefix: "/inventory",
+    accent: "#f97316",
   },
   {
     id: "hr",

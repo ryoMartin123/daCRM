@@ -6,12 +6,12 @@
 // a notifications stub. The CRM keeps its own fuller top bar; this one is
 // deliberately lighter for the not-yet-built apps.
 
-import { Search, Bell } from "lucide-react";
+import { Search, Bell, ChevronUp } from "lucide-react";
 import AppSwitcher from "@/components/platform/AppSwitcher";
 import HierarchySelector from "@/components/layout/HierarchySelector";
 import ViewAsMenu from "@/components/layout/ViewAsMenu";
 
-export default function PlatformTopBar() {
+export default function PlatformTopBar({ onHide }: { onHide?: () => void }) {
   return (
     <div
       className="flex items-center gap-4 px-6 py-3 shrink-0"
@@ -24,8 +24,9 @@ export default function PlatformTopBar() {
         <HierarchySelector />
       </div>
 
-      {/* Center — search placeholder */}
-      <div className="shrink-0 w-[24rem] max-w-full">
+      {/* Center — search placeholder (shrinks so a long app name / context label
+          never overlaps it) */}
+      <div className="min-w-0 w-[24rem] max-w-full">
         <div
           className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm"
           style={{ backgroundColor: "var(--bg-input)", border: "1px solid var(--border)", color: "var(--text-muted)" }}
@@ -45,6 +46,13 @@ export default function PlatformTopBar() {
         >
           <Bell className="w-4 h-4" />
         </button>
+        {onHide && (
+          <button onClick={onHide} title="Hide bar"
+            className="p-2 rounded-lg transition-colors hover:bg-[var(--bg-surface-2)]"
+            style={{ color: "var(--text-muted)" }}>
+            <ChevronUp className="w-4 h-4" />
+          </button>
+        )}
       </div>
     </div>
   );

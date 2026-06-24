@@ -11,11 +11,13 @@ export default function ModuleViewToggle({
   onChange,
   centered = false,
   listLabel = "List",
+  accent = "#4f46e5",
 }: {
   view: ModuleView;
   onChange: (v: ModuleView) => void;
   centered?: boolean;
   listLabel?: string;
+  accent?: string;        // active-tab color (per-app theming)
 }) {
   const tabs = [
     { key: "list" as const,     icon: LayoutList, label: listLabel },
@@ -29,7 +31,7 @@ export default function ModuleViewToggle({
           return (
             <button key={t.key} onClick={() => onChange(t.key)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors"
-              style={{ backgroundColor: active ? "#4f46e5" : "var(--bg-surface)", color: active ? "#fff" : "var(--text-secondary)" }}>
+              style={{ backgroundColor: active ? accent : "var(--bg-surface)", color: active ? "#fff" : "var(--text-secondary)" }}>
               <t.icon className="w-3.5 h-3.5" /> {t.label}
             </button>
           );

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { use, useState, Suspense } from "react";
+import React, { use, useState, useMemo, Suspense } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, Pencil, Trash2,
@@ -11,6 +11,7 @@ import {
   Briefcase, ClipboardList, FilePen, FileCheck,
   Receipt, DollarSign, FileText, RefreshCw,
   Image as ImageIcon, Paperclip, Smartphone, CheckSquare,
+  Search, Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import StatusBadge from "@/components/shared/StatusBadge";
@@ -34,7 +35,7 @@ import { AddressAutocomplete, EMPTY_ADDRESS, type ParsedAddress } from "@/compon
 import UiSelect from "@/components/ui/Select";
 import PhotoGallery from "@/components/files/PhotoGallery";
 import { getActivityEvents } from "@/lib/activity/data";
-import { type ActivityEvent, type EventType, type FilterCategory, EVENT_FILTER_MAP } from "@/lib/activity/types";
+import { type ActivityEvent, type EventType } from "@/lib/activity/types";
 import Commentable from "@/components/comments/Commentable";
 import DetailTabs from "@/components/shared/DetailTabs";
 import AgreementSummaryCard from "@/components/agreements/AgreementSummaryCard";
@@ -1350,136 +1351,96 @@ const EVENT_CONFIG: Record<EventType, EventConfig> = {
   task_completed:     { icon: CheckSquare,   bg: "#d1fae5", color: "#065f46", label: "Task Completed" },
 };
 
-const FILTER_TABS: { key: FilterCategory | "all"; label: string }[] = [
-  { key: "all",           label: "All" },
-  { key: "notes",         label: "Notes" },
-  { key: "jobs",          label: "Jobs" },
-  { key: "quotes",        label: "Quotes" },
-  { key: "invoices",      label: "Invoices" },
-  { key: "communication", label: "Communication" },
-  { key: "photos",        label: "Photos" },
-  { key: "tasks",         label: "Tasks" },
-  { key: "agreements",    label: "Agreements" },
-];
+function eventInitials(name: string): string {
+  const p = (name || "").trim().split(/\s+/);
+  if (!p[0] || name === "—") return "•";
+  return (p.length >= 2 ? p[0][0] + p[p.length - 1][0] : name.slice(0, 2)).toUpperCase();
+}
+function eventTime(iso: string): string | null {
+  if (!/T\d{2}:\d{2}/.test(iso)) return null;
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+function dayLabel(iso: string): string {
+  const d = new Date(/T/.test(iso) ? iso : iso + "T00:00:00");
+  return isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+}
 
 function TimelineTab({ id }: { id: string }) {
-  const events = getActivityEvents(id);
-  const [filter, setFilter] = useState<FilterCategory | "all">("all");
+  const events = useMemo(() => getActivityEvents(id), [id]);
+  const [q, setQ] = useState("");
 
-  const filtered = filter === "all"
-    ? events
-    : events.filter(e => EVENT_FILTER_MAP[e.eventType] === filter);
+  const s = q.trim().toLowerCase();
+  const filtered = events.filter(e => {
+    if (s && !`${e.title} ${e.description ?? ""} ${e.createdBy} ${EVENT_CONFIG[e.eventType].label}`.toLowerCase().includes(s)) return false;
+    return true;
+  });
 
-  // Count per filter for badges
-  const counts = FILTER_TABS.reduce<Record<string, number>>((acc, f) => {
-    acc[f.key] = f.key === "all"
-      ? events.length
-      : events.filter(e => EVENT_FILTER_MAP[e.eventType] === f.key).length;
-    return acc;
-  }, {});
+  // Group consecutive events by calendar day for clear date headers.
+  const groups: { day: string; items: typeof filtered }[] = [];
+  for (const e of filtered) {
+    const day = (e.createdAt || "").slice(0, 10);
+    const last = groups[groups.length - 1];
+    if (last && last.day === day) last.items.push(e);
+    else groups.push({ day, items: [e] });
+  }
 
   return (
-    <div className="space-y-5">
-      {/* Filter pills */}
-      <div className="flex items-center gap-1.5 flex-wrap">
-        {FILTER_TABS.map(f => {
-          const active = filter === f.key;
-          const count  = counts[f.key] ?? 0;
-          if (f.key !== "all" && count === 0) return null;
-          return (
-            <button
-              key={f.key}
-              onClick={() => setFilter(f.key)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
-              style={{
-                backgroundColor: active ? "#4f46e5" : "var(--bg-input)",
-                color: active ? "#fff" : "var(--text-secondary)",
-              }}
-            >
-              {f.label}
-              <span
-                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                style={{
-                  backgroundColor: active ? "rgba(255,255,255,0.25)" : "var(--bg-surface)",
-                  color: active ? "#fff" : "var(--text-muted)",
-                }}
-              >
-                {count}
-              </span>
-            </button>
-          );
-        })}
+    <div className="space-y-4">
+      {/* Toolbar — search */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2 rounded-lg px-3 py-2 flex-1 min-w-[200px] max-w-sm" style={{ backgroundColor: "var(--bg-input)" }}>
+          <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted)" }} />
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search activity, people…" className="bg-transparent text-sm outline-none w-full" style={{ color: "var(--text-primary)" }} />
+        </div>
+        <p className="text-xs shrink-0" style={{ color: "var(--text-muted)" }}>{filtered.length} of {events.length} {events.length === 1 ? "event" : "events"}</p>
       </div>
 
-      {/* Timeline */}
       {filtered.length === 0 ? (
         <div className="py-12 text-center rounded-xl" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
-          <p className="text-sm" style={{ color: "var(--text-muted)" }}>No events in this category</p>
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>No matching activity.</p>
         </div>
       ) : (
-        <div className="relative">
-          {/* Vertical connector line */}
-          <div
-            className="absolute top-5 bottom-5"
-            style={{ left: "19px", width: "2px", backgroundColor: "var(--border-subtle)" }}
-          />
-
-          <div className="space-y-1">
-            {filtered.map((event) => {
-              const config = EVENT_CONFIG[event.eventType];
-              const Icon   = config.icon;
-              return (
-                <div key={event.id} className="relative flex gap-4 py-3">
-                  {/* Icon bubble */}
-                  <div
-                    className="relative z-10 w-10 h-10 rounded-full flex items-center justify-center shrink-0"
-                    style={{
-                      backgroundColor: config.bg,
-                      boxShadow: "0 0 0 2px var(--bg-page)",
-                    }}
-                  >
-                    <Icon className="w-4 h-4" style={{ color: config.color }} />
-                  </div>
-
-                  {/* Content */}
-                  <div
-                    className="flex-1 min-w-0 rounded-xl px-4 py-3"
-                    style={{
-                      backgroundColor: "var(--bg-surface)",
-                      border: "1px solid var(--border-subtle)",
-                    }}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span
-                            className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
-                            style={{ backgroundColor: config.bg, color: config.color }}
-                          >
-                            {config.label}
-                          </span>
+        <div className="space-y-4">
+          {groups.map(group => (
+            <div key={group.day}>
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-2 px-1" style={{ color: "var(--text-muted)" }}>{dayLabel(group.day)}</p>
+              <div className="relative">
+                <div className="absolute top-3 bottom-3" style={{ left: "19px", width: "2px", backgroundColor: "var(--border-subtle)" }} />
+                <div className="space-y-1.5">
+                  {group.items.map(event => {
+                    const config = EVENT_CONFIG[event.eventType];
+                    const Icon = config.icon;
+                    const time = eventTime(event.createdAt);
+                    return (
+                      <div key={event.id} className="relative flex gap-4">
+                        <div className="relative z-10 w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: config.bg, boxShadow: "0 0 0 2px var(--bg-page)" }}>
+                          <Icon className="w-4 h-4" style={{ color: config.color }} />
                         </div>
-                        <p className="text-sm font-medium mt-1" style={{ color: "var(--text-primary)" }}>
-                          {event.title}
-                        </p>
-                        {event.description && (
-                          <p className="text-xs mt-0.5 leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                            {event.description}
-                          </p>
-                        )}
+                        <div className="flex-1 min-w-0 rounded-xl px-4 py-3" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: config.bg, color: config.color }}>{config.label}</span>
+                              <p className="text-sm font-medium mt-1" style={{ color: "var(--text-primary)" }}>{event.title}</p>
+                              {event.description && <p className="text-xs mt-0.5 leading-relaxed" style={{ color: "var(--text-secondary)" }}>{event.description}</p>}
+                            </div>
+                            <span className="flex items-center gap-1 text-xs shrink-0 mt-0.5 whitespace-nowrap" style={{ color: "var(--text-muted)" }}>
+                              <Clock className="w-3 h-3" /> {time ?? event.displayDate}
+                            </span>
+                          </div>
+                          {/* Who the activity belongs to */}
+                          <div className="flex items-center gap-1.5 mt-2 pt-2" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+                            <span className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white shrink-0" style={{ backgroundColor: event.createdBy === "—" ? "#9ca3af" : "#6366f1" }}>{eventInitials(event.createdBy)}</span>
+                            <span className="text-[11px]" style={{ color: "var(--text-secondary)" }}>{event.createdBy === "—" ? "System" : event.createdBy}</span>
+                          </div>
+                        </div>
                       </div>
-                      <span className="text-xs shrink-0 mt-0.5" style={{ color: "var(--text-muted)" }}>
-                        {event.displayDate}
-                      </span>
-                    </div>
-                    <p className="text-[10px] mt-2" style={{ color: "var(--text-muted)" }}>
-                      {event.createdBy}
-                    </p>
-                  </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -1555,18 +1516,10 @@ function CustomerDetailContent({ params }: { params: Promise<{ id: string }> }) 
                 {customer.initials}
               </div>
               <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h1 className="text-base font-semibold truncate" style={{ color: "var(--text-primary)" }}>{customer.name}</h1>
-                  <HoverInfo rows={[
-                    { label: "Type",      node: <StatusBadge label={customer.type} color={typeDot(customer.type)} size="sm" /> },
-                    { label: "Status",    node: <StatusBadge label={customer.status} color={statusDot(customer.status)} size="sm" /> },
-                    { label: "Structure", node: <span className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>{STRUCTURE_LABEL[customer.accountType] ?? customer.accountType}</span> },
-                    { label: "Since",     node: <span className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>{customer.since}</span> },
-                  ]} />
-                </div>
+                <h1 className="text-base font-semibold truncate" style={{ color: "var(--text-primary)" }}>{customer.name}</h1>
                 <p className="text-xs mt-0.5 truncate flex items-center gap-1.5" style={{ color: "var(--text-muted)" }}>
                   <MapPin className="w-3 h-3 shrink-0" />
-                  {customer.address}, {customer.city}, {customer.state} · {customer.locationName}
+                  {customer.address}, {customer.city}, {customer.state}
                 </p>
               </div>
             </div>

@@ -123,10 +123,13 @@ export default function SalesbookLibrarySection({ activeModule, onOpen, onBack }
 
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>{mod.label}</h2>
-        <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>{mod.description}</p>
-      </div>
+      {/* Offer Library owns its own workspace header — avoid the duplicate heading. */}
+      {mod.key !== "offer_library" && (
+        <div>
+          <h2 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>{mod.label}</h2>
+          <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>{mod.description}</p>
+        </div>
+      )}
 
       {mod.key === "library" && (
         <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))" }}>

@@ -110,12 +110,12 @@ export default function RolesSection() {
           <h2 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>Roles &amp; Permissions</h2>
           <p className="text-sm mt-0.5 truncate" style={{ color: "var(--text-secondary)" }}>Control what each role can access across the platform.</p>
         </div>
-        <ModuleViewToggle view={view} onChange={setView} listLabel="Roles" />
+        <ModuleViewToggle view={view} onChange={setView} listLabel="Roles" accent="#a855f7" />
         <div className="flex-1 flex justify-end">
           {canManage && (
             <div className="flex items-center gap-2 shrink-0">
               <button onClick={() => setBuilder({ isNew: true })}
-                className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors">
+                className="flex items-center gap-1.5 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors hover:brightness-110" style={{ backgroundColor: "#a855f7" }}>
                 <Plus className="w-4 h-4" /> Create Role
               </button>
             </div>
@@ -137,7 +137,7 @@ export default function RolesSection() {
       <>
         {/* Toolbar — tabs (left) · search + condensed Filter (right), CRM style */}
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <StatusTabs active={tab} onChange={setTab}
+          <StatusTabs accent="#a855f7" active={tab} onChange={setTab}
             tabs={[
               { key: "all", label: "All", count: roles.length },
               { key: "admin", label: "Has Admin", count: roles.filter(TAB_FNS.admin).length, dividerBefore: true },

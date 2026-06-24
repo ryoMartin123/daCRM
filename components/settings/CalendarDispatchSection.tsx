@@ -5,7 +5,6 @@ import {
   Plus, Pencil, Trash2, Check, ChevronUp, ChevronDown, ChevronRight, X, Lock, Settings2,
   Star, CalendarDays, CalendarRange, Calendar, Clock, LayoutGrid, Users, Layers, Inbox, Search,
 } from "lucide-react";
-import { useRegisterSaveAction } from "@/components/settings/SettingsActions";
 import { useSettingsScope } from "@/components/providers/SettingsScopeProvider";
 import UiSelect from "@/components/ui/Select";
 import { getBoardCandidateNames, getDispatcherCandidates, getTechnicianCandidates } from "@/lib/users/data";
@@ -397,25 +396,18 @@ export default function CalendarDispatchSection({ activeModule, onOpen, onBack }
   const companyId = scope.companyId;
   const locationId = scope.locationId;
   const [tab, setTab] = useState<SectionTab>("defaults");
-  const [baseline, setBaseline] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
   const [editingBlock, setEditingBlock] = useState<string | null>(null);
   const [editingBoard, setEditingBoard] = useState<string | null>(null);
   const [editingView, setEditingView] = useState<string | null>(null);
 
-  useEffect(() => { const s = getStore(); setStore(s); setBaseline(JSON.stringify(s)); }, []);
+  useEffect(() => { setStore(getStore()); }, []);
 
   // Reset open editors when the editing scope changes (avoids editing a board
   // that isn't in the newly selected scope).
   useEffect(() => { setEditingBlock(null); setEditingBoard(null); setEditingView(null); }, [level, companyId, locationId]);
 
-  // Dirty is computed against the saved baseline — reverting a change back to its
-  // original value clears it, so toggling something off then on isn't "unsaved".
-  const dirty = !!store && baseline !== null && JSON.stringify(store) !== baseline;
-
-  // Publish Save to the shared top-right slot (same as the Pipelines page).
-  function handleSave() { if (store) { saveStore(store); setBaseline(JSON.stringify(store)); } setSaved(true); setTimeout(() => setSaved(false), 2000); }
-  useRegisterSaveAction({ dirty, saved, onSave: handleSave });
+  // Auto-save: there's no manual Save button — every change persists immediately
+  // (see update()). The "Done" buttons on the board/block editors just close them.
 
   if (!store) return <div className="p-6 text-sm" style={{ color: "var(--text-muted)" }}>Loading…</div>;
 
@@ -467,9 +459,13 @@ export default function CalendarDispatchSection({ activeModule, onOpen, onBack }
   // Org always defines its sections; company/location override explicitly.
   const isOverridden = (section: DispatchSection) => level === "org" || scopeCfg[section] !== undefined;
 
+  // Mutate + persist in one step — every edit is saved to the store immediately.
   function update(mut: (next: DispatchStore) => void) {
-    setStore(prev => { if (!prev) return prev; const next = structuredClone(prev); mut(next); return next; });
-    setSaved(false);   // dirty is derived by comparing to the baseline
+    if (!store) return;
+    const next = structuredClone(store);
+    mut(next);
+    setStore(next);
+    saveStore(next);
   }
 
   // Edit a section's content, materializing it from the parent on first touch.
@@ -635,17 +631,11 @@ export default function CalendarDispatchSection({ activeModule, onOpen, onBack }
 
   return (
     <div className="space-y-5">
-      {/* Header — Save lives in the shared top-right slot (see SettingsSaveSlot) */}
+      {/* Header — changes auto-save; no manual Save button. */}
       <div>
         <h2 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>{activeContainer.label}</h2>
         <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>{activeContainer.description}</p>
       </div>
-
-      {dirty && (
-        <div className="rounded-lg px-3 py-2 text-xs" style={{ backgroundColor: "#fef3c7", color: "#92400e" }}>
-          You have unsaved changes.
-        </div>
-      )}
 
       {/* Tabs — only the ones in this container */}
       <div className="flex items-center gap-1 flex-wrap">
