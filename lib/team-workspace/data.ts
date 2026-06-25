@@ -76,15 +76,32 @@ export interface Channel {
   context?: string;             // display label for linked company/location
 }
 
-export type PostType = "update" | "announcement" | "note" | "question" | "decision";
+// Post types. "message" is the lightweight default (a plain message, no badge);
+// the rest are optional structured posts chosen from the composer's "+" menu.
+export type PostType = "message" | "announcement" | "decision" | "question" | "sop";
 export const POST_TYPE_STYLE: Record<PostType, { label: string; color: string; bg: string }> = {
-  update:       { label: "Update",       color: "#0ea5e9", bg: "#0ea5e91a" },
-  announcement: { label: "Announcement", color: "#6366f1", bg: "#6366f11a" },
-  note:         { label: "Note",         color: "#6b7280", bg: "var(--bg-input)" },
-  question:     { label: "Question",     color: "#f59e0b", bg: "#f59e0b1a" },
-  decision:     { label: "Decision",     color: "#10b981", bg: "#10b9811a" },
+  message:      { label: "Message",            color: "#6b7280", bg: "var(--bg-input)" },
+  announcement: { label: "Announcement",       color: "#6366f1", bg: "#6366f114" },
+  decision:     { label: "Decision",           color: "#10b981", bg: "#10b98114" },
+  question:     { label: "Question",            color: "#f59e0b", bg: "#f59e0b14" },
+  sop:          { label: "SOP / Doc Update",    color: "#0ea5e9", bg: "#0ea5e914" },
 };
-export const POST_TYPE_OPTIONS: PostType[] = ["update", "announcement", "note", "question", "decision"];
+// Special types offered in the composer "+" menu — "message" is implicit/default.
+export const SPECIAL_POST_TYPES: PostType[] = ["announcement", "decision", "question", "sop"];
+
+// Quick reactions offered in the picker. Reactions live on the post as
+// emoji → list of reactor names (so we can show "👍 5" and toggle per-user).
+export const QUICK_REACTIONS = ["👍", "✅", "👀", "🎉", "❤️", "🙌"];
+
+// A compact attachment chip (an uploaded image/document, or a linked CRM record).
+export interface PostAttachment { id: string; title: string; kind: "document" | "record" | "image"; }
+
+// A WhatsApp-style quoted reply reference — the reply posts to the main channel
+// carrying a compact preview of the message it answers.
+export interface ReplyRef { postId: string; author: string; excerpt: string; }
+
+// A reply lives in a thread off a post (kept clean out of the main feed).
+export interface PostReply { id: string; postId: string; author: string; content: string; createdAt: string; }
 
 export interface ChannelPost {
   id: string;
@@ -94,9 +111,14 @@ export interface ChannelPost {
   content: string;
   createdAt: string;
   pinned: boolean;
-  linkedRecord?: string;
-  reactionsCount: number;
-  commentsCount: number;
+  attachments?: PostAttachment[];
+  replyTo?: ReplyRef;                     // set on WhatsApp-style quoted replies
+  reactions: Record<string, string[]>;   // emoji → names who reacted
+  replyCount: number;
+  // Acknowledgment is OPT-IN (important posts only) and separate from reactions.
+  requiresAck?: boolean;
+  ackBy?: string[];                       // names who have acknowledged
+  audienceCount?: number;                 // expected ack total (channel size)
 }
 
 export type ActionItemStatus = "open" | "in_progress" | "completed" | "overdue";
@@ -180,12 +202,30 @@ const MEETINGS: Meeting[] = [
   { id: "mtg-recap", channelId: "ch-service", title: "Afternoon Recap", when: "Daily · 4:30 PM", attendees: ["Service Team", "Dispatch"], agenda: ["Completed jobs", "Carryovers", "Tomorrow prep"], notes: "Logged from yesterday's recap.", actionItems: ["Follow up on Evans, GA install"], status: "completed" },
 ];
 
+// Seed helper: a pool of teammates to draw reactor/acknowledger names from so
+// counts render realistically without hand-listing every name.
+const NAME_POOL = ["Dana Whitfield", "Tucker Hayes", "Kylie Brooks", "Chandler Reyes", "Marcus Chen", "Luis Romero", "Priya Nair", "Sam Okafor", "Derek Lyle", "Marisol Vega", "Owen Pratt", "Hannah Cole", "Ben Foster", "Nadia Khan", "Eli Brooks", "Grace Lin", "Tom Reyes", "Ivy Sun", "Jon Pace", "Kara Diaz", "Leo Park", "Mona Ali", "Nate Cruz", "Oscar Vey"];
+const pick = (n: number): string[] => NAME_POOL.slice(0, n);
+const react = (specs: Record<string, number>): Record<string, string[]> =>
+  Object.fromEntries(Object.entries(specs).map(([e, n]) => [e, pick(n)]));
+
 let _posts: ChannelPost[] = [
-  { id: "p-truck", channelId: "ch-service", author: "Dispatch", postType: "announcement", content: "Truck inspection reminders for Tuesday — complete your pre-shift checklist before 7:30 AM.", createdAt: "2h ago", pinned: true, reactionsCount: 4, commentsCount: 2, linkedRecord: "Meeting · Tuesday Truck Inspection" },
-  { id: "p-photos", channelId: "ch-service", author: "Kylie Brooks", postType: "question", content: "Need updated photos uploaded for the Johnson install — can the crew grab a few before they wrap today?", createdAt: "20m ago", pinned: false, reactionsCount: 1, commentsCount: 3, linkedRecord: "CRM · Job #1042" },
-  { id: "p-airflow", channelId: "ch-training", author: "Ryo Martin", postType: "update", content: "Friday training will cover airflow diagnostics. Bring your manometers.", createdAt: "Yesterday", pinned: false, reactionsCount: 6, commentsCount: 1 },
-  { id: "p-sop", channelId: "ch-company", author: "Ryo Martin", postType: "announcement", content: "New SOP published for work phone setup. Review it in Documents → SOPs and acknowledge by Friday.", createdAt: "3h ago", pinned: true, reactionsCount: 9, commentsCount: 4, linkedRecord: "Documents · Work Phone Setup SOP" },
-  { id: "p-decision", channelId: "ch-company", author: "Ryo Martin", postType: "decision", content: "We're standardizing on the new install checklist company-wide starting July 1.", createdAt: "Yesterday", pinned: false, reactionsCount: 5, commentsCount: 0 },
+  { id: "p-truck", channelId: "ch-service", author: "Dispatch", postType: "announcement", content: "Truck inspection reminders for Tuesday — complete your pre-shift checklist before 7:30 AM.", createdAt: "2h ago", pinned: true, reactions: react({ "👍": 4, "✅": 3 }), replyCount: 2, attachments: [{ id: "att-truck", title: "Truck Inspection Checklist", kind: "document" }] },
+  { id: "p-photos", channelId: "ch-service", author: "Kylie Brooks", postType: "question", content: "Need updated photos uploaded for the Johnson install — can the crew grab a few before they wrap today?", createdAt: "20m ago", pinned: false, reactions: react({ "👀": 2 }), replyCount: 3, attachments: [{ id: "att-job", title: "Job #1042", kind: "record" }] },
+  { id: "p-airflow", channelId: "ch-training", author: "Ryo Martin", postType: "message", content: "Friday training will cover airflow diagnostics. Bring your manometers.", createdAt: "Yesterday", pinned: false, reactions: react({ "👍": 6, "🙌": 2 }), replyCount: 1 },
+  { id: "p-sop", channelId: "ch-company", author: "Ryo Martin", postType: "sop", content: "New SOP published for work phone setup. Review it in Documents → SOPs and acknowledge by Friday.", createdAt: "3h ago", pinned: true, reactions: react({ "👍": 9 }), replyCount: 4, requiresAck: true, ackBy: pick(17), audienceCount: 24, attachments: [{ id: "att-sop", title: "Work Phone Setup SOP", kind: "document" }] },
+  { id: "p-decision", channelId: "ch-company", author: "Ryo Martin", postType: "decision", content: "We're standardizing on the new install checklist company-wide starting July 1.", createdAt: "Yesterday", pinned: false, reactions: react({ "✅": 5 }), replyCount: 0, attachments: [{ id: "att-checklist", title: "Install Checklist", kind: "document" }] },
+];
+
+// Reply threads (kept out of the main feed; opened in the thread drawer).
+let _replies: PostReply[] = [
+  { id: "r-truck-1", postId: "p-truck", author: "Tucker Hayes", content: "Got it — I'll have the team done before 7:30.", createdAt: "1h ago" },
+  { id: "r-truck-2", postId: "p-truck", author: "Marcus Chen", content: "Truck 2 gauge is still acting up, ordering a replacement.", createdAt: "55m ago" },
+  { id: "r-photos-1", postId: "p-photos", author: "Tucker Hayes", content: "On it, grabbing photos now.", createdAt: "15m ago" },
+  { id: "r-photos-2", postId: "p-photos", author: "Luis Romero", content: "Uploaded 6 to the job.", createdAt: "8m ago" },
+  { id: "r-photos-3", postId: "p-photos", author: "Kylie Brooks", content: "Perfect, thank you both!", createdAt: "5m ago" },
+  { id: "r-airflow-1", postId: "p-airflow", author: "Tucker Hayes", content: "Will bring mine.", createdAt: "Yesterday" },
+  { id: "r-sop-1", postId: "p-sop", author: "Dana Whitfield", content: "Reviewed and acknowledged.", createdAt: "2h ago" },
 ];
 
 let _actionItems: ActionItem[] = [
@@ -292,14 +332,76 @@ export function getWorkspacePeople(): string[] {
   return [...new Set(_channels.flatMap(c => c.members.map(m => m.name)))].sort();
 }
 
-export function addChannelPost(channelId: string, postType: PostType, content: string, author = "Ryo Martin"): ChannelPost {
+export interface AddPostOptions {
+  postType?: PostType;
+  author?: string;
+  attachments?: PostAttachment[];
+  requiresAck?: boolean;
+  replyTo?: ReplyRef;
+}
+export function addChannelPost(channelId: string, content: string, opts: AddPostOptions = {}): ChannelPost {
+  const { postType = "message", author = CURRENT_USER, attachments, requiresAck, replyTo } = opts;
+  const audienceCount = getChannel(channelId)?.membersCount;
   const p: ChannelPost = {
     id: rid("p"), channelId, author, postType, content: content.trim(),
-    createdAt: "Just now", pinned: false, reactionsCount: 0, commentsCount: 0,
+    createdAt: "Just now", pinned: false,
+    attachments: attachments?.length ? attachments : undefined,
+    replyTo,
+    reactions: {}, replyCount: 0,
+    requiresAck: requiresAck || undefined,
+    ackBy: requiresAck ? [] : undefined,
+    audienceCount: requiresAck ? audienceCount : undefined,
   };
   _posts = [p, ..._posts];
   updateChannel(channelId, { lastActivity: "Just now" });
   return p;
+}
+
+// ─── Reactions ────────────────────────────────────────────
+// One reaction per user per post: reacting again with the SAME emoji removes it;
+// reacting with a DIFFERENT emoji switches the user's reaction over. Emojis with
+// no reactors left are dropped.
+export function toggleReaction(postId: string, emoji: string, user = CURRENT_USER): void {
+  _posts = _posts.map(p => {
+    if (p.id !== postId) return p;
+    const alreadyOnEmoji = !!p.reactions[emoji]?.includes(user);
+    // Strip the user from every emoji first (enforces a single reaction).
+    const reactions: Record<string, string[]> = {};
+    for (const [e, names] of Object.entries(p.reactions)) {
+      const filtered = names.filter(n => n !== user);
+      if (filtered.length) reactions[e] = filtered;
+    }
+    // Add to the clicked emoji unless they were just toggling that one off.
+    if (!alreadyOnEmoji) reactions[emoji] = [...(reactions[emoji] ?? []), user];
+    return { ...p, reactions };
+  });
+}
+export function hasReacted(post: ChannelPost, emoji: string, user = CURRENT_USER): boolean {
+  return !!post.reactions[emoji]?.includes(user);
+}
+
+// ─── Acknowledgments (important posts only) ───────────────
+export function acknowledgePost(postId: string, user = CURRENT_USER): void {
+  _posts = _posts.map(p => {
+    if (p.id !== postId || !p.requiresAck || p.ackBy?.includes(user)) return p;
+    return { ...p, ackBy: [...(p.ackBy ?? []), user] };
+  });
+}
+export function hasAcknowledged(post: ChannelPost, user = CURRENT_USER): boolean {
+  return !!post.ackBy?.includes(user);
+}
+
+export function togglePinPost(postId: string): void {
+  _posts = _posts.map(p => p.id === postId ? { ...p, pinned: !p.pinned } : p);
+}
+
+// ─── Replies / threads ────────────────────────────────────
+export function getPostReplies(postId: string): PostReply[] { return _replies.filter(r => r.postId === postId); }
+export function addPostReply(postId: string, content: string, author = CURRENT_USER): PostReply {
+  const r: PostReply = { id: rid("r"), postId, author, content: content.trim(), createdAt: "Just now" };
+  _replies = [..._replies, r];
+  _posts = _posts.map(p => p.id === postId ? { ...p, replyCount: getPostReplies(postId).length } : p);
+  return r;
 }
 
 export function addChannelActionItem(channelId: string, title: string, owner: string, due: string): ActionItem {

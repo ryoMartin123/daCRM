@@ -12,6 +12,8 @@ import {
   Hash, Plus, Pin, Archive, Users, MessagesSquare,
   FileText, X, Send, Megaphone, HelpCircle, CheckCircle2, Link2,
   Lock, Pencil, Trash2, Clock, PanelRightClose, PanelRightOpen, UserPlus, ShieldCheck,
+  Reply, Check, CornerDownRight, Smile,
+  Image as ImageIcon, Mic, Video, ChevronRight, ArrowLeft, Tag,
 } from "lucide-react";
 import UiSelect from "@/components/ui/Select";
 import { cn } from "@/lib/utils";
@@ -22,13 +24,16 @@ import {
   getChannelMembers, addChannelMember, removeChannelMember,
   canManageChannelMembers, getWorkspacePeople, CHANNEL_ROLE_LABELS, CURRENT_USER,
   CHANNEL_TYPE_LABELS, CHANNEL_TYPE_OPTIONS, VISIBILITY_LABELS, VISIBILITY_OPTIONS,
-  POST_TYPE_STYLE, POST_TYPE_OPTIONS,
+  POST_TYPE_STYLE, SPECIAL_POST_TYPES, QUICK_REACTIONS,
+  toggleReaction, hasReacted, acknowledgePost, hasAcknowledged, togglePinPost,
+  getPostReplies, addPostReply,
   type Channel, type ChannelType, type ChannelVisibility, type PostType,
+  type ChannelPost, type PostAttachment, type ReplyRef,
 } from "@/lib/team-workspace/data";
 
 const ACCENT = "#2563eb";
 const POST_TYPE_ICON: Record<PostType, typeof Megaphone> = {
-  update: MessagesSquare, announcement: Megaphone, note: FileText, question: HelpCircle, decision: CheckCircle2,
+  message: MessagesSquare, announcement: Megaphone, decision: CheckCircle2, question: HelpCircle, sop: FileText,
 };
 
 export default function ChannelsWorkspace() {
@@ -269,83 +274,528 @@ function ChannelWorkspace({ channel, refresh, tick, detailsOpen, onToggleDetails
   );
 }
 
-// ── Feed — newest at the bottom, composer pinned at the bottom ──
-function FeedTab({ channel, posts, refresh }: { channel: Channel; posts: ReturnType<typeof getChannelPosts>; refresh: () => void }) {
-  const [postType, setPostType] = useState<PostType>("update");
-  const [content, setContent] = useState("");
+// ── Feed — compact, Slack/Teams-speed messages; composer pinned bottom ──
+// Plain messages are lightweight rows; structured posts (announcement/decision/
+// question/SOP/ack) get a subtle tinted card + badge. Reactions sit directly on
+// the message. Replies split by post kind:
+//   • Normal message → WhatsApp-style: "Reply" quotes it in the composer and the
+//     answer posts back into the main channel carrying a compact quoted preview.
+//   • Structured post → "View thread" opens a right-side drawer (original on top,
+//     replies below, reply inline) so long discussions stay out of the channel.
+function FeedTab({ channel, posts, refresh }: { channel: Channel; posts: ChannelPost[]; refresh: () => void }) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const taRef = useRef<HTMLTextAreaElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const ordered = [...posts].reverse(); // oldest → newest
+  const [threadId, setThreadId] = useState<string | null>(null);
+  const [replyingTo, setReplyingTo] = useState<ReplyRef | null>(null);
+  const threadPost = threadId ? posts.find(p => p.id === threadId) ?? null : null;
+
+  // Structured posts get a full thread; plain messages get quoted replies.
+  const isStructured = (p: ChannelPost) => p.postType !== "message" || !!p.requiresAck;
 
   // Keep the feed pinned to the latest post (on channel switch + new post).
   useEffect(() => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; }, [channel.id, posts.length]);
 
-  // Auto-grow the composer as you type/paste — up to a max, then it scrolls.
-  useEffect(() => {
-    const el = taRef.current; if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(Math.max(el.scrollHeight, 44), 200)}px`;
-  }, [content]);
-
-  function post() {
-    if (!content.trim()) return;
-    addChannelPost(channel.id, postType, content);
-    setContent(""); setPostType("update"); refresh();
+  function startQuoteReply(p: ChannelPost) {
+    setReplyingTo({ postId: p.id, author: p.author, excerpt: p.content });
+    setTimeout(() => composerRef.current?.focus(), 0);
   }
 
   return (
     <div className="h-full flex flex-col min-h-0">
-      <div ref={scrollRef} className="flex-1 overflow-y-auto thin-scroll-y px-5 py-4">
-        <div className="w-full flex flex-col gap-3 min-h-full justify-end">
-          {ordered.length === 0 ? <EmptyState icon={MessagesSquare} text="No posts yet. Share the first update below." /> : ordered.map(p => {
-            const st = POST_TYPE_STYLE[p.postType];
-            const Icon = POST_TYPE_ICON[p.postType];
-            return (
-              <div key={p.id} className="rounded-xl p-4" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)" }}>
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0" style={{ backgroundColor: "#6b7280" }}>{initials(p.author)}</span>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{p.author}</p>
-                      <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>{p.createdAt}</p>
-                    </div>
-                  </div>
-                  <span className="flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0" style={{ backgroundColor: st.bg, color: st.color }}>
-                    <Icon className="w-3 h-3" /> {st.label}
-                  </span>
-                </div>
-                <p className="text-sm leading-relaxed" style={{ color: "var(--text-primary)" }}>{p.content}</p>
-                {p.linkedRecord && (
-                  <div className="flex items-center gap-1.5 mt-2 text-xs px-2 py-1 rounded-lg w-fit" style={{ backgroundColor: "var(--bg-surface-2)", color: "var(--text-secondary)" }}>
-                    <Link2 className="w-3 h-3" /> {p.linkedRecord}
-                  </div>
-                )}
-                <div className="flex items-center gap-4 mt-3 pt-2 text-xs" style={{ borderTop: "1px solid var(--border-subtle)", color: "var(--text-muted)" }}>
-                  <button className="flex items-center gap-1 hover:text-[var(--text-secondary)]" onClick={() => alert("Reactions come later.")}>👍 {p.reactionsCount}</button>
-                  <button className="flex items-center gap-1 hover:text-[var(--text-secondary)]" onClick={() => alert("Comments come later.")}><MessagesSquare className="w-3.5 h-3.5" /> {p.commentsCount}</button>
-                  {p.pinned && <span className="flex items-center gap-1" style={{ color: "var(--text-secondary)" }}><Pin className="w-3 h-3" /> Pinned</span>}
-                </div>
-              </div>
-            );
-          })}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto thin-scroll-y px-4 py-3">
+        <div className="w-full flex flex-col gap-0.5 min-h-full justify-end">
+          {ordered.length === 0
+            ? <EmptyState icon={MessagesSquare} text="No messages yet. Say something below." />
+            : ordered.map(p => {
+                const structured = isStructured(p);
+                return (
+                  <PostRow key={p.id} post={p} refresh={refresh} structured={structured}
+                    onViewThread={() => setThreadId(p.id)}
+                    onQuoteReply={() => startQuoteReply(p)}
+                    threadOpen={threadId === p.id} />
+                );
+              })}
         </div>
       </div>
+      <Composer channel={channel} refresh={refresh} taRef={composerRef}
+        replyingTo={replyingTo} onClearReply={() => setReplyingTo(null)} />
 
-      {/* Composer — pinned at the bottom */}
-      <div className="shrink-0 px-5 py-3" style={{ borderTop: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-surface)" }}>
-        <div className="w-full rounded-xl p-3" style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border)" }}>
-          <textarea ref={taRef} id="tw-composer" value={content} onChange={e => setContent(e.target.value)} rows={1} placeholder="Write an update…"
-            className="w-full bg-transparent text-sm outline-none resize-none thin-scroll-y" style={{ color: "var(--text-primary)", minHeight: 44, maxHeight: 200, overflowY: "auto" }}
-            onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") post(); }} />
-          <div className="flex items-center justify-between gap-2 mt-2 pt-2" style={{ borderTop: "1px solid var(--border-subtle)" }}>
-            <div className="flex items-center gap-1.5">
-              <div className="w-36"><UiSelect size="sm" value={postType} onChange={v => setPostType(v as PostType)} options={POST_TYPE_OPTIONS.map(p => ({ value: p, label: POST_TYPE_STYLE[p].label }))} /></div>
-              <button title="Attach document (later)" onClick={() => alert("Attachments will connect to Documents later.")} className="p-1.5 rounded-lg" style={{ border: "1px solid var(--border)", color: "var(--text-muted)" }}><FileText className="w-3.5 h-3.5" /></button>
-              <button title="Link record (later)" onClick={() => alert("Record linking (CRM/HR/Inventory) comes later.")} className="p-1.5 rounded-lg" style={{ border: "1px solid var(--border)", color: "var(--text-muted)" }}><Link2 className="w-3.5 h-3.5" /></button>
+      {/* Thread popup — structured posts only. */}
+      {threadPost && (
+        <ThreadModal key={threadPost.id} post={threadPost} channel={channel}
+          refresh={refresh} onClose={() => setThreadId(null)} />
+      )}
+    </div>
+  );
+}
+
+// ── A single message row ──
+function PostRow({ post: p, refresh, structured, onViewThread, onQuoteReply, threadOpen }: {
+  post: ChannelPost; refresh: () => void; structured: boolean;
+  onViewThread: () => void; onQuoteReply: () => void; threadOpen: boolean;
+}) {
+  const special = p.postType !== "message";
+  const st = POST_TYPE_STYLE[p.postType];
+  const Icon = POST_TYPE_ICON[p.postType];
+  const onReplyAction = structured ? onViewThread : onQuoteReply;
+
+  return (
+    <div className="group relative flex gap-2.5 rounded-lg px-2 py-1.5"
+      style={threadOpen ? { backgroundColor: "var(--bg-surface-2)" } : undefined}>
+      <span className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 mt-0.5" style={{ backgroundColor: "#6b7280" }}>{initials(p.author)}</span>
+
+      <div className="min-w-0 flex-1">
+        {/* One-line header */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{p.author}</span>
+          <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>{p.createdAt}</span>
+          {special && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: st.bg, color: st.color }}>
+              <Icon className="w-3 h-3" /> {st.label}
+            </span>
+          )}
+          {p.pinned && <Pin className="w-3 h-3" style={{ color: "var(--text-muted)" }} />}
+        </div>
+
+        {/* Body — special posts get a subtle tinted card with a left accent */}
+        <div className={special ? "mt-1 rounded-lg px-3 py-2" : "mt-0.5"}
+          style={special ? { backgroundColor: st.bg, borderLeft: `3px solid ${st.color}` } : undefined}>
+          {/* Quoted-reply preview — shows who/what this message answers */}
+          {p.replyTo && <QuotedPreview reply={p.replyTo} />}
+
+          <p className="text-sm leading-relaxed whitespace-pre-wrap break-words" style={{ color: "var(--text-primary)" }}>{p.content}</p>
+
+          {p.attachments && p.attachments.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {p.attachments.map(a => <AttachmentChip key={a.id} att={a} />)}
             </div>
-            <button onClick={post} disabled={!content.trim()} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white disabled:opacity-40" style={{ backgroundColor: ACCENT }}><Send className="w-3.5 h-3.5" /> Post</button>
+          )}
+
+          {/* Acknowledgment — opt-in, important posts only; separate from reactions */}
+          {p.requiresAck && <AckBar post={p} refresh={refresh} />}
+        </div>
+
+        {/* Reactions attached directly to the message */}
+        <ReactionRow post={p} refresh={refresh} structured={structured} onAction={onReplyAction} />
+      </div>
+
+      {/* Action menu — one icon, top-right of the message, revealed on hover */}
+      <PostActionsMenu post={p} structured={structured} refresh={refresh} onReplyAction={onReplyAction} />
+    </div>
+  );
+}
+
+// A pinch-bracket glyph — our own little "message actions" mark. Two facing
+// corner brackets that close inward to a caret when open. Minimal, custom, and
+// not the generic kebab.
+function ActionGlyph({ open }: { open: boolean }) {
+  return (
+    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 3 L3 8 L6 13" style={{ transition: "transform 200ms ease", transform: open ? "translateX(1.5px)" : "none" }} />
+      <path d="M10 3 L13 8 L10 13" style={{ transition: "transform 200ms ease", transform: open ? "translateX(-1.5px)" : "none" }} />
+    </svg>
+  );
+}
+
+// Single custom trigger (top-right, on hover) opening reactions + reply + pin.
+function PostActionsMenu({ post: p, structured, refresh, onReplyAction }: {
+  post: ChannelPost; structured: boolean; refresh: () => void; onReplyAction: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const react = (emoji: string) => { toggleReaction(p.id, emoji); setOpen(false); refresh(); };
+
+  return (
+    <div className={cn("absolute top-1 right-1", open ? "flex" : "hidden group-hover:flex")}>
+      <button title="Message actions" onClick={() => setOpen(o => !o)}
+        className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-[var(--bg-surface-2)]"
+        style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)", color: open ? ACCENT : "var(--text-secondary)", boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }}>
+        <ActionGlyph open={open} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full mt-1 z-50 w-56 rounded-xl overflow-hidden py-1" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "0 12px 32px rgba(0,0,0,0.2)" }}>
+            {/* Reactions — common ones up front, any emoji on request (one per user) */}
+            <ReactionPicker onPick={react} />
+            <div className="my-1" style={{ borderTop: "1px solid var(--border-subtle)" }} />
+            <button onClick={() => { onReplyAction(); setOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-primary)" }}>
+              {structured ? <MessagesSquare className="w-4 h-4 shrink-0" /> : <Reply className="w-4 h-4 shrink-0" />}
+              {structured ? "View thread" : "Reply"}
+            </button>
+            <button onClick={() => { togglePinPost(p.id); setOpen(false); refresh(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-primary)" }}>
+              <Pin className="w-4 h-4 shrink-0" /> {p.pinned ? "Unpin" : "Pin"}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Extended emoji set revealed under the common reactions when you want more.
+const EXTENDED_EMOJIS = [
+  "😀", "😄", "😁", "😂", "🤣", "😊", "😍", "😎", "🤩", "🥳", "😉", "🙂",
+  "🤔", "😴", "😢", "😭", "😤", "😡", "🤯", "😱", "🙃", "🤗", "🫡", "🤝",
+  "👍", "👎", "👏", "🙏", "💪", "👀", "✋", "👋", "🤙", "🔥", "⭐", "✨",
+  "💯", "✅", "❌", "❗", "❓", "🎉", "🚀", "💡", "⚡", "❤️", "🧡", "💛",
+  "💚", "💙", "💜", "📌", "📅", "🛠️", "🚚", "🏠", "💼", "📈", "💰", "🧾",
+];
+
+// Reaction picker — shows the common emojis; "more" reveals an extended grid and
+// a field to type/paste ANY emoji you want.
+function ReactionPicker({ onPick }: { onPick: (emoji: string) => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const [custom, setCustom] = useState("");
+  function addCustom() {
+    const e = Array.from(custom.trim())[0];   // first grapheme (handles surrogate pairs)
+    if (e) { onPick(e); setCustom(""); }
+  }
+  return (
+    <div>
+      <div className="flex items-center gap-0.5 px-1.5 py-1">
+        {QUICK_REACTIONS.map(e => (
+          <button key={e} onClick={() => onPick(e)} className="w-7 h-7 rounded-md flex items-center justify-center text-base transition-colors hover:bg-[var(--bg-surface-2)]">{e}</button>
+        ))}
+        <button onClick={() => setExpanded(v => !v)} title="More emojis"
+          className="w-7 h-7 rounded-md flex items-center justify-center transition-colors hover:bg-[var(--bg-surface-2)]"
+          style={{ color: expanded ? ACCENT : "var(--text-muted)" }}>
+          <Smile className="w-4 h-4" />
+        </button>
+      </div>
+      {expanded && (
+        <div className="px-1.5 pb-1.5" onClick={e => e.stopPropagation()}>
+          <div className="grid grid-cols-8 gap-0.5 max-h-32 overflow-y-auto thin-scroll-y mb-1.5">
+            {EXTENDED_EMOJIS.map((e, i) => (
+              <button key={`${e}-${i}`} onClick={() => onPick(e)} className="w-6 h-6 rounded-md flex items-center justify-center text-sm transition-colors hover:bg-[var(--bg-surface-2)]">{e}</button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <input value={custom} onChange={e => setCustom(e.target.value)} placeholder="Type or paste any emoji"
+              onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addCustom(); } }}
+              className="flex-1 min-w-0 rounded-lg px-2 py-1 text-sm outline-none" style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface-2)", color: "var(--text-primary)" }} />
+            <button onClick={addCustom} disabled={!custom.trim()} className="shrink-0 px-2.5 py-1 rounded-lg text-xs font-medium text-white disabled:opacity-40" style={{ backgroundColor: ACCENT }}>Add</button>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+// Compact quoted-message preview (used both in the feed and the composer).
+function QuotedPreview({ reply, onClear }: { reply: ReplyRef; onClear?: () => void }) {
+  return (
+    <div className="flex items-start gap-1.5 mb-1.5 rounded-md pl-2 pr-1.5 py-1" style={{ backgroundColor: "var(--bg-surface-2)", borderLeft: `2px solid ${ACCENT}` }}>
+      <Reply className="w-3 h-3 mt-0.5 shrink-0" style={{ color: ACCENT }} />
+      <span className="min-w-0 flex-1">
+        <span className="text-[11px] font-semibold" style={{ color: ACCENT }}>{reply.author}</span>
+        {/* Wrap up to 3 lines, then clamp — never collapse a multi-line quote
+            into one jumbled line; the rest is hidden past the third line.
+            (No `block` here: it sets display and would override line-clamp's
+            own display:-webkit-box, silently disabling the clamp.) */}
+        <span className="text-[11px] whitespace-pre-wrap break-words line-clamp-3" style={{ color: "var(--text-muted)" }}>{reply.excerpt}</span>
+      </span>
+      {onClear && <button onClick={onClear} title="Cancel reply" className="w-4 h-4 rounded flex items-center justify-center shrink-0 mt-0.5" style={{ color: "var(--text-muted)" }}><X className="w-3 h-3" /></button>}
+    </div>
+  );
+}
+
+// ── Reaction chips under the message (react/reply/pin live in the hover menu) ──
+// For structured posts that already have a thread, a compact "N replies" link
+// stays visible so discussions are discoverable; everything else is clean.
+function ReactionRow({ post: p, refresh, structured, onAction }: {
+  post: ChannelPost; refresh: () => void; structured: boolean; onAction: () => void;
+}) {
+  const entries = Object.entries(p.reactions).filter(([, names]) => names.length > 0);
+  const showThread = structured && p.replyCount > 0;
+  if (entries.length === 0 && !showThread) return null;
+  const react = (emoji: string) => { toggleReaction(p.id, emoji); refresh(); };
+
+  return (
+    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+      {entries.map(([emoji, names]) => {
+        const mine = hasReacted(p, emoji);
+        return (
+          <button key={emoji} onClick={() => react(emoji)}
+            className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs leading-none transition-colors"
+            title={names.join(", ")}
+            style={{ backgroundColor: mine ? ACCENT + "1f" : "var(--bg-surface-2)", border: `1px solid ${mine ? ACCENT + "59" : "var(--border-subtle)"}`, color: mine ? ACCENT : "var(--text-secondary)" }}>
+            <span>{emoji}</span><span className="font-medium">{names.length}</span>
+          </button>
+        );
+      })}
+
+      {showThread && (
+        <button onClick={onAction} className="inline-flex items-center gap-1 text-xs ml-0.5 transition-colors hover:text-[var(--text-secondary)]" style={{ color: "var(--text-muted)" }}>
+          <MessagesSquare className="w-3.5 h-3.5" /> {p.replyCount} {p.replyCount === 1 ? "reply" : "replies"} · View thread
+        </button>
+      )}
+    </div>
+  );
+}
+
+function AttachmentChip({ att }: { att: PostAttachment }) {
+  const Icon = att.kind === "image" ? ImageIcon : att.kind === "document" ? FileText : Link2;
+  const label = att.kind === "image" ? "Open image" : att.kind === "document" ? "Open document" : "Open record";
+  return (
+    <button className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors hover:bg-[var(--bg-surface)]"
+      title={label}
+      style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
+      <Icon className="w-3.5 h-3.5 shrink-0" style={{ color: ACCENT }} />
+      <span className="font-medium truncate max-w-[16rem]" style={{ color: "var(--text-primary)" }}>{att.title}</span>
+    </button>
+  );
+}
+
+function AckBar({ post: p, refresh }: { post: ChannelPost; refresh: () => void }) {
+  const acked = hasAcknowledged(p);
+  const done = p.ackBy?.length ?? 0;
+  const total = p.audienceCount ?? 0;
+  return (
+    <div className="flex items-center gap-2.5 mt-2 pt-2 flex-wrap" style={{ borderTop: "1px dashed var(--border)" }}>
+      <button onClick={() => { if (!acked) { acknowledgePost(p.id); refresh(); } }} disabled={acked}
+        className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors disabled:cursor-default"
+        style={acked
+          ? { backgroundColor: "#10b98114", color: "#10b981", border: "1px solid #10b98159" }
+          : { backgroundColor: ACCENT, color: "#fff" }}>
+        {acked ? <><Check className="w-3.5 h-3.5" /> Acknowledged</> : <><CheckCircle2 className="w-3.5 h-3.5" /> Acknowledge</>}
+      </button>
+      <span className="text-[11px] font-medium" style={{ color: "var(--text-muted)" }}>Acknowledged {done}/{total}</span>
+    </div>
+  );
+}
+
+// ── Lightweight composer — one line by default ("+" and Send inline). The "+"
+// menu is a drill-down: post type opens its own submenu (only if you want it),
+// and you can attach images/documents (recordings & video later). Replying to a
+// normal message shows a WhatsApp-style quoted preview that posts back inline.
+function Composer({ channel, refresh, taRef, replyingTo, onClearReply }: {
+  channel: Channel; refresh: () => void; taRef: React.RefObject<HTMLTextAreaElement | null>;
+  replyingTo: ReplyRef | null; onClearReply: () => void;
+}) {
+  const [content, setContent] = useState("");
+  const [postType, setPostType] = useState<PostType>("message");
+  const [requireAck, setRequireAck] = useState(false);
+  const [attachments, setAttachments] = useState<PostAttachment[]>([]);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [menuView, setMenuView] = useState<"root" | "types">("root");
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const docInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-grow as you type/paste — starts at one line, grows to a max, then scrolls.
+  useEffect(() => {
+    const el = taRef.current; if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, 32), 200)}px`;
+  }, [content, taRef]);
+
+  const special = postType !== "message";
+  const st = POST_TYPE_STYLE[postType];
+
+  function reset() { setContent(""); setPostType("message"); setRequireAck(false); setAttachments([]); onClearReply(); }
+  function post() {
+    if (!content.trim()) return;
+    addChannelPost(channel.id, content, { postType, requiresAck: requireAck, attachments, replyTo: replyingTo ?? undefined });
+    reset(); refresh();
+  }
+  function addAttachment(att: PostAttachment) {
+    setAttachments(a => a.some(x => x.id === att.id) ? a : [...a, att]);
+  }
+  function openMenu() { setMenuView("root"); setMoreOpen(true); }
+  function closeMenu() { setMoreOpen(false); }
+  function onFilePicked(kind: "image" | "document", e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (f) addAttachment({ id: `att-${Date.now()}`, title: f.name, kind });
+    e.target.value = "";   // allow re-picking the same file
+    closeMenu();
+  }
+
+  return (
+    <div className="shrink-0 px-4 py-3" style={{ borderTop: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-surface)" }}>
+      {/* Quoted reply preview (WhatsApp-style) */}
+      {replyingTo && (
+        <div className="mb-1.5">
+          <QuotedPreview reply={replyingTo} onClear={onClearReply} />
+        </div>
+      )}
+
+      {/* Active context chips — only when special options are selected */}
+      {(special || requireAck || attachments.length > 0) && (
+        <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+          {special && (
+            <ContextChip color={st.color} bg={st.bg} onClear={() => setPostType("message")}>{st.label}</ContextChip>
+          )}
+          {requireAck && (
+            <ContextChip color="#f59e0b" bg="#f59e0b14" onClear={() => setRequireAck(false)}>Acknowledgment required</ContextChip>
+          )}
+          {attachments.map(a => (
+            <ContextChip key={a.id} color={ACCENT} bg={ACCENT + "14"} onClear={() => setAttachments(prev => prev.filter(x => x.id !== a.id))}>{a.title}</ContextChip>
+          ))}
+        </div>
+      )}
+
+      <div className="w-full rounded-xl flex items-center gap-1.5 px-2 py-1.5" style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border)" }}>
+        {/* "+" / More options */}
+        <div className="relative shrink-0">
+          <button onClick={() => (moreOpen ? closeMenu() : openMenu())} title="Add to message"
+            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-[var(--bg-surface)]" style={{ color: moreOpen ? ACCENT : "var(--text-secondary)" }}>
+            <Plus className="w-4 h-4 transition-transform" style={{ transform: moreOpen ? "rotate(45deg)" : "none" }} />
+          </button>
+          {moreOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={closeMenu} />
+              <div className="absolute left-0 bottom-full mb-2 z-50 w-60 rounded-xl overflow-hidden py-1" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "0 12px 32px rgba(0,0,0,0.2)" }}>
+                {menuView === "root" ? (
+                  <>
+                    {/* Post type — opens its own submenu only if you want it */}
+                    <MenuItem icon={Tag} label="Post type" onClick={() => setMenuView("types")}>
+                      <span className="ml-auto flex items-center gap-1 text-xs" style={{ color: special ? st.color : "var(--text-muted)" }}>
+                        {special ? st.label : "Message"}<ChevronRight className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
+                      </span>
+                    </MenuItem>
+                    <div className="my-1" style={{ borderTop: "1px solid var(--border-subtle)" }} />
+                    <MenuItem icon={ImageIcon} label="Upload image" onClick={() => imageInputRef.current?.click()} />
+                    <MenuItem icon={FileText} label="Upload document" onClick={() => docInputRef.current?.click()} />
+                    <div className="my-1" style={{ borderTop: "1px solid var(--border-subtle)" }} />
+                    <MenuItem icon={Mic} label="Record audio" soon />
+                    <MenuItem icon={Video} label="Record video" soon />
+                  </>
+                ) : (
+                  <>
+                    <button onClick={() => setMenuView("root")} className="w-full flex items-center gap-1.5 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-muted)" }}>
+                      <ArrowLeft className="w-3.5 h-3.5" /> Post type
+                    </button>
+                    <div className="my-0.5" style={{ borderTop: "1px solid var(--border-subtle)" }} />
+                    <MenuItem icon={MessagesSquare} label="Message" onClick={() => { setPostType("message"); closeMenu(); }} check={postType === "message"} />
+                    {SPECIAL_POST_TYPES.map(t => {
+                      const s = POST_TYPE_STYLE[t]; const I = POST_TYPE_ICON[t];
+                      return <MenuItem key={t} icon={I} iconColor={s.color} label={s.label} onClick={() => { setPostType(t); closeMenu(); }} check={postType === t} />;
+                    })}
+                    <div className="my-1" style={{ borderTop: "1px solid var(--border-subtle)" }} />
+                    <MenuItem icon={CheckCircle2} iconColor="#f59e0b" label="Require acknowledgment" onClick={() => setRequireAck(v => !v)} check={requireAck} />
+                  </>
+                )}
+              </div>
+            </>
+          )}
+          {/* Hidden file inputs — real picker, mock storage (filename only) */}
+          <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={e => onFilePicked("image", e)} />
+          <input ref={docInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt" className="hidden" onChange={e => onFilePicked("document", e)} />
+        </div>
+
+        <textarea ref={taRef} id="tw-composer" value={content} onChange={e => setContent(e.target.value)} rows={1}
+          placeholder={replyingTo ? `Reply to ${replyingTo.author}…` : special ? `Write ${/^[aeiou]/i.test(st.label) ? "an" : "a"} ${st.label.toLowerCase()}…` : "Message…"}
+          className="flex-1 bg-transparent text-sm outline-none resize-none thin-scroll-y py-1.5" style={{ color: "var(--text-primary)", minHeight: 32, maxHeight: 200, overflowY: "auto", lineHeight: "20px" }}
+          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); post(); } }} />
+
+        <button onClick={post} disabled={!content.trim()}
+          className="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-white disabled:opacity-40 transition-opacity" style={{ backgroundColor: ACCENT }} title="Send (Enter)">
+          <Send className="w-4 h-4" />
+        </button>
+      </div>
+      <p className="text-[10px] mt-1 px-1" style={{ color: "var(--text-muted)" }}><kbd>Enter</kbd> to send · <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line</p>
+    </div>
+  );
+}
+
+// A row in the composer "+" menu. `soon` renders it as a disabled "coming soon"
+// item; `check` shows a selected tick; children render on the right (e.g. a value).
+function MenuItem({ icon: Icon, iconColor, label, onClick, soon, check, children }: {
+  icon: typeof Tag; iconColor?: string; label: string; onClick?: () => void; soon?: boolean; check?: boolean; children?: React.ReactNode;
+}) {
+  return (
+    <button onClick={soon ? undefined : onClick} disabled={soon}
+      className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors hover:bg-[var(--bg-surface-2)] disabled:hover:bg-transparent disabled:cursor-default"
+      style={{ color: soon ? "var(--text-muted)" : "var(--text-primary)" }}>
+      <Icon className="w-4 h-4 shrink-0" style={{ color: iconColor ?? (soon ? "var(--text-muted)" : "var(--text-secondary)") }} />
+      {label}
+      {soon && <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "var(--bg-surface-2)", color: "var(--text-muted)" }}>Soon</span>}
+      {check && <Check className="w-3.5 h-3.5 ml-auto" style={{ color: ACCENT }} />}
+      {children}
+    </button>
+  );
+}
+
+function ContextChip({ children, color, bg, onClear }: { children: React.ReactNode; color: string; bg: string; onClear: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full pl-2 pr-1 py-0.5 text-[11px] font-semibold" style={{ backgroundColor: bg, color }}>
+      {children}
+      <button onClick={onClear} className="w-4 h-4 rounded-full flex items-center justify-center hover:bg-black/10" style={{ color }}><X className="w-3 h-3" /></button>
+    </span>
+  );
+}
+
+// ── Thread popup — replies for one (structured) post, centered modal ──
+function ThreadModal({ post: p, channel, refresh, onClose }: {
+  post: ChannelPost; channel: Channel; refresh: () => void; onClose: () => void;
+}) {
+  const [tick, setTick] = useState(0);
+  const replies = useMemo(() => getPostReplies(p.id), [p.id, tick]);
+  const [reply, setReply] = useState("");
+  const endRef = useRef<HTMLDivElement>(null);
+  const st = POST_TYPE_STYLE[p.postType];
+  const Icon = POST_TYPE_ICON[p.postType];
+
+  useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [replies.length]);
+
+  function send() {
+    if (!reply.trim()) return;
+    addPostReply(p.id, reply);
+    setReply(""); setTick(t => t + 1); refresh();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="w-full max-w-lg max-h-[80vh] flex flex-col rounded-2xl overflow-hidden" onClick={e => e.stopPropagation()} style={{ backgroundColor: "var(--bg-surface)", boxShadow: "0 24px 64px rgba(0,0,0,0.4)" }}>
+      <div className="px-4 py-3 shrink-0 flex items-center justify-between gap-2" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Thread</p>
+          <p className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>{channel.name}</p>
+        </div>
+        <button onClick={onClose} title="Close thread" className="w-7 h-7 rounded-md flex items-center justify-center transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-muted)" }}><X className="w-4 h-4" /></button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto thin-scroll-y px-4 py-3">
+        {/* Root post */}
+        <div className="pb-3 mb-3" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0" style={{ backgroundColor: "#6b7280" }}>{initials(p.author)}</span>
+            <span className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>{p.author}</span>
+            <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{p.createdAt}</span>
+            {p.postType !== "message" && <span className="inline-flex items-center gap-1 text-[9px] font-semibold px-1 py-0.5 rounded" style={{ backgroundColor: st.bg, color: st.color }}><Icon className="w-2.5 h-2.5" />{st.label}</span>}
+          </div>
+          <p className="text-sm leading-relaxed whitespace-pre-wrap break-words" style={{ color: "var(--text-primary)" }}>{p.content}</p>
+        </div>
+
+        <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>{replies.length} {replies.length === 1 ? "reply" : "replies"}</p>
+        <div className="space-y-3">
+          {replies.map(r => (
+            <div key={r.id} className="flex gap-2">
+              <span className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0 mt-0.5" style={{ backgroundColor: "#6b7280" }}>{initials(r.author)}</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>{r.author}</span>
+                  <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{r.createdAt}</span>
+                </div>
+                <p className="text-sm leading-snug whitespace-pre-wrap break-words" style={{ color: "var(--text-primary)" }}>{r.content}</p>
+              </div>
+            </div>
+          ))}
+          {replies.length === 0 && (
+            <p className="text-xs flex items-center gap-1.5" style={{ color: "var(--text-muted)" }}><CornerDownRight className="w-3.5 h-3.5" /> No replies yet — start the thread.</p>
+          )}
+        </div>
+        <div ref={endRef} />
+      </div>
+
+      <div className="shrink-0 px-3 py-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+        <div className="flex items-end gap-1.5 rounded-xl px-2 py-1.5" style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border)" }}>
+          <textarea value={reply} onChange={e => setReply(e.target.value)} rows={1} placeholder="Reply…"
+            className="flex-1 bg-transparent text-sm outline-none resize-none thin-scroll-y py-1.5" style={{ color: "var(--text-primary)", maxHeight: 140 }}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} />
+          <button onClick={send} disabled={!reply.trim()} className="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-white disabled:opacity-40" style={{ backgroundColor: ACCENT }} title="Send reply"><Send className="w-4 h-4" /></button>
+        </div>
+      </div>
       </div>
     </div>
   );
