@@ -9,6 +9,7 @@ import ModuleViewToggle, { type ModuleView } from "@/components/shared/ModuleVie
 import { getFiles } from "@/lib/files/data";
 import { WORK_ORDERS, ALL_JOBS } from "@/lib/jobs/data";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
+import { useRememberCount } from "@/lib/ui/skeleton-count";
 
 const NOW = new Date();
 function isThisMonth(dateStr: string): boolean {
@@ -21,6 +22,8 @@ export default function FilesPage() {
   const [uploadSignal, setUploadSignal] = useState(0);
   const [moduleView, setModuleView] = useState<ModuleView>("list");
   const [fileCount, setFileCount] = useState(0);
+  // Remember the real visible count so the loading skeleton mirrors it exactly.
+  useRememberCount("files", fileCount);
 
   // Context-filtered file set (respects the selector, like the gallery)
   const files = getFiles({})

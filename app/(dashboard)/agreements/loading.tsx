@@ -1,10 +1,14 @@
+"use client";
+
 import { Delayed, Skeleton } from "@/components/ui/Skeleton";
+import { useSectionCount } from "@/lib/ui/skeleton-count";
 
 // Agreements defaults to the Cards view — match the card grid so the swap is
-// seamless instead of flashing a table skeleton.
+// seamless. Data-aware: render as many cards as there are agreements (0 → shell only).
 const surface = { backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" } as const;
 
 export default function Loading() {
+  const count = useSectionCount("agreements");
   return (
     <Delayed>
       <div className="p-6">
@@ -29,9 +33,10 @@ export default function Loading() {
           </div>
         </div>
 
-        {/* Cards grid */}
+        {/* Cards grid — only when there are agreements */}
+        {count > 0 && (
         <div className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 9 }).map((_, i) => (
+          {Array.from({ length: count }).map((_, i) => (
             <div key={i} className="rounded-lg p-3" style={{ ...surface, borderLeft: "3px solid var(--border)" }}>
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="flex items-center gap-1.5">
@@ -49,6 +54,7 @@ export default function Loading() {
             </div>
           ))}
         </div>
+        )}
       </div>
     </Delayed>
   );

@@ -2,7 +2,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { MoreVertical } from "lucide-react";
+
+// Our own "more actions" mark instead of the generic vertical kebab: a small
+// tri-dot constellation with the top node in the CRM indigo as a focal accent.
+// One distinctive, branded affordance shared across every record detail header.
+function MoreActionsGlyph({ className, accent }: { className?: string; accent: boolean }) {
+  return (
+    <svg viewBox="0 0 16 16" className={className} aria-hidden="true">
+      <circle cx="8" cy="3.9" r="1.9" fill={accent ? "currentColor" : "#4f46e5"} />
+      <circle cx="4.3" cy="11" r="1.55" fill="currentColor" />
+      <circle cx="11.7" cy="11" r="1.55" fill="currentColor" />
+    </svg>
+  );
+}
 
 export interface ActionItem {
   label: string;
@@ -42,9 +54,9 @@ export default function ActionsMenu({ actions, label = "Actions" }: {
         onClick={() => setOpen(o => !o)}
         aria-label={label} aria-haspopup="menu" aria-expanded={open}
         className="flex items-center justify-center w-9 h-9 rounded-lg transition-colors hover:bg-[var(--bg-surface-2)]"
-        style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}
+        style={{ border: `1px solid ${open ? "#4f46e5" : "var(--border)"}`, color: open ? "#4f46e5" : "var(--text-secondary)" }}
       >
-        <MoreVertical className="w-4 h-4" />
+        <MoreActionsGlyph className="w-4 h-4" accent={open} />
       </button>
 
       {open && (

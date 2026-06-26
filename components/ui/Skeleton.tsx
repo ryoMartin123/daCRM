@@ -272,40 +272,144 @@ export function BoardSkeleton({ columns = 4, cards = 3 }: { columns?: number; ca
   );
 }
 
+// ─── Detail / fill shells ─────────────────────────────────
+const surface = { backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" } as const;
+
+// Board (pipeline) skeleton whose card counts reflect the real total — spread
+// across columns. 0 total → column headers only (no fake cards).
+function BoardCountSkeleton({ total, columns = 5 }: { total: number; columns?: number }) {
+  return (
+    <div className="flex gap-4 overflow-hidden">
+      {Array.from({ length: columns }).map((_, c) => {
+        const per = Math.floor(total / columns) + (c < total % columns ? 1 : 0);
+        return (
+          <div key={c} className="flex-1 min-w-[14rem] space-y-3">
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-4 w-24 rounded" />
+              <Skeleton className="h-4 w-6 rounded-full" />
+            </div>
+            {Array.from({ length: per }).map((_, i) => (
+              <div key={i} className="rounded-xl p-4 space-y-2" style={surface}>
+                <Skeleton className="h-3.5 w-3/4 rounded" />
+                <Skeleton className="h-3 w-1/2 rounded" />
+                <div className="flex items-center gap-1.5 pt-1">
+                  <Skeleton className="h-4 w-14 rounded" />
+                  <Skeleton className="h-4 w-10 rounded" />
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Generic detail layout: header bar + tabs, then an Overview-shaped body (stat
+// row + 2/3 details · 1/3 side) that fills the height. Matches jobs/leads/
+// invoices/quotes detail pages closely enough to avoid a layout jump.
+function DetailFill() {
+  return (
+    <div className="flex flex-col h-full">
+      <div style={{ backgroundColor: "var(--bg-surface)", borderBottom: "1px solid var(--border-subtle)" }}>
+        <div className="flex items-center justify-between px-6 py-4">
+          <div className="flex items-center gap-4 min-w-0">
+            <Skeleton className="h-4 w-20 rounded" />
+            <div className="w-px h-5" style={{ backgroundColor: "var(--border)" }} />
+            <div className="space-y-1.5">
+              <Skeleton className="h-5 w-56 rounded-md" />
+              <Skeleton className="h-3 w-44 rounded" />
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Skeleton className="h-9 w-28 rounded-lg" />
+            <Skeleton className="h-9 w-9 rounded-lg" />
+          </div>
+        </div>
+        <div className="flex items-center gap-2 px-6 pb-2">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-7 rounded-full shrink-0" style={{ width: `${4.5 + (i % 3)}rem` }} />
+          ))}
+        </div>
+      </div>
+      <div className="flex-1 overflow-hidden p-6" style={{ backgroundColor: "var(--bg-page)" }}>
+        <div className="flex flex-col gap-5 h-full">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5 shrink-0">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="rounded-xl px-3 py-2.5" style={surface}>
+                <Skeleton className="h-2.5 w-16 rounded mb-2" />
+                <Skeleton className="h-4 w-20 rounded" />
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0">
+            <div className="lg:col-span-2 rounded-xl p-4" style={surface}>
+              <Skeleton className="h-3.5 w-36 rounded mb-4" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+                {Array.from({ length: 10 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-2.5">
+                    <Skeleton className="w-4 h-4 rounded shrink-0" />
+                    <Skeleton className="h-3.5 flex-1 rounded" />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-col gap-4">
+              <Skeleton className="flex-1 rounded-xl" />
+              <Skeleton className="flex-1 rounded-xl" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Ready-made full-page skeletons ───────────────────────
 export type PageSkeletonVariant = "table" | "list" | "cards" | "stats" | "board" | "detail";
 
-export function PageSkeleton({ variant = "table", delay = 200 }: { variant?: PageSkeletonVariant; delay?: number }) {
+const DEFAULT_COUNT: Record<string, number> = { table: 6, list: 5, cards: 6, board: 12 };
+
+// `count` makes the skeleton data-aware: pass the section's real record count so
+// the loader shows that many rows/cards (1 item → 1 skeleton). When count is 0
+// the content preview is omitted entirely — just the page shell (header + toolbar)
+// renders, and the real page's empty state takes over once loading completes.
+export function PageSkeleton({ variant = "table", delay = 200, count }: { variant?: PageSkeletonVariant; delay?: number; count?: number }) {
+  // Detail pages have their own chrome (header bar + tabs), not the list layout.
+  if (variant === "detail") return <Delayed delay={delay}><DetailFill /></Delayed>;
+
+  // Stats (dashboard/reports) aren't a record list — keep the panels filling.
+  if (variant === "stats") {
+    return (
+      <Delayed delay={delay}>
+        <div className="p-6 h-full flex flex-col min-h-0">
+          <PageHeaderSkeleton />
+          <StatCardsSkeleton />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 min-h-0 mt-6">
+            <Skeleton className="h-full rounded-xl" />
+            <Skeleton className="h-full rounded-xl" />
+          </div>
+        </div>
+      </Delayed>
+    );
+  }
+
+  const n = count ?? DEFAULT_COUNT[variant];
   return (
     <Delayed delay={delay}>
-    <div className="p-6">
-      <PageHeaderSkeleton />
-      {variant === "table" && (<><ToolbarSkeleton /><TableSkeleton /></>)}
-      {variant === "list" && (<><ToolbarSkeleton /><ListSkeleton /></>)}
-      {variant === "cards" && (<><ToolbarSkeleton /><CardGridSkeleton /></>)}
-      {variant === "board" && (<><ToolbarSkeleton /><BoardSkeleton /></>)}
-      {variant === "stats" && (
-        <div className="space-y-6">
-          <StatCardsSkeleton />
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Skeleton className="h-64 rounded-xl" />
-            <Skeleton className="h-64 rounded-xl" />
-          </div>
-        </div>
-      )}
-      {variant === "detail" && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          <div className="lg:col-span-2 space-y-4">
-            <Skeleton className="h-40 rounded-xl" />
-            <Skeleton className="h-64 rounded-xl" />
-          </div>
-          <div className="space-y-4">
-            <Skeleton className="h-48 rounded-xl" />
-            <Skeleton className="h-32 rounded-xl" />
-          </div>
-        </div>
-      )}
-    </div>
+      <div className="p-6">
+        <PageHeaderSkeleton />
+        <ToolbarSkeleton />
+        {/* No fake content when the section is empty — shell only. */}
+        {n > 0 && (
+          <>
+            {variant === "table" && <TableSkeleton rows={n} cols={5} />}
+            {variant === "list" && <ListSkeleton rows={n} />}
+            {variant === "cards" && <CardGridSkeleton count={n} />}
+            {variant === "board" && <BoardCountSkeleton total={n} />}
+          </>
+        )}
+      </div>
     </Delayed>
   );
 }
