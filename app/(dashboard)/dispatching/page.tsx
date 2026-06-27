@@ -5,8 +5,12 @@ import { usePathname } from "next/navigation";
 import {
   Inbox, Search, SlidersHorizontal, Eye, EyeOff,
   ChevronLeft, ChevronRight, ChevronUp, ChevronDown, LayoutGrid, LayoutList, CalendarDays, CalendarRange, CalendarClock,
-  Plus, Briefcase, X, Users, MapPin, Building2, Check, Globe,
+  Plus, Briefcase, X, Users, MapPin, Building2, Check, Globe, Map as MapIcon,
 } from "lucide-react";
+import DispatchMap from "@/components/dispatch-map/DispatchMap";
+import DatePicker from "@/components/ui/DatePicker";
+import TimePicker from "@/components/ui/TimePicker";
+import { todayYMD } from "@/lib/utils/schedule";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
 import PageTitle from "@/components/shared/PageTitle";
 import CalendarItemDrawer from "@/components/calendar/CalendarItemDrawer";
@@ -42,7 +46,7 @@ import {
 } from "@/lib/calendar/queueViews";
 import { jobTypeLabel } from "@/lib/job-config/data";
 
-type CalendarView = "dispatch" | "day" | "week" | "month";
+type CalendarView = "dispatch" | "day" | "week" | "month" | "map";
 
 // ─── Date helpers ─────────────────────────────────────────
 function startOfWeek(d: Date): Date { const r = new Date(d); r.setHours(0,0,0,0); r.setDate(r.getDate() - r.getDay()); return r; }
@@ -84,6 +88,14 @@ export default function CalendarPage() {
   const [view, setView]           = useState<CalendarView>("dispatch");
   const [dispatchMode, setMode]   = useState<DispatchMode>("hourly");
   const [focus, setFocus]         = useState(() => new Date());
+  // Map-tab date filter (Today / Custom range) — rendered inline with the view
+  // tabs and passed into the embedded DispatchMap.
+  const [mapDateMode, setMapDateMode] = useState<"today" | "custom">("today");
+  const [mapCustomOpen, setMapCustomOpen] = useState(false);
+  const [mapFromDate, setMapFromDate] = useState(todayYMD());
+  const [mapToDate, setMapToDate]     = useState(todayYMD());
+  const [mapFromTime, setMapFromTime] = useState("");
+  const [mapToTime, setMapToTime]     = useState("");
   const [hidden, setHidden]       = useState<Set<CalendarItemType>>(new Set());
   const [settings, setSettings]   = useState<DispatchSettings>(() => defaultDispatchSettings());
   const [boards, setBoards]       = useState<DispatchBoard[]>([]);
@@ -361,7 +373,13 @@ export default function CalendarPage() {
   const boardItems  = activeBoardDef ? items.filter(i => itemMatchesBoard(i, activeBoardDef, boards, membersByBoard)) : items;
   const unscheduled = [...allUnscheduled, ...sessionUnscheduled]
     .filter(u => !removed.has(u.id))
-    .filter(u => !activeBoardDef || itemMatchesBoard(u, activeBoardDef, boards, membersByBoard));
+    .filter(u => !activeBoardDef || itemMatchesBoard(u, activeBoardDef, boards, membersByBoard))
+    // Job Type / Priority from the Filter popover narrow the queue too, so the
+    // filter reads consistently across board + queue. Technician is intentionally
+    // NOT applied here — queue work is unassigned, and hiding it on a tech filter
+    // would defeat dragging that work onto the chosen tech's lane.
+    .filter(u => fType === "all" || u.jobType === fType)
+    .filter(u => fPrio === "all" || u.priority === fPrio);
   const jobTypes = useMemo(() => Array.from(new Set(rawItems.map(i => i.jobType).filter(Boolean))) as string[], [rawItems]);
   const availableLayers = CALENDAR_LAYERS.filter(t => ["job","agreement_visit","task","project_milestone"].includes(t) && rawItems.some(i => i.type === t));
   const activeLayerCount = availableLayers.filter(t => !hidden.has(t)).length;
@@ -527,7 +545,11 @@ export default function CalendarPage() {
       {/* Header — title (left) · centered date nav (date above arrows) · Hourly toggle (right) */}
       <div className="flex items-center gap-3">
         <div className="flex-1 min-w-0">
-          <PageTitle title="Dispatching" description="Schedule jobs, assign technicians, and manage unscheduled work." />
+          <PageTitle
+            title={view === "map" ? "Dispatch Map" : "Dispatching"}
+            description={view === "map"
+              ? "See jobs, routes, technicians, and AI routing suggestions in one live view."
+              : "Schedule jobs, assign technicians, and manage unscheduled work."} />
           {boardScopeNotice && (
             <button onClick={() => selectBoard("all")}
               title="Viewing a scoped board — click to return to all boards"
@@ -612,6 +634,7 @@ export default function CalendarPage() {
             { key: "day",      icon: CalendarDays,  label: "Day" },
             { key: "week",     icon: CalendarRange, label: "Week" },
             { key: "month",    icon: CalendarClock, label: "Month" },
+            { key: "map",      icon: MapIcon,       label: "Map" },
           ] as const).map(v => {
             const active = view === v.key;
             return (
@@ -623,7 +646,45 @@ export default function CalendarPage() {
             );
           })}
         </div>
+        {/* Map tab: Today / Custom date+time range (inline with the view tabs) */}
+        {view === "map" && (
+          <div className="relative">
+            <div className="flex items-center rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+              <button onClick={() => { setMapDateMode("today"); setMapCustomOpen(false); }} className="px-3 py-1.5 text-sm transition-colors"
+                style={{ backgroundColor: mapDateMode === "today" ? "#4f46e5" : "var(--bg-surface)", color: mapDateMode === "today" ? "#fff" : "var(--text-secondary)" }}>
+                Today
+              </button>
+              <button onClick={() => { setMapDateMode("custom"); setMapCustomOpen(o => !o); }} className="flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors"
+                style={{ backgroundColor: mapDateMode === "custom" ? "#4f46e5" : "var(--bg-surface)", color: mapDateMode === "custom" ? "#fff" : "var(--text-secondary)", borderLeft: "1px solid var(--border)" }}>
+                <CalendarDays className="w-3.5 h-3.5" /> Custom <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            {mapCustomOpen && (
+              <div className="absolute right-0 top-full mt-1.5 z-[1000] rounded-xl p-4 w-72" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "0 12px 32px rgba(0,0,0,0.18)" }}>
+                <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>Date range</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div><label className="block text-[10px] mb-1" style={{ color: "var(--text-secondary)" }}>From</label>
+                    <DatePicker size="sm" value={mapFromDate} onChange={v => { setMapFromDate(v); if (v > mapToDate) setMapToDate(v); }} min={todayYMD()} /></div>
+                  <div><label className="block text-[10px] mb-1" style={{ color: "var(--text-secondary)" }}>To</label>
+                    <DatePicker size="sm" value={mapToDate} onChange={setMapToDate} min={mapFromDate || todayYMD()} /></div>
+                </div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider mt-3 mb-2" style={{ color: "var(--text-muted)" }}>Time range <span className="font-normal normal-case">· board hours only</span></p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div><label className="block text-[10px] mb-1" style={{ color: "var(--text-secondary)" }}>From</label>
+                    <TimePicker size="sm" value={mapFromTime} onChange={setMapFromTime} placeholder="Any" startHour={Math.floor(hourly.startHour)} endHour={Math.ceil(hourly.endHour)} /></div>
+                  <div><label className="block text-[10px] mb-1" style={{ color: "var(--text-secondary)" }}>To</label>
+                    <TimePicker size="sm" value={mapToTime} onChange={setMapToTime} placeholder="Any" startHour={Math.floor(hourly.startHour)} endHour={Math.ceil(hourly.endHour)} /></div>
+                </div>
+                <div className="flex items-center justify-between mt-3">
+                  <button onClick={() => { setMapFromTime(""); setMapToTime(""); }} className="text-[11px]" style={{ color: "var(--text-muted)" }}>Clear times</button>
+                  <button onClick={() => setMapCustomOpen(false)} className="text-xs font-medium text-white px-3 py-1.5 rounded-lg" style={{ backgroundColor: "#4f46e5" }}>Apply</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
+        {view !== "map" && (
         <div className="flex items-center gap-2">
           {/* Create — add a schedulable job or technician time off to the board */}
           <div className="relative">
@@ -730,6 +791,7 @@ export default function CalendarPage() {
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* No technicians → can't schedule or create work here yet */}
@@ -747,12 +809,15 @@ export default function CalendarPage() {
       {view === "week"     && <WeekView  focus={focus} items={boardItems} onSelect={setSelScheduled} />}
       {view === "day"      && <DayView   focus={focus} items={boardItems} dayStart={hourly.startHour} dayEnd={hourly.endHour} onSelect={setSelScheduled} />}
       {view === "month"    && <MonthView focus={focus} items={boardItems} onSelect={setSelScheduled} />}
+      {view === "map"      && <DispatchMap dateFilter={{ mode: mapDateMode, fromDate: mapFromDate, toDate: mapToDate, fromTime: mapFromTime, toTime: mapToTime }} />}
 
-      {/* Unscheduled queue — BELOW the board */}
-      <UnscheduledQueue
-        items={unscheduled} views={queueViews} tab={queueTab} setTab={setQueueTab}
-        search={queueSearch} setSearch={setQueueSearch} onSelect={setSelUnscheduled}
-      />
+      {/* Unscheduled queue — BELOW the board (not in map view; the map has its own) */}
+      {view !== "map" && (
+        <UnscheduledQueue
+          items={unscheduled} views={queueViews} tab={queueTab} setTab={setQueueTab}
+          search={queueSearch} setSearch={setQueueSearch} onSelect={setSelUnscheduled}
+        />
+      )}
 
       {/* Drawer */}
       {selScheduled && <CalendarItemDrawer scheduled={selScheduled} technicians={technicians} onClose={() => setSelScheduled(null)} onReassign={reassign} />}

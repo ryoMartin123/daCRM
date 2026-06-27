@@ -374,12 +374,13 @@ function Step2({ data, set, errors, lockStatus }: { data: WizardData; set: <K ex
 }
 
 function Step3({
-  data, set, errors, clearError,
+  data, set, errors, clearError, onContactNameEdit,
 }: {
   data: WizardData;
   set: <K extends keyof WizardData>(k: K, v: WizardData[K]) => void;
   errors: Record<string, string>;
   clearError: (k: string) => void;
+  onContactNameEdit: () => void;
 }) {
   return (
     <div className="space-y-4">
@@ -387,7 +388,7 @@ function Step3({
         {data.accountType === "residential" ? "This is typically the homeowner." : "Add the primary point of contact for this account."}
       </p>
       <Field label="Contact Name" required>
-        <Input value={data.contactName} onChange={v => { set("contactName", v); clearError("contactName"); }}
+        <Input value={data.contactName} onChange={v => { set("contactName", v); clearError("contactName"); onContactNameEdit(); }}
           placeholder="Full name" error={errors.contactName} />
       </Field>
       <Field label="Role">
@@ -479,6 +480,9 @@ function WizardContent({ onClose, onCreated, forceStatus }: {
   const [data, setData]   = useState<WizardData>({ ...DEFAULT_WIZARD, status: forceStatus ?? DEFAULT_WIZARD.status, locationId: effectiveLocationId ?? (locationOptions.length === 1 ? locationOptions[0]!.id : "") });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitted, setSubmitted] = useState(false);
+  // The contact name defaults to the account name until the user edits it — most
+  // accounts (especially residential) have the same person as the primary contact.
+  const [contactNameEdited, setContactNameEdited] = useState(false);
 
   function set<K extends keyof WizardData>(k: K, v: WizardData[K]) {
     setData(d => ({ ...d, [k]: v }));
@@ -512,6 +516,9 @@ function WizardContent({ onClose, onCreated, forceStatus }: {
     setErrors({});
 
     if (step === 1) set("contactRole", defaultRole[data.accountType]);
+    // Leaving the account-name step: mirror it into the contact name unless the
+    // user has already typed their own contact name.
+    if (step === 2 && !contactNameEdited) set("contactName", data.name.trim());
     if (step < 4) { setStep(s => (s + 1) as 1 | 2 | 3 | 4); return; }
 
     // Step 4 confirmed — create the customer
@@ -540,7 +547,7 @@ function WizardContent({ onClose, onCreated, forceStatus }: {
       <div className="flex-1 overflow-y-auto px-6 py-5">
         {step === 1 && <Step1 data={data} set={set} />}
         {step === 2 && <Step2 data={data} set={set} errors={errors} lockStatus={!!forceStatus} />}
-        {step === 3 && <Step3 data={data} set={set} errors={errors} clearError={clearError} />}
+        {step === 3 && <Step3 data={data} set={set} errors={errors} clearError={clearError} onContactNameEdit={() => setContactNameEdited(true)} />}
         {step === 4 && <Step4 data={data} set={set} />}
       </div>
       <div className="px-6 py-4 flex items-center justify-between gap-2" style={{ borderTop: "1px solid var(--border-subtle)" }}>

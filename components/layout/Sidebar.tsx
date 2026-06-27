@@ -18,7 +18,6 @@ import {
   Receipt,
   FileText,
   Images,
-  Megaphone,
   BarChart2,
   Settings,
   ChevronDown,
@@ -84,7 +83,6 @@ const navigation: { section: string; items: NavItem[] }[] = [
   {
     section: "Grow",
     items: [
-      { name: "Marketing", href: "/marketing", icon: Megaphone, resource: "marketing" },
       { name: "Reports",   href: "/reports",   icon: BarChart2, resource: "reports"   },
     ],
   },

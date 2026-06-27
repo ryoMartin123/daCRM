@@ -50,7 +50,7 @@ export default function CampaignBuilder({ preset, onClose, onCreated }: {
         style={{ backgroundColor: "var(--bg-surface)", boxShadow: "0 16px 48px rgba(0,0,0,0.24)" }}>
         <div className="flex items-center justify-between px-6 py-4 shrink-0" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
           <div className="flex items-center gap-2">
-            <Megaphone className="w-4 h-4" style={{ color: "#4f46e5" }} />
+            <Megaphone className="w-4 h-4" style={{ color: "#e11d48" }} />
             <p className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>New Campaign</p>
           </div>
           <button onClick={onClose} style={{ color: "var(--text-muted)" }}><X className="w-4 h-4" /></button>
@@ -92,7 +92,7 @@ export default function CampaignBuilder({ preset, onClose, onCreated }: {
                 const active = when === o.k;
                 return (
                   <button key={o.k} onClick={() => setWhen(o.k)} className="px-3 py-1.5 text-xs font-medium transition-colors"
-                    style={{ backgroundColor: active ? "#4f46e5" : "var(--bg-surface)", color: active ? "#fff" : "var(--text-secondary)" }}>{o.l}</button>
+                    style={{ backgroundColor: active ? "#e11d48" : "var(--bg-surface)", color: active ? "#fff" : "var(--text-secondary)" }}>{o.l}</button>
                 );
               })}
             </div>
@@ -109,7 +109,7 @@ export default function CampaignBuilder({ preset, onClose, onCreated }: {
         <div className="px-6 py-4 flex justify-end gap-2 shrink-0" style={{ borderTop: "1px solid var(--border-subtle)" }}>
           <button onClick={onClose} className="px-3 py-2 rounded-lg text-sm" style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}>Cancel</button>
           <button onClick={create} disabled={!canCreate}
-            className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-40" style={{ backgroundColor: "#4f46e5" }}>
+            className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-40" style={{ backgroundColor: "#e11d48" }}>
             {when === "now" ? "Launch Campaign" : when === "schedule" ? "Schedule Campaign" : "Save Draft"}
           </button>
         </div>

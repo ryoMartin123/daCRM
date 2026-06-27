@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   TrendingUp, Briefcase, FolderKanban, ClipboardList,
-  FileText, Image as ImageIcon, Megaphone, MessageSquare,
+  FileText, Image as ImageIcon, MessageSquare,
   Sliders, LayoutDashboard, ChevronRight, Settings2, ArrowLeft,
   CalendarClock, ListChecks, Package, Tag, Percent, BookOpen, Factory,
   ShieldCheck, ExternalLink,
@@ -37,7 +37,6 @@ const SalesbookLibrarySection   = dynamic(() => import("@/components/settings/Sa
 const TermsConditionsSection    = dynamic(() => import("@/components/settings/TermsConditionsSection"),    { loading: SectionLoading, ssr: false });
 const TaxesFeesSection          = dynamic(() => import("@/components/settings/TaxesFeesSection"),          { loading: SectionLoading, ssr: false });
 const AgreementsSettingsSection = dynamic(() => import("@/components/settings/AgreementsSettingsSection"), { loading: SectionLoading, ssr: false });
-const MarketingSettingsSection  = dynamic(() => import("@/components/settings/MarketingSettingsSection"),  { loading: SectionLoading, ssr: false });
 import { SettingsScopeProvider } from "@/components/providers/SettingsScopeProvider";
 import SectionGate from "@/components/settings/SectionGate";
 import EditingScopeHeader from "@/components/settings/EditingScopeHeader";
@@ -49,7 +48,7 @@ import Commentable from "@/components/comments/Commentable";
 type SectionKey =
   | "pipelines" | "job_types" | "projects" | "work_orders" | "tasks" | "photo_categories" | "calendar_dispatch" | "agreements"
   | "items_categories" | "salesbook_library" | "terms_conditions" | "taxes_fees"
-  | "marketing" | "communication"
+  | "communication"
   | "industry" | "custom_fields" | "dashboards";
 
 type CategoryKey =
@@ -118,10 +117,9 @@ const CATEGORIES: Category[] = [
   },
   {
     key: "communication", label: "Communication",
-    description: "Marketing campaigns and CRM messaging",
+    description: "CRM email, SMS, and phone messaging",
     icon: MessageSquare,
     items: [
-      { key: "marketing",     label: "Marketing",           description: "Campaign types, audiences, templates, and sender branding", icon: Megaphone },
       { key: "communication", label: "Communication",       description: "CRM email, SMS, and phone usage settings", icon: MessageSquare },
     ],
   },
@@ -141,7 +139,6 @@ const SECTION_LAYERS: Record<SectionKey, SectionLayers> = {
   salesbook_library:  ["org", "company"],
   terms_conditions:   ["org", "company"],
   taxes_fees:         ["org", "company", "location"],
-  marketing:          ["org", "company"],
   communication:      ["org", "company"],
   industry:           ["org", "company"],
   custom_fields:      ["org", "company"],
@@ -300,7 +297,6 @@ export default function SettingsPage() {
         activeModule={hubProps?.activeModule ?? null}
         onOpen={hubProps?.onOpen ?? (() => {})}
         onBack={hubProps?.onBack ?? (() => {})} />;
-      case "marketing":          return <MarketingSettingsSection />;
       case "communication":      return <ComingSoon label="Communication"
         features={["Email provider usage", "SMS provider usage", "Phone / dispatch integration usage", "Conversation inbox"]} />;
       case "industry":           return <IndustryDefaultsSection />;

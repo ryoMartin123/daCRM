@@ -17,12 +17,14 @@ import {
   ShieldCheck,
   MessagesSquare,
   Boxes,
+  Megaphone,
   type LucideIcon,
 } from "lucide-react";
 
 export type PlatformAppId =
   | "portal"
   | "crm"
+  | "marketing"
   | "team_workspace"
   | "inventory"
   | "hr"
@@ -67,6 +69,16 @@ export const PLATFORM_APPS: PlatformApp[] = [
     href: "/dashboard",
     routePrefix: "", // CRM lives at the root
     accent: "#6366f1",
+  },
+  {
+    id: "marketing",
+    name: "Marketing",
+    description:
+      "Build campaigns, audiences, and templates from your CRM data — email, SMS, review requests, and follow-up sequences.",
+    icon: Megaphone,
+    href: "/marketing",
+    routePrefix: "/marketing",
+    accent: "#e11d48",
   },
   {
     id: "team_workspace",

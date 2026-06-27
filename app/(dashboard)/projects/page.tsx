@@ -190,28 +190,15 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      {/* Lens switcher + bucket tabs (left) · search + filter (right). The whole
-          row sits ABOVE the views, so search & filter stay in line with the tabs
-          and apply across List / Kanban / Calendar — never buried in the table. */}
+      {/* Filters toolbar — lens + bucket tabs scroll horizontally (never wrap);
+          search + filter sit on the right on wide screens and drop to their own
+          row on smaller ones. The month nav is NOT here — it has its own row. */}
       {view !== "overview" && (
-        <div className="relative flex items-center justify-between flex-wrap gap-2 mb-4">
-          {/* Calendar month nav — inline with the tabs/search, but absolutely
-              centered to the section (not floating between the two groups). */}
-          {view === "calendar" && (
-            <div className="absolute left-1/2 -translate-x-1/2 hidden lg:flex items-center gap-0.5">
-              <button onClick={() => setCalFocus(f => new Date(f.getFullYear(), f.getMonth() - 1, 1))} title="Previous month"
-                className="p-1 rounded-md transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-muted)" }}><ChevronLeft className="w-4 h-4" /></button>
-              <span className="text-sm font-semibold text-center" style={{ color: "var(--text-primary)", minWidth: 150 }}>
-                {calFocus.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
-              </span>
-              <button onClick={() => setCalFocus(f => new Date(f.getFullYear(), f.getMonth() + 1, 1))} title="Next month"
-                className="p-1 rounded-md transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-muted)" }}><ChevronRight className="w-4 h-4" /></button>
-            </div>
-          )}
-          <div className="flex flex-wrap items-center gap-0.5">
+        <div className="flex flex-col lg:flex-row lg:items-center gap-2 mb-4">
+          <div className="flex items-center gap-0.5 overflow-x-auto thin-scroll-x min-w-0 lg:flex-1">
             {PROJECT_LENSES.map(l => (
               <button key={l.key} onClick={() => selectLens(l.key)}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0"
                 style={pillStyle(lens === l.key)}>
                 {l.label}
               </button>
@@ -221,14 +208,14 @@ export default function ProjectsPage() {
 
             {lensTabs.map(t => (
               <button key={t.key} onClick={() => setTab(t.key)}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0"
                 style={pillStyle(tab === t.key)}>
                 {t.label}<span className="ml-1.5 opacity-60">{t.count}</span>
               </button>
             ))}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0 lg:justify-end">
             <div className="flex items-center gap-2 rounded-lg px-3 py-1.5" style={{ backgroundColor: "var(--bg-input)" }}>
               <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted)" }} />
               <input type="text" placeholder="Search projects..." value={search} onChange={e => setSearch(e.target.value)}
@@ -258,6 +245,20 @@ export default function ProjectsPage() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Calendar month navigation — its own dedicated, centered, no-wrap row
+          directly above the grid, so the filter tabs can never push it down. */}
+      {view === "calendar" && (
+        <div className="flex items-center justify-center gap-1 mb-4">
+          <button onClick={() => setCalFocus(f => new Date(f.getFullYear(), f.getMonth() - 1, 1))} title="Previous month"
+            className="p-1 rounded-md transition-colors hover:bg-[var(--bg-surface-2)] shrink-0" style={{ color: "var(--text-muted)" }}><ChevronLeft className="w-4 h-4" /></button>
+          <span className="text-sm font-semibold text-center whitespace-nowrap" style={{ color: "var(--text-primary)", minWidth: 150 }}>
+            {calFocus.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+          </span>
+          <button onClick={() => setCalFocus(f => new Date(f.getFullYear(), f.getMonth() + 1, 1))} title="Next month"
+            className="p-1 rounded-md transition-colors hover:bg-[var(--bg-surface-2)] shrink-0" style={{ color: "var(--text-muted)" }}><ChevronRight className="w-4 h-4" /></button>
         </div>
       )}
 

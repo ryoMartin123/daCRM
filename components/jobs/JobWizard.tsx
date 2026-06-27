@@ -10,9 +10,10 @@ import NumberStepper from "@/components/ui/NumberStepper";
 import { getAllCustomers, getProperties, updateCustomer } from "@/lib/customers/data";
 import { createJob, type JobType, type JobPriority } from "@/lib/jobs/data";
 import { jobTypeLabel } from "@/lib/job-config/data";
-import { getBoardCandidates } from "@/lib/users/data";
+import { getBoardCandidates, getDispatchBoardMembers } from "@/lib/users/data";
 import { AddressAutocomplete, EMPTY_ADDRESS, type ParsedAddress } from "@/components/address/AddressAutocomplete";
-import { todayYMD, isPastDateTime } from "@/lib/utils/schedule";
+import { todayYMD, isPastDateTime, isOutsideHours, formatHour } from "@/lib/utils/schedule";
+import { resolveDispatchSettings } from "@/lib/calendar/settings";
 
 export interface JobWizardPreset {
   customerId?: string;
@@ -63,11 +64,17 @@ export default function JobWizard({ preset, onClose, onCreated }: {
   const customer = customers.find(c => c.id === customerId);
   // Assignee candidates respect the account's scope (down-inclusion): people at
   // its location, its company, or org-wide — not other branches/companies.
-  const roster = useMemo(
-    () => (customer ? getBoardCandidates(customer.companyId, customer.locationId).map(u => ({ name: u.fullName, initials: u.initials })) : []),
+  // Only people actually ON the dispatch board(s) for the account's scope can be
+  // assigned — board members have a schedule/truck. Dispatchers/office staff who
+  // aren't on a board are excluded.
+  const roster = useMemo(() => {
+    if (!customer) return [];
+    const members = getDispatchBoardMembers(customer.companyId, customer.locationId);
+    return getBoardCandidates(customer.companyId, customer.locationId)
+      .filter(u => members.has(u.fullName))
+      .map(u => ({ name: u.fullName, initials: u.initials }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [customer?.companyId, customer?.locationId],
-  );
+  }, [customer?.companyId, customer?.locationId]);
   const properties = useMemo(() => (customerId ? getProperties(customerId) : []), [customerId]);
   // One property → just use it. Multiple → let the user pick which (default to
   // the account's primary property).
@@ -101,9 +108,17 @@ export default function JobWizard({ preset, onClose, onCreated }: {
     ? (addr.addressLine1.trim() ? [addr.addressLine1.trim(), addr.city.trim()].filter(Boolean).join(", ") : "")
     : existingLabel;
 
+  // Dispatch board working hours for THIS job's scope (its company/location).
+  // A timed job can only be scheduled inside that window — and the duration has
+  // to fit before close.
+  const board = useMemo(
+    () => resolveDispatchSettings(customer?.companyId, customer?.locationId).hourly,
+    [customer?.companyId, customer?.locationId],
+  );
   const schedulePast = isPastDateTime(date, time);
+  const outsideHours = isOutsideHours(time, parseInt(duration) || 0, board.startHour, board.endHour);
   const addressOk = useNewAddress ? Boolean(addr.addressLine1.trim()) : hasExisting;
-  const canCreate = Boolean(customerId && title.trim() && description.trim()) && addressOk && !schedulePast;
+  const canCreate = Boolean(customerId && title.trim() && description.trim()) && addressOk && !schedulePast && !outsideHours;
   const willSchedule = Boolean(date);
 
   function handleCreate() {
@@ -224,7 +239,8 @@ export default function JobWizard({ preset, onClose, onCreated }: {
               </div>
               <div>
                 <label className="block text-[10px] font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Time</label>
-                <TimePicker size="sm" value={time} onChange={setTime} placeholder="Pick a time" />
+                <TimePicker size="sm" value={time} onChange={setTime} placeholder="Pick a time"
+                  startHour={Math.floor(board.startHour)} endHour={Math.ceil(board.endHour)} />
               </div>
               <div>
                 <label className="block text-[10px] font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Duration (min)</label>
@@ -234,6 +250,11 @@ export default function JobWizard({ preset, onClose, onCreated }: {
             {schedulePast && (
               <p className="text-[10px]" style={{ color: "#dc2626" }}>
                 That date/time is in the past. Choose a current or future slot, or leave blank to send it to the dispatch queue.
+              </p>
+            )}
+            {!schedulePast && outsideHours && (
+              <p className="text-[10px]" style={{ color: "#dc2626" }}>
+                The dispatch board runs {formatHour(board.startHour)}–{formatHour(board.endHour)}. Pick a start time inside those hours that leaves room for the {parseInt(duration) || 0}-min duration, or leave the time blank to send it to the dispatch queue.
               </p>
             )}
             <div>

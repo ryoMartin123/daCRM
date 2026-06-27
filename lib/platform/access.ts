@@ -20,6 +20,7 @@ export type AppAccess = Record<PlatformAppId, boolean>;
 const NONE: AppAccess = {
   portal: true, // always — every user gets My Portal
   crm: false,
+  marketing: false,
   team_workspace: false,
   inventory: false,
   hr: false,
@@ -37,10 +38,10 @@ function grant(...apps: PlatformAppId[]): AppAccess {
 // Role → default app access. Mock users usually carry an explicit override, so
 // this is mainly the fallback for roles without one.
 const ROLE_DEFAULTS: Partial<Record<RoleKey, AppAccess>> = {
-  org_owner: grant("portal", "crm", "team_workspace", "inventory", "hr", "accounting", "documents", "admin"),
-  org_admin: grant("portal", "crm", "team_workspace", "inventory", "hr", "accounting", "documents", "admin"),
-  branch_manager: grant("portal", "crm", "team_workspace", "inventory", "documents", "admin"),
-  location_manager: grant("portal", "crm", "team_workspace", "documents"),
+  org_owner: grant("portal", "crm", "marketing", "team_workspace", "inventory", "hr", "accounting", "documents", "admin"),
+  org_admin: grant("portal", "crm", "marketing", "team_workspace", "inventory", "hr", "accounting", "documents", "admin"),
+  branch_manager: grant("portal", "crm", "marketing", "team_workspace", "inventory", "documents", "admin"),
+  location_manager: grant("portal", "crm", "marketing", "team_workspace", "documents"),
   dispatcher: grant("portal", "crm", "team_workspace", "documents"),
   field_technician: grant("portal", "crm", "team_workspace", "documents"),
   installer: grant("portal", "crm", "team_workspace", "documents"),
@@ -52,7 +53,7 @@ const ROLE_DEFAULTS: Partial<Record<RoleKey, AppAccess>> = {
 export function appAccessForUser(user: AppUser): AppAccess {
   // Owner shortcut — full platform access.
   if (user.isOrgOwner) {
-    return grant("portal", "crm", "team_workspace", "inventory", "hr", "accounting", "documents", "admin");
+    return grant("portal", "crm", "marketing", "team_workspace", "inventory", "hr", "accounting", "documents", "admin");
   }
 
   // Explicit override on the user wins (portal stays forced-on).
@@ -83,7 +84,7 @@ export function hasAppAccess(user: AppUser, app: PlatformAppId): boolean {
 // user with no override always matches their effective access.
 export function roleDefaultAccess(user: AppUser): AppAccess {
   if (user.isOrgOwner) {
-    return grant("portal", "crm", "team_workspace", "inventory", "hr", "accounting", "documents", "admin");
+    return grant("portal", "crm", "marketing", "team_workspace", "inventory", "hr", "accounting", "documents", "admin");
   }
   const out: AppAccess = { ...NONE };
   for (const a of user.assignments) {

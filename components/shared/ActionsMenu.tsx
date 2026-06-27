@@ -2,16 +2,24 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 
-// Our own "more actions" mark instead of the generic vertical kebab: a small
-// tri-dot constellation with the top node in the CRM indigo as a focal accent.
-// One distinctive, branded affordance shared across every record detail header.
-function MoreActionsGlyph({ className, accent }: { className?: string; accent: boolean }) {
+// Our own "more actions" mark instead of the generic vertical kebab: a rounded
+// 2×2 module grid (on-brand for the modular CRM). It animates — rotating into a
+// diamond on hover and locking into an indigo diamond while the menu is open —
+// so the affordance feels alive. One distinctive trigger shared across every
+// record detail header.
+export function MoreActionsGlyph({ open }: { open: boolean }) {
   return (
-    <svg viewBox="0 0 16 16" className={className} aria-hidden="true">
-      <circle cx="8" cy="3.9" r="1.9" fill={accent ? "currentColor" : "#4f46e5"} />
-      <circle cx="4.3" cy="11" r="1.55" fill="currentColor" />
-      <circle cx="11.7" cy="11" r="1.55" fill="currentColor" />
+    <svg viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"
+      className={cn(
+        "w-[18px] h-[18px] transition-transform duration-300 ease-out",
+        open ? "rotate-45 scale-110" : "rotate-0 group-hover:rotate-45 group-hover:scale-105",
+      )}>
+      <rect x="2.6" y="2.6" width="4.2" height="4.2" rx="1.4" />
+      <rect x="9.2" y="2.6" width="4.2" height="4.2" rx="1.4" />
+      <rect x="2.6" y="9.2" width="4.2" height="4.2" rx="1.4" />
+      <rect x="9.2" y="9.2" width="4.2" height="4.2" rx="1.4" />
     </svg>
   );
 }
@@ -53,10 +61,13 @@ export default function ActionsMenu({ actions, label = "Actions" }: {
       <button
         onClick={() => setOpen(o => !o)}
         aria-label={label} aria-haspopup="menu" aria-expanded={open}
-        className="flex items-center justify-center w-9 h-9 rounded-lg transition-colors hover:bg-[var(--bg-surface-2)]"
-        style={{ border: `1px solid ${open ? "#4f46e5" : "var(--border)"}`, color: open ? "#4f46e5" : "var(--text-secondary)" }}
+        className={cn(
+          "group flex items-center justify-center w-9 h-9 rounded-lg transition-all duration-200 active:scale-90",
+          open ? "text-[#4f46e5]" : "text-[var(--text-secondary)] hover:text-[#4f46e5] hover:bg-[var(--bg-surface-2)]",
+        )}
+        style={{ border: `1px solid ${open ? "#4f46e5" : "var(--border)"}` }}
       >
-        <MoreActionsGlyph className="w-4 h-4" accent={open} />
+        <MoreActionsGlyph open={open} />
       </button>
 
       {open && (

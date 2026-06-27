@@ -8,7 +8,7 @@
 
 import type { RoleKey } from "@/lib/roles/types";
 import type { AppAccess } from "@/lib/platform/access";
-import { removeMemberFromAllBoards } from "@/lib/calendar/settings";
+import { removeMemberFromAllBoards, getBoardsForContext } from "@/lib/calendar/settings";
 
 export type UserStatus = "active" | "invited" | "inactive";
 export type ScopeLevel = "org" | "company" | "location" | "service_area";
@@ -321,6 +321,19 @@ export function getTechnicianCandidates(companyId?: string, locationId?: string)
 }
 export function getDispatcherCandidates(companyId?: string, locationId?: string): string[] {
   return getBoardCandidates(companyId, locationId).filter(u => hasRoleIn(u, DISPATCH_ROLES)).map(u => u.fullName);
+}
+
+// People ACTUALLY ON the dispatch board(s) for a scope — explicit members plus
+// role-matched members. This is who has a schedule/truck and is therefore
+// dispatchable (mappable + assignable). Dispatchers/office staff who aren't on a
+// board are excluded, even though they're board *candidates*.
+export function getDispatchBoardMembers(companyId?: string, locationId?: string): Set<string> {
+  const names = new Set<string>();
+  for (const b of getBoardsForContext(companyId, locationId)) {
+    b.techNames.forEach(n => names.add(n));
+    getUsersByRoles(b.roleKeys ?? [], b.companyId || undefined, b.locationId || undefined).forEach(u => names.add(u.fullName));
+  }
+  return names;
 }
 
 // Staffed users holding any of the given roles — used by dispatch boards that

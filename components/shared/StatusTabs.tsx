@@ -42,9 +42,9 @@ export default function StatusTabs({ tabs, active, onChange, className = "", acc
               }}>
               {t.icon && <t.icon className="w-3.5 h-3.5" />}
               {t.label}
-              {t.count !== undefined && (
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                  style={{ backgroundColor: on ? "var(--accent-soft-2-bg)" : "var(--bg-input)", color: on ? "var(--accent-text)" : "var(--text-muted)" }}>
+              {/* Inline muted count (no bubble); hidden when zero. */}
+              {t.count !== undefined && t.count > 0 && (
+                <span className="text-xs tabular-nums" style={{ color: on ? "var(--accent-text)" : "var(--text-muted)", opacity: 0.7 }}>
                   {t.count}
                 </span>
               )}

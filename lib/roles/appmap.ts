@@ -16,6 +16,7 @@ export type RoleAppId = Exclude<PlatformAppId, never>;
 export const APP_META: Record<PlatformAppId, { name: string; description: string; accent: string }> = {
   portal:         { name: "My Portal",       description: "Personal home — schedule, pay, tasks, documents.",    accent: "#0ea5e9" },
   crm:            { name: "CRM",             description: "Customers, leads, quotes, jobs, dispatching.",        accent: "#6366f1" },
+  marketing:      { name: "Marketing",       description: "Campaigns, audiences, templates, follow-ups.",        accent: "#e11d48" },
   team_workspace: { name: "Team Workspace",  description: "Channels, meetings, announcements, action items.",    accent: "#2563eb" },
   inventory:      { name: "Inventory & Procurement", description: "Materials, truck stock, POs, vendors, subs.", accent: "#f97316" },
   hr:             { name: "HR",              description: "Employees, hiring, onboarding, time off.",            accent: "#ec4899" },
@@ -24,13 +25,13 @@ export const APP_META: Record<PlatformAppId, { name: string; description: string
   admin:          { name: "Admin",           description: "Users, roles, structure, security, billing.",         accent: "#a855f7" },
 };
 
-export const APP_ORDER: PlatformAppId[] = ["portal", "crm", "team_workspace", "inventory", "hr", "accounting", "documents", "admin"];
+export const APP_ORDER: PlatformAppId[] = ["portal", "crm", "marketing", "team_workspace", "inventory", "hr", "accounting", "documents", "admin"];
 
 // Which app each CRM resource belongs to (for grouped permission accordions and
 // app-access derivation). HR has no granular resources in the v1 model.
 export const RESOURCE_APP: Partial<Record<Resource, PlatformAppId>> = {
   dashboard: "crm", customers: "crm", contacts: "crm", leads: "crm", deals: "crm",
-  jobs: "crm", projects: "crm", tasks: "crm", agreements: "crm", marketing: "crm",
+  jobs: "crm", projects: "crm", tasks: "crm", agreements: "crm", marketing: "marketing",
   communications: "crm", calendar: "crm", quotes: "crm", items: "crm",
   invoices: "accounting", payments: "accounting", reports: "accounting",
   files: "documents",
@@ -43,10 +44,10 @@ export function resourcesForApp(app: PlatformAppId): Resource[] {
 
 // System-role app access mirrors lib/platform/access ROLE_DEFAULTS.
 const SYSTEM_ROLE_APPS: Record<string, PlatformAppId[]> = {
-  org_owner: ["portal", "crm", "team_workspace", "inventory", "hr", "accounting", "documents", "admin"],
-  org_admin: ["portal", "crm", "team_workspace", "inventory", "hr", "accounting", "documents", "admin"],
-  branch_manager: ["portal", "crm", "team_workspace", "inventory", "documents", "admin"],
-  location_manager: ["portal", "crm", "team_workspace", "documents"],
+  org_owner: ["portal", "crm", "marketing", "team_workspace", "inventory", "hr", "accounting", "documents", "admin"],
+  org_admin: ["portal", "crm", "marketing", "team_workspace", "inventory", "hr", "accounting", "documents", "admin"],
+  branch_manager: ["portal", "crm", "marketing", "team_workspace", "inventory", "documents", "admin"],
+  location_manager: ["portal", "crm", "marketing", "team_workspace", "documents"],
   dispatcher: ["portal", "crm", "team_workspace", "documents"],
   field_technician: ["portal", "crm", "team_workspace", "documents"],
   installer: ["portal", "crm", "team_workspace", "documents"],
@@ -68,6 +69,7 @@ export function roleApps(role: RoleDefinition): PlatformAppId[] {
   const set = new Set<PlatformAppId>(["portal"]);
   const granted = (r: Resource) => role.allAccess || Boolean(role.capabilities[r]);
   if (role.allAccess || resourcesForApp("crm").some(granted)) set.add("crm");
+  if (role.allAccess || resourcesForApp("marketing").some(granted)) set.add("marketing");
   if (role.allAccess || resourcesForApp("accounting").some(granted)) set.add("accounting");
   if (role.allAccess || granted("files")) set.add("documents");
   if (role.allAccess || resourcesForApp("admin").some(granted) || role.flags.some((f) => ADMIN_FLAG_SET.includes(f))) set.add("admin");

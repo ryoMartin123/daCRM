@@ -76,6 +76,7 @@ export default function TimePicker({ value, onChange, placeholder = "Select time
   const [query, setQuery] = useState("");
   const wrapRef = useRef<HTMLDivElement>(null);
   const selRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const options = useMemo(() => {
     const out: string[] = [];
@@ -119,13 +120,17 @@ export default function TimePicker({ value, onChange, placeholder = "Select time
 
   return (
     <div ref={wrapRef} className={`relative ${className ?? "w-full"}`}>
-      <div className={`w-full flex items-center justify-between gap-2 rounded-lg transition-colors ${pad}`}
+      {/* Clicking anywhere in the field (incl. the clock icon) focuses the input
+          and opens the list — the input alone isn't the whole hit target. */}
+      <div onMouseDown={e => { if (e.target !== inputRef.current) { e.preventDefault(); inputRef.current?.focus(); } }}
+        className={`w-full flex items-center justify-between gap-2 rounded-lg transition-colors cursor-text ${pad}`}
         style={{
           border: `1px solid ${open ? "#a5b4fc" : "var(--border)"}`,
           backgroundColor: "var(--bg-surface)",
           boxShadow: open ? "0 0 0 3px rgba(99,102,241,0.12)" : "none",
         }}>
         <input
+          ref={inputRef}
           type="text"
           value={open ? query : fmt12(value)}
           placeholder={placeholder}

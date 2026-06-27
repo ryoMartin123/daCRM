@@ -48,6 +48,8 @@ import {
   ClipboardList,
   PackageCheck,
   SlidersHorizontal,
+  Zap,
+  Radio,
   type LucideIcon,
 } from "lucide-react";
 import type { PlatformAppId } from "./apps";
@@ -73,6 +75,16 @@ export const APP_NAV: Partial<Record<PlatformAppId, AppNavItem[]>> = {
     { name: "My Time Off", href: "/portal/time-off", icon: Plane },
     { name: "My Profile", href: "/portal/profile", icon: User },
     { name: "Announcements", href: "/portal/announcements", icon: Megaphone },
+  ],
+  marketing: [
+    { name: "Dashboard", href: "/marketing", icon: LayoutDashboard },
+    { name: "Campaigns", href: "/marketing/campaigns", icon: Megaphone },
+    { name: "Audiences", href: "/marketing/audiences", icon: UsersRound },
+    { name: "Templates", href: "/marketing/templates", icon: FileText },
+    { name: "Automations", href: "/marketing/automations", icon: Zap },
+    { name: "Lead Sources", href: "/marketing/lead-sources", icon: Radio },
+    { name: "Performance", href: "/marketing/performance", icon: BarChart3 },
+    { name: "Settings", href: "/marketing/settings", icon: Settings },
   ],
   team_workspace: [
     { name: "Dashboard", href: "/team-workspace", icon: LayoutDashboard },
