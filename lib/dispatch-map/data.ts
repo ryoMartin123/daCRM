@@ -186,12 +186,20 @@ export interface MapTech {
 // all draw from the same board-candidate set (matches the job-creation flow).
 export function getMapTechnicians(companyId?: string, locationId?: string): MapTech[] {
   const onBoard = getDispatchBoardMembers(companyId, locationId);
+  const allJobs = getMapJobs({ companyId, locationId });
   return getStaffRoster().filter(t => onBoard.has(t.name)).map((t, i) => {
     const h = hash(t.name);
     const status: MapTechStatus = t.status === "off_today" ? "off_duty" : STATUS_CYCLE[h % STATUS_CYCLE.length];
     const skills = [SKILL_POOL[h % SKILL_POOL.length], SKILL_POOL[(h >> 4) % SKILL_POOL.length]].filter((s, idx, a) => a.indexOf(s) === idx);
     const base = geocode(`base-${t.name}`, ["sa_augusta", "sa_evans", "sa_martinez"][h % 3]);
-    const current = status === "off_duty" ? null : geocode(`cur-${t.name}`, ["sa_augusta", "sa_evans", "sa_martinez", "sa_grovetown"][h % 4]);
+    // Place the live location near the tech's first scheduled job (a small
+    // deterministic offset, as if parked/en route nearby) so the route starts
+    // where the work is — not at a random point across town.
+    const first = allJobs.filter(j => j.assignedTo === t.name && j.day != null).sort((a, b) => a.day! - b.day!)[0];
+    const jitter = ((h % 16) - 8) / 1200; // ~±0.007° — a few blocks
+    const current = status === "off_duty" ? null
+      : first ? { lat: first.lat + jitter, lng: first.lng - jitter }
+              : geocode(`cur-${t.name}`, ["sa_augusta", "sa_evans", "sa_martinez", "sa_grovetown"][h % 4]);
     return {
       name: t.name, initials: t.initials, status, skills,
       truck: `Truck ${10 + (i % 12)}`, base, current,
@@ -215,8 +223,12 @@ export function buildRoute(tech: MapTech, jobs: MapJob[]): TechRoute {
   const mine = jobs
     .filter(j => j.assignedTo === tech.name && j.day != null)
     .sort((a, b) => (a.day! - b.day!));
-  let prev: LatLng = tech.base;
-  const path: LatLng[] = [tech.base];
+  // Start from where the tech actually is (their marker position), falling back
+  // to base only when off-duty / no live location — so the drawn route and the
+  // technician pin line up.
+  const origin: LatLng = tech.current ?? tech.base;
+  let prev: LatLng = origin;
+  const path: LatLng[] = [origin];
   let totalDriveMin = 0, totalMiles = 0, totalJobMin = 0;
   const stops: RouteStop[] = mine.map(j => {
     const here = { lat: j.lat, lng: j.lng };

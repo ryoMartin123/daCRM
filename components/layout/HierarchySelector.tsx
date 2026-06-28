@@ -10,7 +10,7 @@ import type { SelectionValue } from "@/lib/hierarchy/types";
 const OPERATIONAL_PREFIXES = [
   "/dashboard", "/inbox", "/customers", "/leads", "/jobs", "/projects",
   "/quotes", "/invoices", "/items",
-  "/tasks", "/dispatching", "/calendar", "/files", "/agreements", "/marketing", "/reports",
+  "/tasks", "/dispatching", "/calendar", "/files", "/agreements", "/marketing", "/analytics",
   // Platform apps that filter by the active company/location context. Portal
   // (self-service) and Admin (platform-wide management) intentionally omitted.
   "/hr", "/accounting", "/documents", "/team-workspace", "/inventory",

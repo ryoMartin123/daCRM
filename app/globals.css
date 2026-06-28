@@ -61,6 +61,12 @@ label[for] {
   --warning-icon:        #d97706;   /* amber-600 */
 
   --shadow-card:      0 1px 3px 0 rgba(0, 0, 0, 0.05);
+  /* Elevated card: more depth + a faint indigo ambient glow (mobile cards). */
+  --shadow-glow:
+    0 4px 16px -4px rgba(0, 0, 0, 0.10),
+    0 1px 3px 0 rgba(0, 0, 0, 0.05),
+    0 0 0 1px rgba(0, 0, 0, 0.02),
+    0 0 22px -8px rgba(99, 102, 241, 0.14);
 }
 
 /* ─── Dark theme ─────────────────────────────────────────── */
@@ -123,6 +129,11 @@ label[for] {
   /* ── Shadows ── */
   --shadow-card:      0 2px 6px 0 rgba(0, 0, 0, 0.55),
                       0 0 0 1px rgba(255, 255, 255, 0.03);
+  --shadow-glow:
+    0 6px 20px -4px rgba(0, 0, 0, 0.6),
+    0 2px 6px 0 rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.045),
+    0 0 26px -6px rgba(99, 102, 241, 0.22);
 }
 
 /* In dark mode, the soft accent/warning surfaces are already muted —
@@ -786,3 +797,112 @@ body[data-comment-mode="1"] [data-comment-ui] {
   margin: 4px 0;
 }
 .rte img:active { cursor: grabbing; }
+
+/* ── Selected map marker pulse ──────────────────────────────
+   A sonar ring that radiates from the selected job's pin so it's obvious which
+   marker the clicked job maps to. Rendered via a Google Maps OverlayView. */
+@keyframes mapPulse {
+  0%   { transform: scale(0.4); opacity: 0.9; }
+  65%  { opacity: 0.12; }
+  100% { transform: scale(3.4); opacity: 0; }
+}
+.map-pulse {
+  position: absolute;
+  width: 58px; height: 58px;
+  margin-left: -29px; margin-top: -29px;
+  border-radius: 9999px;
+  border: 4px solid var(--pulse-color, #4f46e5);
+  background: color-mix(in srgb, var(--pulse-color, #4f46e5) 20%, transparent);
+  box-sizing: border-box;
+  pointer-events: none;
+  animation: mapPulse 1.4s cubic-bezier(0.3, 0, 0.25, 1) infinite;
+}
+.map-pulse::after {
+  content: "";
+  position: absolute; inset: -4px;
+  border-radius: 9999px;
+  border: 4px solid var(--pulse-color, #4f46e5);
+  animation: mapPulse 1.4s cubic-bezier(0.3, 0, 0.25, 1) infinite;
+  animation-delay: 0.55s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .map-pulse, .map-pulse::after { animation: none; opacity: 0.5; }
+}
+
+/* ── Create / "+" button micro-interaction ──────────────────
+   The plus grows a hair on hover (unchanged), and rotates 45° clockwise on click
+   — so a toggle's "+" turns into an "×" while its menu is open, then rotates back
+   45° counter-clockwise when it closes (driven by aria-expanded). Applies to the
+   lucide Plus glyph inside any button/link, app-wide, with no per-call edits. */
+.lucide-plus,
+.lucide-plus-circle,
+.lucide-circle-plus {
+  transition: transform 0.18s ease;
+}
+/* Hover (closed) — subtle grow */
+button:hover .lucide-plus,
+a:hover .lucide-plus,
+button:focus-visible .lucide-plus,
+button:hover .lucide-plus-circle,
+a:hover .lucide-plus-circle,
+button:hover .lucide-circle-plus,
+a:hover .lucide-circle-plus {
+  transform: scale(1.08);
+}
+/* Press feedback */
+button:active .lucide-plus,
+a:active .lucide-plus,
+button:active .lucide-plus-circle,
+a:active .lucide-plus-circle,
+button:active .lucide-circle-plus,
+a:active .lucide-circle-plus {
+  transform: scale(0.92);
+}
+/* Click — a full 45° spin that completes regardless of how quick the click is
+   (added/removed by PlusClickEnhancer). For toggle buttons the aria-expanded
+   rule below holds it at 45° while their menu is open instead. */
+@keyframes plusClickSpin {
+  0%   { transform: rotate(0deg) scale(1); }
+  45%  { transform: rotate(45deg) scale(0.9); }
+  100% { transform: rotate(0deg) scale(1); }
+}
+.lucide-plus.plus-clicked,
+.lucide-plus-circle.plus-clicked,
+.lucide-circle-plus.plus-clicked {
+  animation: plusClickSpin 0.34s cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* Held open — set by PlusClickEnhancer while a click's popup/modal is open;
+   the "+" stays rotated to "×" until that popup is removed, then rotates back. */
+.lucide-plus.plus-held,
+.lucide-plus-circle.plus-held,
+.lucide-circle-plus.plus-held {
+  transform: rotate(45deg);
+  animation: none;
+}
+button:hover .lucide-plus.plus-held,
+button:hover .lucide-plus-circle.plus-held,
+button:hover .lucide-circle-plus.plus-held {
+  transform: rotate(45deg) scale(1.08);
+}
+
+/* Open toggle — "+" stays rotated to "×"; reverses 45° on close */
+button[aria-expanded="true"] .lucide-plus,
+button[aria-expanded="true"] .lucide-plus-circle,
+button[aria-expanded="true"] .lucide-circle-plus {
+  transform: rotate(45deg);
+}
+button[aria-expanded="true"]:hover .lucide-plus,
+button[aria-expanded="true"]:hover .lucide-plus-circle,
+button[aria-expanded="true"]:hover .lucide-circle-plus {
+  transform: rotate(45deg) scale(1.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lucide-plus,
+  .lucide-plus-circle,
+  .lucide-circle-plus { transition: none; }
+  button:hover .lucide-plus,
+  a:hover .lucide-plus,
+  button:active .lucide-plus,
+  button[aria-expanded="true"] .lucide-plus { transform: none; }
+}

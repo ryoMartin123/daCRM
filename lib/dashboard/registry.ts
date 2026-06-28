@@ -19,141 +19,29 @@ export interface WidgetDef {
   allowedRoles:    RoleKey[];
 }
 
-export const WIDGET_REGISTRY: WidgetDef[] = [
-
-  // ── Available at all context levels ──────────────────────
-  {
-    id: "stats_overview", title: "Stats Overview",
-    description: "Today's jobs, open leads, overdue tasks, and outstanding balance at a glance.",
-    category: "operations", defaultSize: "full",
-    allowedContexts: ["org", "company", "location", "service_area"],
-    allowedRoles: [],
-  },
-  {
-    id: "urgent_panel", title: "Urgent Items",
-    description: "Overdue tasks, overdue invoices, and active emergency jobs.",
-    category: "operations", defaultSize: "narrow",
-    allowedContexts: ["org", "company", "location", "service_area"],
-    allowedRoles: [],
-  },
-  {
-    id: "recent_activity", title: "Recent Activity",
-    description: "Latest activity events across all customers — notes, jobs, calls, and more.",
-    category: "activity", defaultSize: "wide",
-    allowedContexts: ["org", "company", "location", "service_area"],
-    allowedRoles: [],
-  },
-  {
-    id: "pipeline_snapshot", title: "Pipeline Snapshot",
-    description: "Lead counts by pipeline stage with a visual bar chart.",
-    category: "sales", defaultSize: "narrow",
-    allowedContexts: ["org", "company", "location", "service_area"],
-    allowedRoles: [],
-  },
-  {
-    id: "agreement_renewals", title: "Agreement Renewals",
-    description: "Upcoming agreement renewals and expiring maintenance plans.",
-    category: "financial", defaultSize: "narrow",
-    allowedContexts: ["org", "company", "location", "service_area"],
-    allowedRoles: [],
-  },
-
-  // ── Org-level ─────────────────────────────────────────────
-  {
-    id: "company_performance", title: "Company Performance",
-    description: "Side-by-side stats for each company — jobs, leads, and outstanding revenue.",
-    category: "operations", defaultSize: "wide",
-    allowedContexts: ["org"],
-    allowedRoles: ["org_admin"],
-  },
-  {
-    id: "revenue_by_company", title: "Revenue by Company",
-    description: "Paid and outstanding invoice totals broken down per company.",
-    category: "financial", defaultSize: "narrow",
-    allowedContexts: ["org"],
-    allowedRoles: ["org_admin"],
-  },
-
-  // ── Company + Org ─────────────────────────────────────────
-  {
-    id: "location_performance", title: "Location Performance",
-    description: "Key metrics per branch — jobs, open leads, and outstanding invoices.",
-    category: "operations", defaultSize: "wide",
-    allowedContexts: ["org", "company"],
-    allowedRoles: ["org_admin", "branch_manager"],
-  },
-  {
-    id: "quotes_followup", title: "Quotes — Follow-Up",
-    description: "Sent quotes that have not yet been approved and need follow-up.",
-    category: "sales", defaultSize: "narrow",
-    allowedContexts: ["org", "company", "location"],
-    allowedRoles: [],
-  },
-  {
-    id: "revenue_snapshot", title: "Revenue Snapshot",
-    description: "Month-to-date revenue bar chart with outstanding and average ticket metrics.",
-    category: "financial", defaultSize: "narrow",
-    allowedContexts: ["org", "company", "location"],
-    allowedRoles: ["org_admin", "branch_manager", "location_manager"],
-  },
-
-  // ── Company + Location + Service Area ─────────────────────
-  {
-    id: "todays_jobs", title: "Today's Jobs",
-    description: "Jobs scheduled for today and currently in progress.",
-    category: "operations", defaultSize: "wide",
-    allowedContexts: ["company", "location", "service_area"],
-    allowedRoles: [],
-  },
-  {
-    id: "open_work_orders", title: "Open Work Orders",
-    description: "Pending and in-progress work orders with checklist progress.",
-    category: "operations", defaultSize: "narrow",
-    allowedContexts: ["company", "location", "service_area"],
-    allowedRoles: [],
-  },
-  {
-    id: "visits_to_schedule", title: "Visits to Schedule",
-    description: "Planned agreement visits that are due to be turned into scheduled jobs.",
-    category: "operations", defaultSize: "narrow",
-    allowedContexts: ["company", "location", "service_area"],
-    allowedRoles: ["org_admin", "branch_manager", "location_manager", "dispatcher"],
-  },
-  {
-    id: "invoices_due", title: "Invoices Due",
-    description: "Unpaid invoices sorted by due date, highlighting overdue balances.",
-    category: "financial", defaultSize: "wide",
-    allowedContexts: ["company", "location", "service_area"],
-    allowedRoles: [],
-  },
-  {
-    id: "missing_required_photos", title: "Missing Required Photos",
-    description: "Jobs with incomplete required photo checklists.",
-    category: "operations", defaultSize: "narrow",
-    allowedContexts: ["company", "location", "service_area"],
-    allowedRoles: ["org_admin", "branch_manager", "location_manager"],
-  },
-
-  // ── Service Area ──────────────────────────────────────────
-  {
-    id: "leads_in_territory", title: "Leads in Territory",
-    description: "All open leads within the selected service area.",
-    category: "sales", defaultSize: "wide",
-    allowedContexts: ["service_area"],
-    allowedRoles: [],
-  },
-  {
-    id: "jobs_in_territory", title: "Jobs in Territory",
-    description: "Scheduled and active jobs within the selected service area.",
-    category: "operations", defaultSize: "narrow",
-    allowedContexts: ["service_area"],
-    allowedRoles: [],
-  },
-];
+// The CRM dashboard is now composed entirely of Analytics report widgets — the
+// old built-in operational widgets have been retired. New widgets are added from
+// Analytics (Add Widget → From Analytics). Kept as an (empty) array so all the
+// registry lookups + the customize flow keep working.
+export const WIDGET_REGISTRY: WidgetDef[] = [];
 
 // ── Lookups ───────────────────────────────────────────────
 export const WIDGET_MAP: Record<string, WidgetDef> =
   Object.fromEntries(WIDGET_REGISTRY.map(w => [w.id, w]));
+
+// Saved Analytics reports surface as dashboard widgets under a "report:<id>"
+// widgetId. They're context-agnostic (their own filters scope them) and default
+// to a wide cell; the real title/chart is rendered by AnalyticsWidget.
+export const REPORT_WIDGET_PREFIX = "report:";
+export const isReportWidget = (id: string) => id.startsWith(REPORT_WIDGET_PREFIX);
+export function resolveWidgetDef(id: string): WidgetDef | undefined {
+  if (isReportWidget(id)) return {
+    id, title: "Report", description: "Saved analytics report.",
+    category: "activity", defaultSize: "wide",
+    allowedContexts: ["org", "company", "location", "service_area"], allowedRoles: [],
+  };
+  return WIDGET_MAP[id];
+}
 
 export const CATEGORY_LABELS: Record<WidgetCategory, string> = {
   operations: "Operations",

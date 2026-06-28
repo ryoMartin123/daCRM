@@ -213,6 +213,17 @@ export function _loadFromStorage(): void {
     const parsed = JSON.parse(raw);
     _extra = Array.isArray(parsed) ? parsed.filter(isValidCustomer) : [];
   } catch { _extra = []; }
+  _loaded = true;
+}
+
+// Lazy-load fallback so reads work outside CustomerProvider (e.g. the mobile
+// route group, which has no provider). Loads once from storage if the store is
+// still empty; in the CRM the provider has already populated `_extra`, so this
+// is a no-op there.
+let _loaded = false;
+function ensureLoaded(): void {
+  if (_loaded || _extra.length || typeof window === "undefined") return;
+  _loadFromStorage();
 }
 
 // Patch a runtime customer (e.g. saving a service address captured at job time).
@@ -245,10 +256,12 @@ export function deleteCustomer(id: string): boolean {
 
 // ─── Lookup helpers ───────────────────────────────────────
 export function getCustomer(id: string): Customer | undefined {
+  ensureLoaded();
   return ALL_CUSTOMERS.find((c) => c.id === id) ?? _extra.find((c) => c.id === id);
 }
 
 export function getAllCustomers(): Customer[] {
+  ensureLoaded();
   return [...ALL_CUSTOMERS, ..._extra];
 }
 

@@ -8,12 +8,12 @@
 // jobs + roster; assignment writes back through the jobs store. AI suggests — the
 // dispatcher confirms.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   Search, MapPin, Truck, Sparkles, Phone, Navigation, ExternalLink, AlertTriangle, MessageSquare,
   X, Route as RouteIcon, ListChecks, Users, Layers, Gauge, ChevronDown, ChevronUp, Clock, CheckCircle2,
-  Info, Palette,
+  Info, Palette, Boxes,
 } from "lucide-react";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
 import { useGoogleMaps } from "@/hooks/useGoogleMaps";
@@ -55,7 +55,10 @@ export default function DispatchMap({ dateFilter }: { dateFilter: MapDateFilter 
   const [cluster, setCluster] = useState(true);
   const [showStatus, setShowStatus] = useState(true);   // top status bar overlay
   const [showLegend, setShowLegend] = useState(true);   // bottom legend
+  const [layersOpen, setLayersOpen] = useState(false);  // layer-toggle menu
   const [aiOpen, setAiOpen] = useState(true);
+  const [routeMeta, setRouteMeta] = useState<{ durationMin: number; distanceMi: number; live: boolean } | null>(null);
+  const layersRef = useRef<HTMLDivElement>(null);
   // The left rail switches between the dispatch Queue and the contextual Details
   // (inspector + AI), so the map can run full-width to the right edge.
   const [panelMode, setPanelMode] = useState<"queue" | "details">("queue");
@@ -64,12 +67,21 @@ export default function DispatchMap({ dateFilter }: { dateFilter: MapDateFilter 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const jobs = useMemo(() => getMapJobs(scope), [effectiveCompanyId, effectiveLocationId, effectiveServiceAreaId, refreshKey]);
   // Only dispatch-board members for the active scope can be assigned / suggested.
-  const techs = useMemo(() => getMapTechnicians(effectiveCompanyId, effectiveLocationId), [effectiveCompanyId, effectiveLocationId]);
+  // refreshKey re-anchors tech positions as job addresses geocode in.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const techs = useMemo(() => getMapTechnicians(effectiveCompanyId, effectiveLocationId), [effectiveCompanyId, effectiveLocationId, refreshKey]);
   const suggestions = useMemo(() => computeSuggestions(jobs, techs), [jobs, techs]);
 
   useEffect(() => {
     if (mapsLoaded && jobs.length) geocodeJobAddresses(jobs, () => setRefreshKey(k => k + 1));
   }, [mapsLoaded, jobs]);
+
+  useEffect(() => {
+    if (!layersOpen) return;
+    const onDown = (e: MouseEvent) => { if (layersRef.current && !layersRef.current.contains(e.target as Node)) setLayersOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [layersOpen]);
 
   const inDate = (j: MapJob) => {
     if (j.day == null) return false;
@@ -194,7 +206,7 @@ export default function DispatchMap({ dateFilter }: { dateFilter: MapDateFilter 
                 {selJob
                   ? <JobInspector job={selJob} techNames={techNames} routePos={jobRoutePos(selJob)} onAssign={t => assign(selJob.id, t)} onClose={() => setSelJobId(null)} />
                   : selTechObj && selRoute
-                  ? <TechInspector tech={selTechObj} route={selRoute} next={techNext(selTechObj.name)} onClose={() => setSelTech(null)} />
+                  ? <TechInspector tech={selTechObj} route={selRoute} next={techNext(selTechObj.name)} meta={routeMeta} onClose={() => setSelTech(null)} />
                   : <OverviewInspector stats={stats} techs={techs} jobCountOf={techJobCount} onPickTech={pickTech} />}
               </div>
               <div className="p-2 shrink-0" style={{ borderTop: "1px solid var(--border-subtle)" }}>
@@ -209,7 +221,7 @@ export default function DispatchMap({ dateFilter }: { dateFilter: MapDateFilter 
         {/* ── Map (hero) — runs full-width to the right edge ── */}
         <div className="flex-1 min-w-0 rounded-2xl overflow-hidden relative" style={{ border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
           <GoogleMapView jobs={mapJobs} techs={techs} route={selRoute} selectedJobId={selJobId} onSelectJob={pickJob}
-            flyTo={flyTo} showTechs={showTechs || tab === "techs" || !!selTech} traffic={traffic} cluster={cluster} />
+            flyTo={flyTo} showTechs={showTechs || tab === "techs" || !!selTech} traffic={traffic} cluster={cluster} onRouteMeta={setRouteMeta} />
 
           {/* Top overlay: status pill (left) + layer toggles (right) */}
           <div className="absolute top-3 left-3 right-3 flex items-start justify-between gap-2 pointer-events-none">
@@ -224,10 +236,20 @@ export default function DispatchMap({ dateFilter }: { dateFilter: MapDateFilter 
             ) : (
               <button onClick={() => setShowStatus(true)} title="Show info" className="pointer-events-auto p-2 rounded-lg" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)", color: "var(--text-secondary)" }}><Info className="w-4 h-4" /></button>
             )}
-            <div className="pointer-events-auto flex items-center gap-1.5">
-              <MapToggle active={showTechs} onClick={() => setShowTechs(v => !v)} icon={Users} label="Techs" />
-              <MapToggle active={traffic} onClick={() => setTraffic(v => !v)} icon={Gauge} label="Traffic" />
-              <MapToggle active={cluster} onClick={() => setCluster(v => !v)} icon={Layers} label="Cluster" />
+            {/* Layers — one button toggles the whole menu of map filters */}
+            <div className="pointer-events-auto relative" ref={layersRef}>
+              <button onClick={() => setLayersOpen(o => !o)} title="Map layers" aria-haspopup="menu" aria-expanded={layersOpen}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                style={{ backgroundColor: layersOpen ? ACCENT : "var(--bg-surface)", color: layersOpen ? "#fff" : "var(--text-secondary)", border: `1px solid ${layersOpen ? "transparent" : "var(--border-subtle)"}`, boxShadow: "var(--shadow-card)" }}>
+                <Layers className="w-3.5 h-3.5" /> Layers
+              </button>
+              {layersOpen && (
+                <div role="menu" className="absolute right-0 top-full mt-1.5 w-44 rounded-xl p-1.5 z-[500]" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "0 12px 32px rgba(0,0,0,0.18)" }}>
+                  <LayerRow icon={Users} label="Technicians" active={showTechs} onClick={() => setShowTechs(v => !v)} />
+                  <LayerRow icon={Gauge} label="Traffic" active={traffic} onClick={() => setTraffic(v => !v)} />
+                  <LayerRow icon={Boxes} label="Clustering" active={cluster} onClick={() => setCluster(v => !v)} />
+                </div>
+              )}
             </div>
           </div>
 
@@ -417,7 +439,7 @@ function JobInspector({ job, techNames, routePos, onAssign, onClose }: {
 }
 
 // ── Right inspector: technician ──
-function TechInspector({ tech, route, next, onClose }: { tech: MapTech; route: ReturnType<typeof buildRoute>; next?: MapJob; onClose: () => void }) {
+function TechInspector({ tech, route, next, meta, onClose }: { tech: MapTech; route: ReturnType<typeof buildRoute>; next?: MapJob; meta?: { durationMin: number; distanceMi: number; live: boolean } | null; onClose: () => void }) {
   const sc = TECH_STATUS_CONFIG[tech.status];
   return (
     <div className="p-4">
@@ -436,9 +458,15 @@ function TechInspector({ tech, route, next, onClose }: { tech: MapTech; route: R
 
       <div className="grid grid-cols-3 gap-2 mt-3 text-center">
         <Mini label="Stops" value={String(route.stops.length)} />
-        <Mini label="Drive" value={`${route.totalDriveMin}m`} />
+        <Mini label={meta ? "Drive · live" : "Drive"} value={meta ? `${meta.durationMin}m` : `${route.totalDriveMin}m`} />
         <Mini label="On site" value={`${Math.round(route.totalJobMin / 60 * 10) / 10}h`} />
       </div>
+      {meta && (
+        <p className="mt-2 flex items-center justify-center gap-1.5 text-[11px]" style={{ color: "#16a34a" }}>
+          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "#16a34a" }} />
+          Live road route · {meta.distanceMi} mi{meta.live ? " · current traffic" : ""}
+        </p>
+      )}
 
       <p className="text-[11px] mt-3" style={{ color: "var(--text-muted)" }}>Skills: {tech.skills.join(", ")} · Last check-in {tech.lastCheckIn}</p>
       {next && <p className="text-[11px] mt-1" style={{ color: "var(--text-secondary)" }}>Next up: {next.customerName} · {next.scheduledTime}</p>}
@@ -523,11 +551,14 @@ function AiInsights({ suggestions, contextLabel, open, onToggle, onApply, onDism
 }
 
 // ── Small pieces ──
-function MapToggle({ active, onClick, icon: Icon, label }: { active: boolean; onClick: () => void; icon: typeof Users; label: string }) {
+function LayerRow({ icon: Icon, label, active, onClick }: { icon: typeof Users; label: string; active: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
-      style={{ backgroundColor: active ? ACCENT : "var(--bg-surface)", color: active ? "#fff" : "var(--text-secondary)", border: `1px solid ${active ? "transparent" : "var(--border-subtle)"}`, boxShadow: "var(--shadow-card)" }}>
-      <Icon className="w-3.5 h-3.5" /> {label}
+    <button onClick={onClick} className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors hover:bg-[var(--bg-surface-2)]">
+      <Icon className="w-3.5 h-3.5 shrink-0" style={{ color: active ? ACCENT : "var(--text-muted)" }} />
+      <span className="flex-1 text-left" style={{ color: "var(--text-secondary)" }}>{label}</span>
+      <span className="w-7 h-4 rounded-full relative shrink-0 transition-colors" style={{ backgroundColor: active ? ACCENT : "var(--bg-input)" }}>
+        <span className="absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all" style={{ left: active ? "14px" : "2px" }} />
+      </span>
     </button>
   );
 }

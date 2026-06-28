@@ -18,7 +18,7 @@ import {
   Receipt,
   FileText,
   Images,
-  BarChart2,
+  LineChart,
   Settings,
   ChevronDown,
   PanelLeftClose,
@@ -83,7 +83,7 @@ const navigation: { section: string; items: NavItem[] }[] = [
   {
     section: "Grow",
     items: [
-      { name: "Reports",   href: "/reports",   icon: BarChart2, resource: "reports"   },
+      { name: "Analytics", href: "/analytics", icon: LineChart,  resource: "reports" },
     ],
   },
 ];

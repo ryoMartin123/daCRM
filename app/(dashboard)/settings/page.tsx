@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   TrendingUp, Briefcase, FolderKanban, ClipboardList,
   FileText, Image as ImageIcon, MessageSquare,
-  Sliders, LayoutDashboard, ChevronRight, Settings2, ArrowLeft,
+  Sliders, ChevronRight, Settings2, ArrowLeft,
   CalendarClock, ListChecks, Package, Tag, Percent, BookOpen, Factory,
   ShieldCheck, ExternalLink,
 } from "lucide-react";
@@ -23,7 +23,6 @@ const SectionLoading = () => (
   <div className="p-6 text-sm" style={{ color: "var(--text-muted)" }}>Loading…</div>
 );
 const CustomFieldsSection       = dynamic(() => import("@/components/settings/CustomFieldsSection"),       { loading: SectionLoading, ssr: false });
-const DashboardsSettingsSection = dynamic(() => import("@/components/settings/DashboardsSettingsSection"), { loading: SectionLoading, ssr: false });
 const PipelinesSection          = dynamic(() => import("@/components/settings/PipelinesSection"),          { loading: SectionLoading, ssr: false });
 const JobConfigSection          = dynamic(() => import("@/components/settings/JobConfigSection"),          { loading: SectionLoading, ssr: false });
 const ProjectsSection           = dynamic(() => import("@/components/settings/ProjectsSection"),           { loading: SectionLoading, ssr: false });
@@ -49,7 +48,7 @@ type SectionKey =
   | "pipelines" | "job_types" | "projects" | "work_orders" | "tasks" | "photo_categories" | "calendar_dispatch" | "agreements"
   | "items_categories" | "salesbook_library" | "terms_conditions" | "taxes_fees"
   | "communication"
-  | "industry" | "custom_fields" | "dashboards";
+  | "industry" | "custom_fields";
 
 type CategoryKey =
   | "operations" | "sales_catalog" | "customization" | "communication";
@@ -107,12 +106,11 @@ const CATEGORIES: Category[] = [
   },
   {
     key: "customization", label: "Customization",
-    description: "Custom fields, dashboards, and industry templates",
+    description: "Custom fields and industry templates",
     icon: Sliders,
     items: [
       { key: "industry",       label: "Industry Defaults",    description: "Default pipeline, job types, and fields by industry", icon: Factory },
       { key: "custom_fields",  label: "Custom Fields",        description: "Add custom fields to any record type",                icon: Sliders },
-      { key: "dashboards",     label: "Dashboards & Widgets", description: "Widget library, layouts, and custom widgets",         icon: LayoutDashboard },
     ],
   },
   {
@@ -142,7 +140,6 @@ const SECTION_LAYERS: Record<SectionKey, SectionLayers> = {
   communication:      ["org", "company"],
   industry:           ["org", "company"],
   custom_fields:      ["org", "company"],
-  dashboards:         "any",
 };
 
 // Sections that render as a hub: a container picker first, then the chosen
@@ -290,7 +287,6 @@ export default function SettingsPage() {
         onBack={hubProps?.onBack ?? (() => {})} />;
       case "terms_conditions":   return <TermsConditionsSection />;
       case "taxes_fees":         return <TaxesFeesSection />;
-      case "dashboards":         return <DashboardsSettingsSection />;
       case "custom_fields":      return <CustomFieldsSection />;
       case "work_orders":        return <WorkOrderTemplatesSection />;
       case "agreements":         return <AgreementsSettingsSection

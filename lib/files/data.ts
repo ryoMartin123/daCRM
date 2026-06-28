@@ -2,7 +2,7 @@
 // Replace with Supabase: photos_files table + Storage signed URLs.
 // Files are stored ONCE; getFiles() matches by any combination of linked IDs.
 
-import type { PhotoFile, FileScope, FileType, FileLinkKind } from "./types";
+import type { PhotoFile, FileScope, FileType, FileLinkKind, PhotoPhase } from "./types";
 
 const STORAGE_KEY = "crm-photos-files-v2";
 
@@ -27,6 +27,10 @@ function persist() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(_files)); } catch { /* ignore */ }
 }
 
+// Session-only preview URLs for just-captured photos (object URLs don't survive
+// a reload and shouldn't be persisted — real binaries go to Supabase Storage).
+const previews = new Map<string, string>();
+
 // ─── Scope-aware getter ───────────────────────────────────
 // Returns files matching ALL provided scope IDs (AND). Empty scope = all files.
 export function getFiles(scope: FileScope = {}): PhotoFile[] {
@@ -43,6 +47,7 @@ export function getFiles(scope: FileScope = {}): PhotoFile[] {
       (!scope.invoiceId   || f.invoiceId   === scope.invoiceId)   &&
       (!scope.equipmentId || f.equipmentId === scope.equipmentId)
     )
+    .map(f => previews.has(f.id) ? { ...f, previewUrl: previews.get(f.id) } : f)
     .sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
 }
 
@@ -119,6 +124,7 @@ export function inferFileType(name: string, mime = ""): FileType {
 export function addFile(input: {
   scope: FileScope; fileName: string; fileType: FileType; categoryKey: string;
   uploadedBy: string; notes?: string; accountName?: string;
+  phase?: PhotoPhase; lat?: number; lng?: number; tags?: string[]; previewUrl?: string;
 }): PhotoFile[] {
   const list = init();
   const today = new Date();
@@ -134,16 +140,20 @@ export function addFile(input: {
     agreementId:  input.scope.agreementId,
     equipmentId:  input.scope.equipmentId,
     categoryKey:  input.categoryKey,
+    phase:        input.phase,
     fileName:     input.fileName,
     fileType:     input.fileType,
     storagePath:  `acct/${input.scope.accountId}/${input.fileName}`,
     notes:        input.notes,
-    tags:         [],
+    tags:         input.tags ?? [],
+    lat:          input.lat,
+    lng:          input.lng,
     uploadedBy:   input.uploadedBy,
     uploadedAt:   today.toISOString().slice(0, 10),
     displayDate:  today.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
     accountName:  input.accountName,
   };
+  if (input.previewUrl) previews.set(f.id, input.previewUrl);
   _files = [f, ...list];
   persist();
   return getFiles();

@@ -11,7 +11,7 @@
 import { useEffect, useState } from "react";
 import {
   Plus, Megaphone, Mail, MessageSquare, Star, FilePen, RefreshCw, Phone, Users,
-  FileText, CheckCircle2, TrendingDown, Flame, Building2, Home, Send, Radio, Zap,
+  FileText, CheckCircle2, TrendingDown, Flame, Building2, Home, Send, Zap,
 } from "lucide-react";
 import {
   getCampaigns, getTemplates, getAudience, AUDIENCES,
@@ -26,6 +26,7 @@ import CampaignBuilder, { type CampaignBuilderPreset } from "@/components/market
 import MarketingSettingsSection from "@/components/settings/MarketingSettingsSection";
 import MarketingEmptyState from "@/components/marketing/MarketingEmptyState";
 import AutomationsSection from "@/components/marketing/automations/AutomationsSection";
+import LeadSourcesSection from "@/components/marketing/LeadSourcesSection";
 import { PageHeader, StatCard } from "@/components/platform/ui";
 import PageTitle from "@/components/shared/PageTitle";
 import type { LucideIcon } from "lucide-react";
@@ -72,7 +73,6 @@ export default function MarketingWorkspace({ section }: { section: MarketingSect
   const [builder, setBuilder] = useState<CampaignBuilderPreset | null>(null);
   // Lead Sources scaffold has no builder yet — its CTA surfaces a quiet "on the
   // way" note rather than a dead button.
-  const [comingSoon, setComingSoon] = useState(false);
 
   function reload() {
     setCampaigns(getCampaigns());
@@ -96,55 +96,31 @@ export default function MarketingWorkspace({ section }: { section: MarketingSect
   // Automations is a full sub-app (list + step builder), not a placeholder.
   if (section === "automations") return <AutomationsSection />;
 
-  // ── Scaffolded sections (clean empty states, no fake data) ──
-  if (section === "lead_sources" || section === "performance") {
+  // Lead Sources — performance tracking by source.
+  if (section === "lead_sources") return <LeadSourcesSection />;
+
+  // ── Performance scaffold (clean empty state, no fake data) ──
+  if (section === "performance") {
     const meta = SECTION_META[section];
     return (
       <div className="p-6 space-y-5">
         <PageTitle title={meta.title} description={meta.description} />
-
-        {section === "performance" && (
-          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
-            {PERFORMANCE_METRICS.map(label => (
-              <div key={label} className="rounded-xl px-4 py-3.5"
-                style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
-                <p className="text-[11px] font-medium truncate" style={{ color: "var(--text-muted)" }}>{label}</p>
-                <p className="text-xl font-bold mt-1" style={{ color: "var(--text-secondary)" }}>—</p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {section === "lead_sources" && (
-          <MarketingEmptyState
-            icon={Radio}
-            title="No lead sources tracked yet"
-            description="Track where every lead comes from — website, ads, referrals, signage — so you can see which sources actually produce booked jobs and revenue."
-            ctaLabel="Add lead source"
-            onCta={() => setComingSoon(true)}
-            suggestions={[
-              "Website", "Google Ads", "Facebook", "Referral",
-              "Google Business Profile", "Direct mail", "Yard sign", "Existing customer",
-            ]}
-          />
-        )}
-
-        {section === "performance" && (
-          <MarketingEmptyState
-            icon={TrendingDown}
-            title="No performance data yet"
-            description="Metrics fill in here as campaigns run — leads generated, replies, booked jobs, and revenue attributed back to your marketing."
-            ctaLabel="Create a campaign"
-            onCta={() => setBuilder({})}
-          />
-        )}
-
-        {comingSoon && (
-          <p className="text-xs text-center" style={{ color: "var(--text-muted)" }}>
-            The builder for this section is on the way — the structure is ready for your CRM data.
-          </p>
-        )}
-
+        <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
+          {PERFORMANCE_METRICS.map(label => (
+            <div key={label} className="rounded-xl px-4 py-3.5"
+              style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+              <p className="text-[11px] font-medium truncate" style={{ color: "var(--text-muted)" }}>{label}</p>
+              <p className="text-xl font-bold mt-1" style={{ color: "var(--text-secondary)" }}>—</p>
+            </div>
+          ))}
+        </div>
+        <MarketingEmptyState
+          icon={TrendingDown}
+          title="No performance data yet"
+          description="Metrics fill in here as campaigns run — leads generated, replies, booked jobs, and revenue attributed back to your marketing."
+          ctaLabel="Create a campaign"
+          onCta={() => setBuilder({})}
+        />
         {builder && (
           <CampaignBuilder preset={builder} onClose={() => setBuilder(null)} onCreated={() => setBuilder(null)} />
         )}

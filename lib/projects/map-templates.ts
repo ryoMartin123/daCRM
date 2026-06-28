@@ -27,7 +27,40 @@ export interface TemplateNode {
   deps: string[];             // dependency node keys
   gate?: string;              // reason shown when blocked by an unmet dependency
   notes?: string;
+  // ── Builder v2 capabilities (all optional) ──
+  durationDays?: number;            // expected duration / SLA in business days
+  checklist?: NodeChecklistItem[];  // sub-items for a manual node
+  automations?: NodeAutomation[];   // hooks fired on ready/complete
+  condition?: NodeCondition;        // node only applies when this is met
 }
+
+// ─── Node capabilities ────────────────────────────────────
+export interface NodeChecklistItem { id: string; label: string; required?: boolean; }
+
+export type NodeAutomationTrigger = "ready" | "completed";
+export type NodeAutomationAction = "notify_assignee" | "notify_customer" | "create_task" | "auto_advance";
+export interface NodeAutomation { id: string; on: NodeAutomationTrigger; action: NodeAutomationAction; }
+
+export type ConditionField = "project_value" | "customer_type" | "permit_required" | "project_size";
+export type ConditionOp = "gt" | "lt" | "eq" | "is_true" | "is_false";
+export interface NodeCondition { field: ConditionField; op: ConditionOp; value?: string; }
+
+export const AUTOMATION_LABEL: Record<NodeAutomationAction, string> = {
+  notify_assignee: "Notify assignee",
+  notify_customer: "Send customer update",
+  create_task: "Create a follow-up task",
+  auto_advance: "Auto-advance to next step",
+};
+export const TRIGGER_LABEL: Record<NodeAutomationTrigger, string> = { ready: "When ready", completed: "When completed" };
+export const CONDITION_FIELD_LABEL: Record<ConditionField, string> = {
+  project_value: "Project value", customer_type: "Customer type", permit_required: "Permit required", project_size: "Project size",
+};
+export const CONDITION_OP_LABEL: Record<ConditionOp, string> = {
+  gt: "is greater than", lt: "is less than", eq: "equals", is_true: "is required", is_false: "is not required",
+};
+
+export function newChecklistItemId(): string { return `cl${Date.now().toString(36)}${Math.random().toString(36).slice(2, 4)}`; }
+export function newAutomationId(): string { return `au${Date.now().toString(36)}${Math.random().toString(36).slice(2, 4)}`; }
 
 export interface MapTemplate {
   id: string;

@@ -582,11 +582,12 @@ export default function CalendarPage() {
           <div className="relative shrink-0">
             <button onClick={() => setBoardMenuOpen(o => !o)}
               title="Switch dispatch board"
-              className="flex items-center gap-2.5 pl-1.5 pr-2.5 py-1 rounded-lg transition-colors hover:bg-[var(--bg-surface-2)]"
+              className="group flex items-center gap-2.5 pl-1.5 pr-2.5 py-1 rounded-lg transition-colors hover:bg-[var(--bg-surface-2)]"
               style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)" }}
               aria-haspopup="menu" aria-expanded={boardMenuOpen}>
-              <div className="w-8 h-8 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: "var(--accent-soft-bg)" }}>
-                <LayoutGrid className="w-4 h-4" style={{ color: "var(--accent-text)" }} />
+              <div className="w-8 h-8 rounded-md flex items-center justify-center shrink-0 transition-transform duration-150 ease-out group-hover:scale-110 group-active:scale-95"
+                style={{ backgroundColor: "var(--accent-soft-bg)" }}>
+                <LayoutGrid className="w-4 h-4 transition-transform duration-150 group-active:rotate-[8deg]" style={{ color: "var(--accent-text)" }} />
               </div>
               <div className="min-w-0 text-left max-w-[180px]">
                 <p className="text-sm font-semibold leading-tight truncate" style={{ color: "var(--text-primary)" }}>{boardMenuLabel}</p>

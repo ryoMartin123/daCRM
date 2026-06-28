@@ -9,7 +9,7 @@
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 
-import React, { useMemo } from "react";
+import React, { memo, useMemo } from "react";
 import {
   GridLayout,
   useContainerWidth,
@@ -18,47 +18,22 @@ import {
 } from "react-grid-layout";
 import { GripHorizontal, EyeOff } from "lucide-react";
 
-import StatsOverview        from "@/components/dashboard/StatsOverview";
-import TodaysJobs           from "@/components/dashboard/TodaysJobs";
-import RecentActivity       from "@/components/dashboard/RecentActivity";
-import UrgentPanel          from "@/components/dashboard/UrgentPanel";
-import RevenueSnapshot      from "@/components/dashboard/RevenueSnapshot";
-import PipelineSnapshot     from "@/components/dashboard/PipelineSnapshot";
-import QuotesFollowUp       from "@/components/dashboard/QuotesFollowUp";
-import OpenWorkOrders       from "@/components/dashboard/OpenWorkOrders";
-import InvoicesDue          from "@/components/dashboard/InvoicesDue";
-import LocationPerformance  from "@/components/dashboard/LocationPerformance";
-import CompanyPerformance   from "@/components/dashboard/CompanyPerformance";
-import LeadsInTerritory     from "@/components/dashboard/LeadsInTerritory";
-import JobsInTerritory      from "@/components/dashboard/JobsInTerritory";
-import AgreementRenewals    from "@/components/dashboard/AgreementRenewals";
-import MissingPhotos        from "@/components/dashboard/MissingPhotos";
-import VisitsToSchedule     from "@/components/dashboard/VisitsToSchedule";
-
-import { WIDGET_MAP } from "@/lib/dashboard/registry";
+import { resolveWidgetDef, isReportWidget } from "@/lib/dashboard/registry";
+import AnalyticsWidget from "@/components/dashboard/AnalyticsWidget";
 import { type LayoutItem as DashItem } from "@/lib/dashboard/layouts";
 
+// Memoized widget content — only re-renders when its id changes, NOT on every
+// grid re-render. Without this, dragging (which fires layout changes constantly)
+// re-renders every widget's heavy content (charts/SVGs) each frame → lag/glitch.
+const WidgetContent = memo(function WidgetContent({ id }: { id: string }) {
+  return renderWidget(id);
+});
+
 // ─── Widget renderer ──────────────────────────────────────
+// The dashboard is composed entirely of Analytics report widgets now.
 function renderWidget(id: string) {
-  switch (id) {
-    case "stats_overview":          return <StatsOverview />;
-    case "todays_jobs":             return <TodaysJobs />;
-    case "urgent_panel":            return <UrgentPanel />;
-    case "pipeline_snapshot":       return <PipelineSnapshot />;
-    case "quotes_followup":         return <QuotesFollowUp />;
-    case "revenue_snapshot":        return <RevenueSnapshot />;
-    case "recent_activity":         return <RecentActivity />;
-    case "open_work_orders":        return <OpenWorkOrders />;
-    case "visits_to_schedule":      return <VisitsToSchedule />;
-    case "invoices_due":            return <InvoicesDue />;
-    case "location_performance":    return <LocationPerformance />;
-    case "company_performance":     return <CompanyPerformance />;
-    case "leads_in_territory":      return <LeadsInTerritory />;
-    case "jobs_in_territory":       return <JobsInTerritory />;
-    case "agreement_renewals":      return <AgreementRenewals />;
-    case "missing_required_photos": return <MissingPhotos />;
-    default: return null;
-  }
+  if (isReportWidget(id)) return <AnalyticsWidget reportId={id.slice("report:".length)} />;
+  return null;
 }
 
 export interface DashboardGridProps {
@@ -84,7 +59,7 @@ export default function DashboardGrid({
   // Convert to react-grid-layout format
   const rglLayout: RGLItem[] = useMemo(() =>
     contextVisible.map(item => {
-      const def  = WIDGET_MAP[item.widgetId];
+      const def  = resolveWidgetDef(item.widgetId);
       // maxW: full-width widget can still be narrowed to half; narrow widgets cap at 8 cols
       const maxW = def?.defaultSize === "narrow" ? 8 : 12;
       return {
@@ -133,7 +108,7 @@ export default function DashboardGrid({
           ? { i: DROP_ID, x: 0, y: 0, w: dragSize.w, h: dragSize.h }
           : undefined}
         onDrop={(_layout, item) => { if (item) onDropWidget(item.x, item.y); }}
-        compactor={verticalCompactor}  // auto-fill gaps for cleaner layouts
+        compactor={verticalCompactor}  // stable, deterministic layout (no overlap/jitter)
         onLayoutChange={onLayoutChange}
         autoSize
       >
@@ -145,7 +120,7 @@ export default function DashboardGrid({
           <div key={item.widgetId}
             className={["relative", customizing ? "dashboard-widget-editing" : ""].filter(Boolean).join(" ")}
           >
-            {renderWidget(item.widgetId)}
+            <WidgetContent id={item.widgetId} />
 
             {/* ── Drag handle overlay — customize mode only ── */}
             {customizing && (
@@ -160,7 +135,7 @@ export default function DashboardGrid({
                 }}>
                 <GripHorizontal className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--accent-icon)" }} />
                 <span className="text-[10px] font-semibold flex-1 truncate" style={{ color: "var(--accent-text)" }}>
-                  {WIDGET_MAP[item.widgetId]?.title}
+                  {resolveWidgetDef(item.widgetId)?.title}
                 </span>
                 {/* Stop drag from firing when clicking Hide */}
                 <button

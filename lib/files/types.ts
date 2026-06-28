@@ -2,6 +2,7 @@
 // Account is the master owner; optional FKs surface the same file in many views.
 
 export type FileType = "image" | "pdf" | "document" | "video" | "other";
+export type PhotoPhase = "before" | "during" | "after";
 
 export interface PhotoFile {
   id:             string;
@@ -25,11 +26,16 @@ export interface PhotoFile {
   equipmentId?:   string;
 
   categoryKey:    string;   // links to a photo category (Settings → Photo Categories)
+  phase?:         PhotoPhase; // before / during / after (progress galleries + reports)
   fileName:       string;
   fileType:       FileType;
   storagePath:    string;
   notes?:         string;
   tags:           string[];
+
+  // Field-capture geotag (CompanyCam-style) — lat/lng where the photo was taken.
+  lat?:           number;
+  lng?:           number;
 
   uploadedBy:     string;
   uploadedAt:     string;   // ISO date for sorting
@@ -37,6 +43,8 @@ export interface PhotoFile {
 
   // Denormalized for display
   accountName?:   string;
+  // Transient, session-only object URL for a just-captured photo (not persisted).
+  previewUrl?:    string;
 }
 
 // A filter that matches a file by ALL provided linked IDs (AND).

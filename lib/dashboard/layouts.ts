@@ -19,31 +19,22 @@ export interface LayoutItem {
   minH: number;
 }
 
-// Default layout — mirrors the current dashboard arrangement.
-// Hidden widgets carry sensible default positions so they land cleanly when added.
+// Default dashboard — a grid of prebuilt Analytics template widgets (seeded in
+// lib/analytics/store). Users add/remove more via Add Widget → From Analytics.
 export const DEFAULT_LAYOUT: LayoutItem[] = [
-  // ── Visible by default ─────────────────────────────────
-  { widgetId: "stats_overview",    visible: true,  order: 1,  x: 0,  y: 0,  w: 12, h: 3,  minW: 6,  minH: 2  },
-  { widgetId: "todays_jobs",       visible: true,  order: 2,  x: 0,  y: 3,  w: 8,  h: 7,  minW: 4,  minH: 4  },
-  { widgetId: "urgent_panel",      visible: true,  order: 3,  x: 8,  y: 3,  w: 4,  h: 7,  minW: 3,  minH: 3  },
-  { widgetId: "pipeline_snapshot", visible: true,  order: 4,  x: 0,  y: 10, w: 4,  h: 6,  minW: 3,  minH: 4  },
-  { widgetId: "quotes_followup",   visible: true,  order: 5,  x: 4,  y: 10, w: 4,  h: 6,  minW: 3,  minH: 4  },
-  { widgetId: "revenue_snapshot",  visible: true,  order: 6,  x: 8,  y: 10, w: 4,  h: 6,  minW: 3,  minH: 4  },
-  { widgetId: "recent_activity",   visible: true,  order: 7,  x: 0,  y: 16, w: 8,  h: 8,  minW: 4,  minH: 4  },
-  { widgetId: "open_work_orders",  visible: true,  order: 8,  x: 8,  y: 16, w: 4,  h: 6,  minW: 3,  minH: 4  },
-  { widgetId: "visits_to_schedule",visible: true,  order: 9,  x: 8,  y: 22, w: 4,  h: 6,  minW: 3,  minH: 3  },
-  // ── Off by default — added via customize panel ─────────
-  { widgetId: "invoices_due",              visible: false, order: 9,  x: 0, y: 24, w: 8,  h: 7, minW: 4, minH: 4 },
-  { widgetId: "location_performance",      visible: false, order: 10, x: 0, y: 24, w: 8,  h: 5, minW: 6, minH: 4 },
-  { widgetId: "company_performance",       visible: false, order: 11, x: 0, y: 24, w: 8,  h: 5, minW: 6, minH: 4 },
-  { widgetId: "revenue_by_company",        visible: false, order: 12, x: 8, y: 24, w: 4,  h: 5, minW: 3, minH: 4 },
-  { widgetId: "agreement_renewals",        visible: false, order: 13, x: 0, y: 24, w: 4,  h: 6, minW: 3, minH: 4 },
-  { widgetId: "missing_required_photos",   visible: false, order: 14, x: 4, y: 24, w: 4,  h: 6, minW: 3, minH: 4 },
-  { widgetId: "leads_in_territory",        visible: false, order: 15, x: 0, y: 24, w: 8,  h: 7, minW: 4, minH: 4 },
-  { widgetId: "jobs_in_territory",         visible: false, order: 16, x: 8, y: 24, w: 4,  h: 7, minW: 3, minH: 4 },
+  { widgetId: "report:rpt-seed-1", visible: true, order: 1, x: 0, y: 0,  w: 8, h: 6, minW: 4, minH: 4 }, // Paid revenue by month (line)
+  { widgetId: "report:rpt-seed-5", visible: true, order: 2, x: 8, y: 0,  w: 4, h: 3, minW: 3, minH: 3 }, // Outstanding AR (KPI)
+  { widgetId: "report:rpt-seed-8", visible: true, order: 3, x: 8, y: 3,  w: 4, h: 3, minW: 3, minH: 3 }, // Average ticket (gauge)
+  { widgetId: "report:rpt-seed-6", visible: true, order: 4, x: 0, y: 6,  w: 8, h: 6, minW: 4, minH: 4 }, // Jobs completed by month (bar)
+  { widgetId: "report:rpt-seed-3", visible: true, order: 5, x: 8, y: 6,  w: 4, h: 6, minW: 3, minH: 4 }, // Jobs by type (donut)
+  { widgetId: "report:rpt-seed-2", visible: true, order: 6, x: 0, y: 12, w: 6, h: 6, minW: 3, minH: 4 }, // Estimate conversion by tech (bar)
+  { widgetId: "report:rpt-seed-7", visible: true, order: 7, x: 6, y: 12, w: 6, h: 6, minW: 3, minH: 4 }, // Leads by source (h-bar)
+  { widgetId: "report:rpt-seed-4", visible: true, order: 8, x: 0, y: 18, w: 6, h: 6, minW: 3, minH: 4 }, // Revenue leaderboard
 ];
 
-export const LAYOUT_STORAGE_KEY = "crm-dashboard-layout";
+// Bumped to v2 when the dashboard switched to analytics widgets — old saved
+// layouts (built-in widget ids) are ignored so everyone gets the new default.
+export const LAYOUT_STORAGE_KEY = "crm-dashboard-layout-v2";
 
 const DEFAULTS_MAP = Object.fromEntries(DEFAULT_LAYOUT.map(d => [d.widgetId, d]));
 
@@ -55,7 +46,9 @@ export function loadLayout(): LayoutItem[] {
 
     const saved = JSON.parse(raw) as Partial<LayoutItem>[];
     const normalised: LayoutItem[] = saved
-      .filter(s => s.widgetId)
+      // Keep only known widgets + saved analytics-report widgets; drop stale ids
+      // (e.g. widgets that have since been removed) so they don't leave blank cells.
+      .filter(s => !!s.widgetId && (!!DEFAULTS_MAP[s.widgetId] || s.widgetId.startsWith("report:")))
       .map(s => {
         const def = DEFAULTS_MAP[s.widgetId!] ?? DEFAULT_LAYOUT[0];
         return {

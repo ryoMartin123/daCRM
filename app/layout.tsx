@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
+import PlusClickEnhancer from "@/components/shared/PlusClickEnhancer";
 import "./globals.css";
 
 const inter = Inter({
@@ -9,8 +10,23 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "ServiceCRM",
-  description: "All-in-one CRM for service businesses",
+  title: "Routiqa",
+  description: "All-in-one platform for service businesses — CRM, dispatch, and a field-ready mobile app.",
+  applicationName: "Routiqa",
+  appleWebApp: { capable: true, title: "Routiqa", statusBarStyle: "black-translucent" },
+};
+
+// viewport-fit=cover lets the mobile shell paint into the iPhone safe areas; the
+// shell then pads with env(safe-area-inset-*). Theme color follows light/dark.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#171717" },
+  ],
 };
 
 export default function RootLayout({
@@ -42,6 +58,7 @@ export default function RootLayout({
       </head>
       <body className={`${inter.variable} antialiased`} suppressHydrationWarning>
         <ThemeProvider>{children}</ThemeProvider>
+        <PlusClickEnhancer />
       </body>
     </html>
   );

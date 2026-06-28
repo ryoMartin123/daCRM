@@ -8,14 +8,16 @@ import type { LayoutItem as RGLItem } from "react-grid-layout";
 import DashboardGrid from "@/components/dashboard/DashboardGrid";
 import {
   Settings2, Check, X, RotateCcw,
-  Plus, GripVertical, Info, MoreHorizontal,
+  Plus, GripVertical, Info, MoreHorizontal, LineChart,
 } from "lucide-react";
 
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
 import {
-  WIDGET_REGISTRY, WIDGET_MAP, CATEGORY_LABELS, CONTEXT_LABELS,
-  getContextLevel, type WidgetCategory, type ContextLevel,
+  CONTEXT_LABELS,
+  getContextLevel, resolveWidgetDef, REPORT_WIDGET_PREFIX, type ContextLevel,
 } from "@/lib/dashboard/registry";
+import { getReports } from "@/lib/analytics/store";
+import Link from "next/link";
 import {
   DEFAULT_LAYOUT, loadLayout, saveLayout, nextFreeY,
   type LayoutItem as DashItem,
@@ -199,25 +201,13 @@ function EditDock({
 // backdrop) so the user can watch widgets drop into the grid live as
 // they click them.
 function AddWidgetsDrawer({
-  hiddenIds, contextLevel, onAdd, onClose, onDragStartWidget, onDragEndWidget,
+  contextLevel, reportWidgets, onAdd, onClose, onDragStartWidget, onDragEndWidget,
 }: {
-  hiddenIds: string[]; contextLevel: ContextLevel;
+  contextLevel: ContextLevel;
+  reportWidgets: { id: string; name: string; sub: string }[];
   onAdd: (id: string) => void; onClose: () => void;
   onDragStartWidget: (id: string) => void; onDragEndWidget: () => void;
 }) {
-  const available = WIDGET_REGISTRY.filter(
-    w => hiddenIds.includes(w.id) && w.allowedContexts.includes(contextLevel)
-  );
-  const otherCtx = WIDGET_REGISTRY.filter(
-    w => hiddenIds.includes(w.id) && !w.allowedContexts.includes(contextLevel)
-  );
-
-  const grouped = available.reduce<Partial<Record<WidgetCategory, typeof WIDGET_REGISTRY>>>((acc, w) => {
-    if (!acc[w.category]) acc[w.category] = [];
-    acc[w.category]!.push(w);
-    return acc;
-  }, {});
-
   return (
     <div className="dashboard-edit-drawer fixed top-0 right-0 bottom-0 z-50 w-full max-w-sm flex flex-col"
       style={{ backgroundColor: "var(--bg-surface)", borderLeft: "1px solid var(--border)", boxShadow: "-16px 0 48px -12px rgba(0,0,0,0.22)" }}>
@@ -242,64 +232,33 @@ function AddWidgetsDrawer({
         </button>
       </div>
 
-      {/* Body */}
+      {/* Body — analytics report widgets only */}
       <div className="flex-1 overflow-y-auto dashboard-widget-content p-4 space-y-4">
-        {available.length === 0 && otherCtx.length === 0 ? (
-          <div className="rounded-xl p-6 text-center" style={{ border: "1.5px dashed var(--border)", backgroundColor: "var(--bg-surface-2)" }}>
-            <p className="text-sm" style={{ color: "var(--text-muted)" }}>All widgets for this context are already visible.</p>
+        {reportWidgets.length === 0 ? (
+          <div className="rounded-xl p-6 text-center space-y-2" style={{ border: "1.5px dashed var(--border)", backgroundColor: "var(--bg-surface-2)" }}>
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>Every analytics report is already on your dashboard.</p>
+            <Link href="/analytics/builder" className="inline-block text-xs font-semibold" style={{ color: "var(--accent-text)" }}>Build a new one in Analytics →</Link>
           </div>
-        ) : available.length > 0 ? (
-          (Object.entries(grouped) as [WidgetCategory, typeof WIDGET_REGISTRY][]).map(([cat, widgets]) => (
-            <div key={cat}>
-              <p className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--accent-text)" }}>
-                {CATEGORY_LABELS[cat]}
-              </p>
-              <div className="grid grid-cols-1 gap-2">
-                {widgets.map(w => (
-                  <button key={w.id}
-                    onClick={() => onAdd(w.id)}
-                    draggable
-                    onDragStart={e => { onDragStartWidget(w.id); e.dataTransfer.effectAllowed = "copy"; e.dataTransfer.setData("text/plain", w.id); }}
-                    onDragEnd={onDragEndWidget}
-                    className="flex items-start gap-2.5 text-left p-3 rounded-xl transition-all hover:shadow-sm cursor-grab active:cursor-grabbing"
-                    style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border-subtle)" }}>
-                    <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
-                      style={{ backgroundColor: "var(--accent-soft-2-bg)" }}>
-                      <GripVertical className="w-3.5 h-3.5" style={{ color: "var(--accent-text)" }} />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>{w.title}</p>
-                      <p className="text-[10px] leading-snug mt-0.5" style={{ color: "var(--text-muted)" }}>{w.description}</p>
-                      <span className="inline-block mt-1.5 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
-                        style={{ backgroundColor: "var(--accent-soft-2-bg)", color: "var(--accent-text)" }}>
-                        {w.defaultSize === "full" ? "Full width" : w.defaultSize === "wide" ? "Wide (⅔)" : "Narrow (⅓)"}
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))
         ) : (
-          <p className="text-xs text-center py-2" style={{ color: "var(--text-muted)" }}>
-            No hidden widgets available for this context level.
-          </p>
-        )}
-
-        {otherCtx.length > 0 && (
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>
-              Available at other context levels
-            </p>
-            <div className="grid grid-cols-1 gap-2 opacity-50">
-              {otherCtx.map(w => (
-                <div key={w.id} className="flex flex-col p-3 rounded-xl"
-                  style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border)" }}>
-                  <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>{w.title}</p>
-                  <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
-                    {w.allowedContexts.map(c => CONTEXT_LABELS[c]).join(", ")}
-                  </p>
-                </div>
+            <p className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--accent-text)" }}>From Analytics</p>
+            <div className="grid grid-cols-1 gap-2">
+              {reportWidgets.map(r => (
+                <button key={r.id}
+                  onClick={() => onAdd(REPORT_WIDGET_PREFIX + r.id)}
+                  draggable
+                  onDragStart={e => { onDragStartWidget(REPORT_WIDGET_PREFIX + r.id); e.dataTransfer.effectAllowed = "copy"; e.dataTransfer.setData("text/plain", REPORT_WIDGET_PREFIX + r.id); }}
+                  onDragEnd={onDragEndWidget}
+                  className="flex items-start gap-2.5 text-left p-3 rounded-xl transition-all hover:shadow-sm cursor-grab active:cursor-grabbing"
+                  style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border-subtle)" }}>
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5" style={{ backgroundColor: "var(--accent-soft-2-bg)" }}>
+                    <LineChart className="w-3.5 h-3.5" style={{ color: "var(--accent-text)" }} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold truncate" style={{ color: "var(--text-primary)" }}>{r.name}</p>
+                    <p className="text-[10px] leading-snug mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>{r.sub}</p>
+                  </div>
+                </button>
               ))}
             </div>
           </div>
@@ -330,12 +289,10 @@ export default function DashboardPage() {
   // Widgets visible + allowed at current context level, sorted by y then x
   const contextVisible = useMemo(() =>
     draft
-      .filter(i => i.visible && (WIDGET_MAP[i.widgetId]?.allowedContexts.includes(contextLevel) ?? false))
+      .filter(i => i.visible && (resolveWidgetDef(i.widgetId)?.allowedContexts.includes(contextLevel) ?? false))
       .sort((a, b) => a.y !== b.y ? a.y - b.y : a.x - b.x),
     [draft, contextLevel]
   );
-
-  const hiddenIds = draft.filter(i => !i.visible).map(i => i.widgetId);
 
   function startCustomize() {
     setDraft(layout);
@@ -346,18 +303,26 @@ export default function DashboardPage() {
 
   // Default grid width (cols) for a widget based on its registry size.
   function widgetWidth(id: string) {
-    const def = WIDGET_MAP[id];
+    const def = resolveWidgetDef(id);
     return def?.defaultSize === "full" ? 12 : def?.defaultSize === "wide" ? 8 : 4;
   }
 
-  // Sync positions from RGL after drag/resize (only during customizing)
+  // Sync positions from RGL after drag/resize (only during customizing).
+  // Bail out when nothing actually moved — returning the same `prev` reference
+  // skips the re-render, which breaks the onLayoutChange → setState → re-render
+  // → onLayoutChange feedback loop that caused rapid jitter.
   function handleLayoutChange(newLayout: readonly RGLItem[]) {
     if (!customizing) return;
-    setDraft(prev => prev.map(item => {
-      const upd = newLayout.find(l => l.i === item.widgetId);
-      if (!upd) return item;
-      return { ...item, x: upd.x, y: upd.y, w: upd.w, h: upd.h };
-    }));
+    setDraft(prev => {
+      let changed = false;
+      const next = prev.map(item => {
+        const upd = newLayout.find(l => l.i === item.widgetId);
+        if (!upd || (upd.x === item.x && upd.y === item.y && upd.w === item.w && upd.h === item.h)) return item;
+        changed = true;
+        return { ...item, x: upd.x, y: upd.y, w: upd.w, h: upd.h };
+      });
+      return changed ? next : prev;
+    });
   }
 
   function hideWidget(id: string) {
@@ -365,23 +330,25 @@ export default function DashboardPage() {
   }
 
   // Click-to-add: drop the widget at the bottom of the current context.
+  // Report widgets aren't in the default layout, so append them on first add.
   function addWidget(id: string) {
     const ctxVisible = draft.filter(i =>
-      i.visible && (WIDGET_MAP[i.widgetId]?.allowedContexts.includes(contextLevel) ?? false)
+      i.visible && (resolveWidgetDef(i.widgetId)?.allowedContexts.includes(contextLevel) ?? false)
     );
     const y = nextFreeY(ctxVisible);
-    setDraft(prev => prev.map(i =>
-      i.widgetId === id ? { ...i, visible: true, x: 0, y, w: widgetWidth(id), h: i.h } : i
-    ));
+    setDraft(prev => prev.some(i => i.widgetId === id)
+      ? prev.map(i => i.widgetId === id ? { ...i, visible: true, x: 0, y, w: widgetWidth(id), h: i.h } : i)
+      : [...prev, { widgetId: id, visible: true, order: prev.length + 1, x: 0, y, w: widgetWidth(id), h: 6, minW: 3, minH: 3 }]);
   }
 
   // Drag-to-add: place the widget at the exact grid cell it was dropped on.
+  // Report widgets aren't in the default layout, so append them on first drop.
   function handleDropWidget(x: number, y: number) {
     if (!dragWidget) return;
-    const { id, w } = dragWidget;
-    setDraft(prev => prev.map(i =>
-      i.widgetId === id ? { ...i, visible: true, x, y, w } : i
-    ));
+    const { id, w, h } = dragWidget;
+    setDraft(prev => prev.some(i => i.widgetId === id)
+      ? prev.map(i => i.widgetId === id ? { ...i, visible: true, x, y, w } : i)
+      : [...prev, { widgetId: id, visible: true, order: prev.length + 1, x, y, w, h, minW: 3, minH: 3 }]);
     setDragWidget(null);
   }
 
@@ -497,8 +464,10 @@ export default function DashboardPage() {
           {/* Add-widgets slide-over (right) */}
           {showAddPanel && (
             <AddWidgetsDrawer
-              hiddenIds={hiddenIds}
               contextLevel={contextLevel}
+              reportWidgets={getReports()
+                .filter(r => !draft.some(i => i.widgetId === REPORT_WIDGET_PREFIX + r.id && i.visible))
+                .map(r => ({ id: r.id, name: r.name || "Untitled report", sub: "Analytics report" }))}
               onAdd={addWidget}
               onClose={() => setShowAddPanel(false)}
               onDragStartWidget={handleDragStartWidget}
