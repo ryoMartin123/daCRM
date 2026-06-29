@@ -30,7 +30,7 @@ export default function AnalyticsPage() {
     <div className="p-4 sm:p-6">
       <div className="flex items-start justify-between gap-3 flex-wrap mb-5">
         <PageTitle title="Analytics" description="Build custom widgets and KPIs from your CRM, jobs, and accounting data — then drop them on any dashboard." />
-        <Link href="/analytics/builder" className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white active:scale-[0.99] transition-transform" style={{ backgroundColor: ACCENT }}>
+        <Link href="/analytics/builder" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white active:scale-[0.99] transition-transform" style={{ backgroundColor: ACCENT }}>
           <Plus className="w-4 h-4" /> New widget
         </Link>
       </div>

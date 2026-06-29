@@ -22,6 +22,9 @@ dev-server.log
 # Claude Code local settings
 .claude/
 
+# MCP config — contains a Supabase access token; never commit
+.mcp.json
+
 # OS files
 .DS_Store
 Thumbs.db

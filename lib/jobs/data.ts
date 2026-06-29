@@ -9,6 +9,8 @@ import { getJobTypes, getJobType, workOrderPolicyForType } from "@/lib/job-confi
 import {
   getTemplates, getChecklist, getInstructions, suggestTemplateForJobType,
 } from "@/lib/work-order-templates/data";
+import { notifyDataChanged, invalidateOnStorage } from "@/lib/sync/liveData";
+import { getSupabase } from "@/lib/supabase/client";
 
 // ─── Agreement-visit revert hook ──────────────────────────
 // deleteJob must return a materialized agreement visit to the schedule queue,
@@ -95,6 +97,16 @@ export interface ChecklistItem {
   required?: boolean;     // blocks job completion until done (unless overridden)
 }
 
+// A part/labor/fee captured on a work order — the line items the invoice is
+// built from (the field→billing bridge).
+export interface WorkOrderLineItem {
+  id: string;
+  kind: "part" | "labor" | "fee";
+  description: string;
+  qty: number;
+  unitPrice: number;        // dollars
+}
+
 export interface WorkOrder {
   id: string;
   jobId: string;
@@ -102,6 +114,14 @@ export interface WorkOrder {
   instructions: string;
   status: WorkOrderStatus;
   checklist: ChecklistItem[];
+  // ─── Field-execution record (Phase 0 — all optional, additive) ───
+  findings?: string;            // what the tech diagnosed on site
+  recommendations?: string;     // upsell / follow-up notes
+  equipment?: string[];         // units/assets serviced
+  lineItems?: WorkOrderLineItem[]; // parts + labor + fees → invoice source
+  photos?: string[];            // storage paths / ids
+  signatureName?: string;       // customer sign-off
+  completedAt?: string;         // ISO when the WO was completed
 }
 
 export interface JobNote {
@@ -172,47 +192,200 @@ export const WORK_ORDERS: Record<string, WorkOrder> = {};
 // ─── Job notes ────────────────────────────────────────────
 export const JOB_NOTES: Record<string, JobNote[]> = {};
 
-// ─── Runtime store (seed + jobs created in-session, e.g. from a quote) ────
-const JOBS_KEY = "crm-extra-jobs";
-let _extraJobs: Job[] | null = null;
-function extraJobs(): Job[] {
-  if (_extraJobs) return _extraJobs;
-  if (typeof window === "undefined") return [];
-  try { const r = localStorage.getItem(JOBS_KEY); _extraJobs = r ? JSON.parse(r) : []; }
-  catch { _extraJobs = []; }
-  return _extraJobs!;
+// ─── Runtime store (Supabase-backed, synchronous reads) ───────────────────
+// Jobs now live in Postgres (table `jobs`), shared across every device. To avoid
+// rewriting the ~50 components that read jobs synchronously in render, we keep the
+// read API synchronous and back it with an in-memory cache that is HYDRATED from
+// Supabase on boot (see hydrateJobs / JobsHydrator) and kept fresh via Realtime.
+// Writes are optimistic: mutate the cache + notifyDataChanged() for an instant UI,
+// then write through to Supabase in the background.
+//   • server / pre-hydration → cache is empty (same as the old behavior)
+//   • cross-device / cross-tab → Supabase Realtime updates the cache + notifies
+//
+// Warm cache: we mirror the last-known jobs into localStorage and read them back
+// SYNCHRONOUSLY on first access (exactly the timing the app's localStorage stores
+// had). That makes the first paint instant — no empty→filled flicker on refresh
+// while Supabase re-hydrates in the background. Supabase stays the source of truth;
+// this is just a stale-while-revalidate read cache, refreshed on every change.
+const JOBS_CACHE_KEY = "crm-jobs-cache";
+let _jobs: Job[] = [];
+let _cacheLoaded = false;
+let _hydrated = false;
+let _realtimeStarted = false;
+
+// Lazily seed the in-memory cache from localStorage on first read (client only).
+function ensureCacheLoaded(): void {
+  if (_cacheLoaded) return;
+  _cacheLoaded = true;
+  if (typeof window === "undefined") return;
+  try { const r = localStorage.getItem(JOBS_CACHE_KEY); if (r) _jobs = JSON.parse(r); }
+  catch { /* ignore corrupt cache */ }
+}
+// Persist the current cache so the next first paint is instant.
+function writeCache(): void {
+  if (typeof window === "undefined") return;
+  try { localStorage.setItem(JOBS_CACHE_KEY, JSON.stringify(_jobs)); } catch { /* ignore quota */ }
 }
 
-// Overrides persist edits (status changes, reschedules) to *seed* jobs without
-// mutating the constant array.
-const JOBS_OV_KEY = "crm-job-overrides";
-let _jobOverrides: Record<string, Partial<Job>> | null = null;
-function jobOverrides(): Record<string, Partial<Job>> {
-  if (_jobOverrides) return _jobOverrides;
-  if (typeof window === "undefined") return {};
-  try { const r = localStorage.getItem(JOBS_OV_KEY); _jobOverrides = r ? JSON.parse(r) : {}; }
-  catch { _jobOverrides = {}; }
-  return _jobOverrides!;
-}
-function applyJobOverride(j: Job): Job { const o = jobOverrides()[j.id]; return o ? { ...j, ...o } : j; }
+// ── Row ⇄ Job mapping (snake_case DB columns ⇄ camelCase Job) ──
+// Plain scalar fields share a 1:1 name map; status_history (jsonb) and
+// duration_minutes (integer) are handled specially in the mappers below.
+const JOB_COLS: [keyof Job, string][] = [
+  ["id", "id"], ["companyId", "company_id"], ["locationId", "location_id"],
+  ["serviceAreaId", "service_area_id"], ["projectId", "project_id"], ["accountId", "account_id"],
+  ["agreementId", "agreement_id"], ["propertyAddress", "property_address"],
+  ["title", "title"], ["description", "description"], ["type", "type"], ["status", "status"],
+  ["priority", "priority"], ["scheduledDate", "scheduled_date"], ["scheduledTime", "scheduled_time"],
+  ["completedDate", "completed_date"], ["assignedTo", "assigned_to"],
+  ["assignedToInitials", "assigned_to_initials"], ["estimatedAmount", "estimated_amount"],
+  ["actualAmount", "actual_amount"], ["customerName", "customer_name"],
+  ["customerInitials", "customer_initials"], ["locationName", "location_name"],
+  ["dispatchType", "dispatch_type"], ["sourceModule", "source_module"], ["sourceRefId", "source_ref_id"],
+  ["dispatchedAt", "dispatched_at"], ["enRouteAt", "en_route_at"], ["startedAt", "started_at"],
+  ["completedAt", "completed_at"],
+];
 
-// Session-created jobs only (for hydration-safe merging in client lists).
-export function getSessionJobs(): Job[] { return extraJobs().map(applyJobOverride); }
-// All jobs (seed + session). Server-side returns seed only.
-export function getAllJobs(): Job[] { return [...extraJobs(), ...ALL_JOBS].map(applyJobOverride); }
-
-// Update a job (e.g. status progression). Session jobs mutate in place; seed jobs via overrides.
-export function updateJob(id: string, patch: Partial<Job>): Job | undefined {
-  if (extraJobs().some(j => j.id === id)) {
-    _extraJobs = extraJobs().map(j => j.id === id ? { ...j, ...patch } : j);
-    try { localStorage.setItem(JOBS_KEY, JSON.stringify(_extraJobs)); } catch { /* ignore */ }
-  } else {
-    const all = { ...jobOverrides() };
-    all[id] = { ...all[id], ...patch };
-    _jobOverrides = all;
-    try { localStorage.setItem(JOBS_OV_KEY, JSON.stringify(all)); } catch { /* ignore */ }
+// Build a DB row (snake_case) from a full or partial Job. Only keys present on the
+// input are included, so it works for both inserts and patch updates.
+function rowFromJob(job: Partial<Job>): Record<string, unknown> {
+  const row: Record<string, unknown> = {};
+  for (const [camel, snake] of JOB_COLS) {
+    if (camel in job) row[snake] = job[camel] ?? null;
   }
-  return getJob(id);
+  if ("durationMinutes" in job) row.duration_minutes = job.durationMinutes;
+  if ("statusHistory" in job) row.status_history = job.statusHistory ?? null;
+  return row;
+}
+
+// Build a Job from a DB row, dropping nulls back to undefined for optional fields.
+function jobFromRow(row: Record<string, unknown>): Job {
+  const job = {} as Job;
+  for (const [camel, snake] of JOB_COLS) {
+    const v = row[snake];
+    if (v !== null && v !== undefined) (job as unknown as Record<string, unknown>)[camel] = v;
+  }
+  job.durationMinutes = (row.duration_minutes as number) ?? 120;
+  const hist = row.status_history;
+  if (hist) job.statusHistory = hist as Job["statusHistory"];
+  return job;
+}
+
+// Hydrate the cache from Supabase, then start Realtime. Safe to call repeatedly
+// (re-reads on focus/visibility); the JobsHydrator wires it into the app lifecycle.
+export async function hydrateJobs(): Promise<void> {
+  const supabase = getSupabase();
+  if (!supabase) return;
+  await maybeBackfillLegacyJobs(supabase);
+  const { data, error } = await supabase.from("jobs").select("*");
+  if (error) { console.error("[jobs] hydrate failed:", error.message); return; }
+  _jobs = (data ?? []).map(jobFromRow);
+  _cacheLoaded = true;
+  _hydrated = true;
+  writeCache();
+  notifyDataChanged();
+  startJobsRealtime();
+}
+
+function startJobsRealtime(): void {
+  if (_realtimeStarted) return;
+  const supabase = getSupabase();
+  if (!supabase) return;
+  _realtimeStarted = true;
+  supabase
+    .channel("jobs-changes")
+    .on("postgres_changes", { event: "*", schema: "public", table: "jobs" }, (payload) => {
+      if (payload.eventType === "DELETE") {
+        const id = (payload.old as { id?: string })?.id;
+        if (id) _jobs = _jobs.filter(j => j.id !== id);
+      } else {
+        const job = jobFromRow(payload.new as Record<string, unknown>);
+        _jobs = _jobs.some(j => j.id === job.id)
+          ? _jobs.map(j => j.id === job.id ? job : j)
+          : [job, ..._jobs];
+      }
+      writeCache();
+      notifyDataChanged();
+    })
+    .subscribe();
+}
+
+// One-time bridge: if the remote table is empty but this browser still has jobs in
+// the old localStorage store, push them up so existing demo data isn't lost and
+// shows on every device. Guarded by a flag so it only runs once per browser.
+const MIGRATED_FLAG = "crm-jobs-migrated-to-supabase";
+async function maybeBackfillLegacyJobs(supabase: NonNullable<ReturnType<typeof getSupabase>>): Promise<void> {
+  if (typeof window === "undefined") return;
+  if (localStorage.getItem(MIGRATED_FLAG)) return;
+  let legacy: Job[] = [];
+  try { legacy = JSON.parse(localStorage.getItem("crm-extra-jobs") || "[]"); } catch { legacy = []; }
+  if (!legacy.length) { localStorage.setItem(MIGRATED_FLAG, "1"); return; }
+  const { count } = await supabase.from("jobs").select("id", { count: "exact", head: true });
+  if ((count ?? 0) === 0) {
+    const { error } = await supabase.from("jobs").insert(legacy.map(rowFromJob));
+    if (error) { console.error("[jobs] legacy backfill failed:", error.message); return; } // retry next boot
+  }
+  localStorage.setItem(MIGRATED_FLAG, "1");
+}
+
+// Background write-through helpers. No-op without a client (server / missing env).
+function persistJobInsert(job: Job): void {
+  const supabase = getSupabase(); if (!supabase) return;
+  supabase.from("jobs").insert(rowFromJob(job)).then(({ error }) => {
+    if (error) console.error("[jobs] insert failed:", error.message);
+  });
+}
+function persistJobUpdate(id: string, patch: Partial<Job>): void {
+  const supabase = getSupabase(); if (!supabase) return;
+  supabase.from("jobs").update(rowFromJob(patch)).eq("id", id).then(({ error }) => {
+    if (error) console.error("[jobs] update failed:", error.message);
+  });
+}
+function persistJobDelete(id: string): void {
+  const supabase = getSupabase(); if (!supabase) return;
+  supabase.from("jobs").delete().eq("id", id).then(({ error }) => {
+    if (error) console.error("[jobs] delete failed:", error.message);
+  });
+}
+
+// Whether the cache has been hydrated from Supabase at least once.
+export function jobsHydrated(): boolean { return _hydrated; }
+
+// Session/local jobs (kept for API compatibility — every job is now a row).
+export function getSessionJobs(): Job[] { ensureCacheLoaded(); return _jobs.slice(); }
+// All jobs. Empty on the server; on the client returns the warm cache instantly,
+// refreshed from Supabase by hydrateJobs().
+export function getAllJobs(): Job[] { ensureCacheLoaded(); return _jobs.slice(); }
+
+// When a customer's primary address changes, jobs that were using THAT address
+// (it's denormalized onto each job) should follow. Matches leniently — ignoring
+// punctuation/format/spacing — so it only updates jobs on the OLD address; jobs
+// with a custom service address are left untouched. Returns the count updated.
+export function syncJobsAddressForAccount(accountId: string, oldAddress: string, newAddress: string): number {
+  const norm = (s?: string) => (s ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const oldN = norm(oldAddress);
+  if (!oldN || norm(newAddress) === oldN) return 0;
+  let count = 0;
+  for (const j of getAllJobs()) {
+    if (j.accountId === accountId && norm(j.propertyAddress) === oldN) {
+      updateJob(j.id, { propertyAddress: newAddress });
+      count++;
+    }
+  }
+  return count;
+}
+
+// Update a job (e.g. status progression). Optimistic: patch the cache + notify
+// immediately, then write through to Supabase in the background.
+export function updateJob(id: string, patch: Partial<Job>): Job | undefined {
+  ensureCacheLoaded();
+  const existing = _jobs.find(j => j.id === id);
+  if (!existing) return undefined;
+  const updated = { ...existing, ...patch };
+  _jobs = _jobs.map(j => j.id === id ? updated : j);
+  writeCache();
+  notifyDataChanged();
+  persistJobUpdate(id, patch);
+  return updated;
 }
 
 // Permanently remove a job (session record + any override). Used by the
@@ -221,21 +394,16 @@ export function deleteJob(id: string): void {
   // Capture the job first — if it was a materialized agreement visit we need its
   // agreementId/sourceRefId to return the visit to the schedule queue.
   const job = getJob(id);
-  if (extraJobs().some(j => j.id === id)) {
-    _extraJobs = extraJobs().filter(j => j.id !== id);
-    try { localStorage.setItem(JOBS_KEY, JSON.stringify(_extraJobs)); } catch { /* ignore */ }
-  }
-  if (jobOverrides()[id]) {
-    const all = { ...jobOverrides() }; delete all[id];
-    _jobOverrides = all;
-    try { localStorage.setItem(JOBS_OV_KEY, JSON.stringify(all)); } catch { /* ignore */ }
-  }
+  _jobs = _jobs.filter(j => j.id !== id);
+  writeCache();
   // Don't leave the job's work order behind.
   deleteWorkOrder(id);
   // Don't orphan the agreement visit when its job is deleted. Routed through the
   // registered handler (see registerAgreementJobDeletedHandler) to avoid a static
   // jobs⇄agreements import cycle.
   if (job?.sourceModule === "agreements") _onAgreementJobDeleted?.(job);
+  notifyDataChanged();
+  persistJobDelete(id);
 }
 
 // Delete every job under a company (hierarchy cascade).
@@ -271,10 +439,13 @@ export function createJob(input: NewJobInput): Job {
     customerName: input.customerName, customerInitials: input.customerInitials, locationName: input.locationName,
     dispatchType: input.dispatchType, sourceModule: input.sourceModule, sourceRefId: input.sourceRefId,
   };
-  _extraJobs = [job, ...extraJobs()];
-  try { localStorage.setItem(JOBS_KEY, JSON.stringify(_extraJobs)); } catch { /* ignore */ }
+  ensureCacheLoaded();
+  _jobs = [job, ..._jobs];
+  writeCache();
   // Auto-create the work order if the job type's policy calls for it.
   materializeWorkOrderForJob(job);
+  notifyDataChanged();
+  persistJobInsert(job);
   return job;
 }
 
@@ -282,27 +453,35 @@ export function createJob(input: NewJobInput): Job {
 export const JOBS_MAP: Record<string, Job> = Object.fromEntries(ALL_JOBS.map(j => [j.id, j]));
 
 export function getJob(id: string): Job | undefined {
-  const base = JOBS_MAP[id] ?? extraJobs().find(j => j.id === id);
-  return base ? applyJobOverride(base) : undefined;
+  ensureCacheLoaded();
+  return _jobs.find(j => j.id === id);
 }
 
 export function getJobsForProject(projectId: string): Job[] {
   return getAllJobs().filter(j => j.projectId === projectId);
 }
 
-// ─── Work order runtime store (created via the Work Order wizard) ─────
-// One work order per job, keyed by jobId. Session records persist to
-// localStorage and merge over the seed WORK_ORDERS map.
+// ─── Work order runtime store ─────────────────────────────────────────
+// A job can have MANY work orders (return visits, multi-WO installs), so the
+// store is keyed by WORK-ORDER id and each WO carries its jobId. Back-compat:
+// getWorkOrder(jobId) returns the PRIMARY (first) WO so all 1:1 callers keep
+// working; getWorkOrdersForJob lists them all. Session records persist to
+// localStorage; the seed WORK_ORDERS map stays jobId-keyed (legacy).
 const WO_KEY = "crm-work-orders";
-let _woByJob: Record<string, WorkOrder> | null = null;
+let _woById: Record<string, WorkOrder> | null = null;
 function woStore(): Record<string, WorkOrder> {
-  if (_woByJob) return _woByJob;
+  if (_woById) return _woById;
   if (typeof window === "undefined") return {};
-  try { const r = localStorage.getItem(WO_KEY); _woByJob = r ? JSON.parse(r) : {}; }
-  catch { _woByJob = {}; }
-  return _woByJob!;
+  _woById = {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem(WO_KEY) || "{}");
+    // Re-key by WO id — transparently migrates the old jobId-keyed shape.
+    for (const wo of Object.values(parsed) as WorkOrder[]) if (wo && wo.id) _woById[wo.id] = wo;
+  } catch { _woById = {}; }
+  return _woById!;
 }
-function persistWO() { try { localStorage.setItem(WO_KEY, JSON.stringify(_woByJob ?? {})); } catch { /* ignore */ } }
+function persistWO() { try { localStorage.setItem(WO_KEY, JSON.stringify(_woById ?? {})); } catch { /* ignore */ } }
+invalidateOnStorage([WO_KEY], () => { _woById = null; });
 
 export interface NewWorkOrderInput {
   jobId: string;
@@ -324,8 +503,9 @@ export function createWorkOrder(input: NewWorkOrderInput): WorkOrder {
       id: `ci-${Date.now()}-${i}`, label: c.label, isComplete: false, sortOrder: i + 1, required: c.required,
     })),
   };
-  _woByJob = { ...woStore(), [input.jobId]: wo };
+  _woById = { ...woStore(), [wo.id]: wo };
   persistWO();
+  notifyDataChanged();
   return wo;
 }
 
@@ -359,32 +539,60 @@ export function materializeWorkOrderForJob(job: Job): WorkOrder | undefined {
     checklist: items.map(c => ({ label: c.label, required: c.required })),
   });
 }
-export function updateWorkOrder(jobId: string, patch: Partial<WorkOrder>): WorkOrder | undefined {
-  const existing = woStore()[jobId] ?? WORK_ORDERS[jobId];
+
+// Update a specific work order by its id (multi-WO precise).
+export function updateWorkOrderById(id: string, patch: Partial<WorkOrder>): WorkOrder | undefined {
+  const existing = woStore()[id];
   if (!existing) return undefined;
   const updated = { ...existing, ...patch };
-  _woByJob = { ...woStore(), [jobId]: updated };
+  _woById = { ...woStore(), [id]: updated };
   persistWO();
+  notifyDataChanged();
   return updated;
 }
+// Legacy: update the PRIMARY work order for a job (kept for 1:1 callers).
+export function updateWorkOrder(jobId: string, patch: Partial<WorkOrder>): WorkOrder | undefined {
+  const primary = getWorkOrder(jobId);
+  return primary ? updateWorkOrderById(primary.id, patch) : undefined;
+}
 
-// Remove a job's work order (used when deleting a job, or unloading sample data).
-export function deleteWorkOrder(jobId: string): void {
-  if (!woStore()[jobId]) return;
-  const next = { ...woStore() }; delete next[jobId];
-  _woByJob = next;
+// Remove a single work order by id.
+export function deleteWorkOrderById(id: string): void {
+  if (!woStore()[id]) return;
+  const next = { ...woStore() }; delete next[id];
+  _woById = next;
   persistWO();
+  notifyDataChanged();
+}
+// Remove ALL work orders for a job (used when deleting a job / unloading samples).
+export function deleteWorkOrder(jobId: string): void {
+  const ids = Object.values(woStore()).filter(w => w.jobId === jobId).map(w => w.id);
+  if (!ids.length) return;
+  const next = { ...woStore() }; for (const id of ids) delete next[id];
+  _woById = next;
+  persistWO();
+  notifyDataChanged();
 }
 
 // All work orders (seed + session) as [jobId, WorkOrder] entries.
 export function getAllWorkOrders(): { jobId: string; wo: WorkOrder }[] {
-  const merged = { ...WORK_ORDERS, ...woStore() };
-  return Object.entries(merged).map(([jobId, wo]) => ({ jobId, wo }));
+  const session = Object.values(woStore());
+  const out = session.map(wo => ({ jobId: wo.jobId, wo }));
+  for (const [jobId, wo] of Object.entries(WORK_ORDERS)) {
+    if (!session.some(s => s.jobId === jobId)) out.push({ jobId, wo });
+  }
+  return out;
 }
 
-export function getWorkOrder(jobId: string): WorkOrder | undefined {
-  return woStore()[jobId] ?? WORK_ORDERS[jobId];
+// All work orders for a job, oldest first (the id embeds a timestamp).
+export function getWorkOrdersForJob(jobId: string): WorkOrder[] {
+  const session = Object.values(woStore()).filter(w => w.jobId === jobId).sort((a, b) => a.id.localeCompare(b.id));
+  if (session.length) return session;
+  return WORK_ORDERS[jobId] ? [WORK_ORDERS[jobId]] : [];
 }
+export function getWorkOrderById(id: string): WorkOrder | undefined { return woStore()[id]; }
+// The job's primary (first) work order — back-compat for 1:1 callers.
+export function getWorkOrder(jobId: string): WorkOrder | undefined { return getWorkOrdersForJob(jobId)[0]; }
 
 export function getJobNotes(jobId: string): JobNote[] {
   return JOB_NOTES[jobId] ?? [];

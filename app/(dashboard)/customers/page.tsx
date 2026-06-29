@@ -301,8 +301,8 @@ export default function CustomersPage() {
                 }}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-600 shrink-0">
-                    {c.initials}
+                  <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
+                    <Users className="w-3.5 h-3.5" />
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{c.name}</p>

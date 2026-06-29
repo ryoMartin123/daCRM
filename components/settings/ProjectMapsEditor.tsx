@@ -1,15 +1,14 @@
 "use client";
 
 // ─── Settings · Projects · Maps ───────────────────────────
-// Lists the project Map templates (built-in + custom) with a clean, modern card:
-// a lane-strip preview + workflow stats. New/Edit opens the full-screen MapBuilder.
-// Persisted via the scoped settings store; project types are fixed CRM defaults.
+// Lists the project Map templates (built-in + custom) with a modern card: a
+// lane-strip preview + workflow stats. Built-in maps open read-only (view the
+// features); custom maps open the full builder. Changes persist immediately —
+// there's no page-level Save. Project types are fixed CRM defaults.
 
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Copy, ChevronRight, GitBranch, Layers, Link2, CheckSquare } from "lucide-react";
+import { Plus, Pencil, Eye, Trash2, Copy, ChevronRight, GitBranch, Layers, Link2, CheckSquare } from "lucide-react";
 import { useScopedSetting } from "@/lib/settings-scope/useScopedSetting";
-import InheritanceChip from "@/components/settings/InheritanceChip";
-import { useRegisterSaveAction } from "@/components/settings/SettingsActions";
 import MapBuilder from "@/components/settings/MapBuilder";
 import { DEFAULT_MAP_TEMPLATES, MAP_TEMPLATES_KEY, newMapTemplateId, type MapTemplate } from "@/lib/projects/map-templates";
 import { DEFAULT_PROJECT_TYPES } from "@/lib/projects/settings";
@@ -48,17 +47,13 @@ function Stat({ icon: Icon, children }: { icon: React.ElementType; children: Rea
 export default function ProjectMapsEditor() {
   const scoped = useScopedSetting<MapTemplate[]>(MAP_TEMPLATES_KEY, DEFAULT_MAP_TEMPLATES);
   const [templates, setTemplates] = useState<MapTemplate[]>(DEFAULT_MAP_TEMPLATES);
-  const [baseline, setBaseline] = useState(() => JSON.stringify(DEFAULT_MAP_TEMPLATES));
-  const [saved, setSaved] = useState(false);
   const [editing, setEditing] = useState<MapTemplate | null>(null);
 
-  useEffect(() => { setTemplates(scoped.value); setBaseline(JSON.stringify(scoped.value)); setEditing(null); }, [scoped.value]);
-
-  const dirty = JSON.stringify(templates) !== baseline;
-  function handleSave() { scoped.save(templates); setBaseline(JSON.stringify(templates)); setSaved(true); setTimeout(() => setSaved(false), 2000); }
-  useRegisterSaveAction({ dirty, saved, onSave: handleSave });
+  useEffect(() => { setTemplates(scoped.value); setEditing(null); }, [scoped.value]);
 
   const typeOpts = DEFAULT_PROJECT_TYPES.filter(t => t.active);
+  // List/builder edits persist immediately — no page-level Save.
+  const persist = (next: MapTemplate[]) => { setTemplates(next); scoped.save(next); };
 
   function startNew() {
     setEditing({
@@ -69,25 +64,18 @@ export default function ProjectMapsEditor() {
   function startEdit(t: MapTemplate) { setEditing(clone(t)); }
   function duplicate(t: MapTemplate) {
     const copy = clone(t); copy.id = newMapTemplateId(); copy.name = `${t.name} (Copy)`; copy.projectTypes = [];
-    setTemplates(prev => [...prev, copy]); setSaved(false);
+    persist([...templates, copy]);
   }
-  function removeTemplate(id: string) { setTemplates(prev => prev.filter(t => t.id !== id)); setSaved(false); }
+  function removeTemplate(id: string) { persist(templates.filter(t => t.id !== id)); }
   function onBuilderSave(updated: MapTemplate) {
-    setTemplates(prev => {
-      const next = prev.some(t => t.id === updated.id) ? prev.map(t => t.id === updated.id ? updated : t) : [...prev, updated];
-      scoped.save(next); setBaseline(JSON.stringify(next));
-      return next;
-    });
-    setEditing(null); setSaved(true); setTimeout(() => setSaved(false), 2000);
+    persist(templates.some(t => t.id === updated.id) ? templates.map(t => t.id === updated.id ? updated : t) : [...templates, updated]);
+    setEditing(null);
   }
 
-  if (editing) return <MapBuilder key={editing.id} template={editing} typeOptions={typeOpts} onSave={onBuilderSave} onCancel={() => setEditing(null)} />;
+  if (editing) return <MapBuilder key={editing.id} template={editing} typeOptions={typeOpts} onSave={onBuilderSave} onCancel={() => setEditing(null)} readOnly={isBuiltIn(editing.id)} />;
 
   return (
     <div className="space-y-4">
-      <InheritanceChip source={scoped.source} isOverride={scoped.isOverride} parentSource={scoped.parentSource} onOverride={scoped.override} onReset={scoped.reset} />
-      {dirty && <div className="rounded-lg px-3 py-2 text-xs" style={{ backgroundColor: "#fef3c7", color: "#92400e" }}>You have unsaved changes.</div>}
-
       <div className="flex items-center justify-between">
         <p className="text-sm" style={{ color: "var(--text-secondary)" }}>{templates.length} map{templates.length === 1 ? "" : "s"} · drive the project workflow and new-project wizard.</p>
         <button onClick={startNew} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white shrink-0" style={{ backgroundColor: ACCENT }}><Plus className="w-3.5 h-3.5" /> New Map</button>
@@ -95,6 +83,7 @@ export default function ProjectMapsEditor() {
 
       <div className="grid gap-3">
         {templates.map(t => {
+          const builtIn = isBuiltIn(t.id);
           const mirrored = t.nodes.filter(n => !n.manual).length;
           const manual = t.nodes.length - mirrored;
           return (
@@ -105,7 +94,7 @@ export default function ProjectMapsEditor() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{t.name}</p>
-                    {isBuiltIn(t.id) && <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "var(--bg-input)", color: "var(--text-muted)" }}>Built-in</span>}
+                    {builtIn && <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "var(--bg-input)", color: "var(--text-muted)" }}>Built-in</span>}
                   </div>
                   {t.projectTypes.length ? (
                     <div className="flex flex-wrap gap-1 mt-1">
@@ -114,9 +103,9 @@ export default function ProjectMapsEditor() {
                   ) : <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>No project type assigned</p>}
                 </div>
                 <div className="flex items-center gap-1 shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => startEdit(t)} title="Edit" className="p-1.5 rounded-lg hover:bg-[var(--bg-input)]" style={{ color: "var(--text-muted)" }}><Pencil className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => startEdit(t)} title={builtIn ? "View" : "Edit"} className="p-1.5 rounded-lg hover:bg-[var(--bg-input)]" style={{ color: "var(--text-muted)" }}>{builtIn ? <Eye className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}</button>
                   <button onClick={() => duplicate(t)} title="Duplicate" className="p-1.5 rounded-lg hover:bg-[var(--bg-input)]" style={{ color: "var(--text-muted)" }}><Copy className="w-3.5 h-3.5" /></button>
-                  {!isBuiltIn(t.id) && <button onClick={() => removeTemplate(t.id)} title="Delete" className="p-1.5 rounded-lg hover:bg-red-50" style={{ color: "#9ca3af" }}><Trash2 className="w-3.5 h-3.5" /></button>}
+                  {!builtIn && <button onClick={() => removeTemplate(t.id)} title="Delete" className="p-1.5 rounded-lg hover:bg-red-50" style={{ color: "#9ca3af" }}><Trash2 className="w-3.5 h-3.5" /></button>}
                 </div>
               </div>
 
@@ -132,7 +121,7 @@ export default function ProjectMapsEditor() {
                 <Stat icon={Link2}>{mirrored} mirrored</Stat>
                 <span style={{ color: "var(--border)" }}>·</span>
                 <Stat icon={CheckSquare}>{manual} manual</Stat>
-                <button onClick={() => startEdit(t)} className="ml-auto flex items-center gap-1 font-semibold" style={{ color: ACCENT }}>Open builder <ChevronRight className="w-3.5 h-3.5" /></button>
+                <button onClick={() => startEdit(t)} className="ml-auto flex items-center gap-1 font-semibold" style={{ color: ACCENT }}>{builtIn ? "View map" : "Open builder"} <ChevronRight className="w-3.5 h-3.5" /></button>
               </div>
             </div>
           );

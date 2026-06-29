@@ -16,15 +16,17 @@ const ICON: Record<SearchType, React.ElementType> = {
 };
 const CARD: React.CSSProperties = { backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "0 16px 40px -10px rgba(0,0,0,0.4)" };
 
-export default function MobileSearchPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+export default function MobileSearchPanel({ open, onClose, inputRef: externalRef }: { open: boolean; onClose: () => void; inputRef?: React.RefObject<HTMLInputElement | null> }) {
   const router = useRouter();
   const [q, setQ] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
+  const internalRef = useRef<HTMLInputElement>(null);
+  const inputRef = externalRef ?? internalRef;   // parent focuses this in the open gesture (iOS keyboard)
   const results = useMemo(() => searchRoutiqa(q), [q]);
 
   useEffect(() => {
     if (open) { const t = setTimeout(() => inputRef.current?.focus(), 130); return () => clearTimeout(t); }
     setQ("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const go = (href: string) => { onClose(); router.push(href); };
@@ -39,13 +41,10 @@ export default function MobileSearchPanel({ open, onClose }: { open: boolean; on
       {/* Top popup — search field + results card */}
       <div className="absolute top-0 left-0 right-0 px-3 transition-all duration-200"
         style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.6rem)", transform: open ? "translateY(0)" : "translateY(-14px)", opacity: open ? 1 : 0 }}>
-        <div className="flex items-center gap-2">
-          <div className="flex-1 flex items-center gap-2.5 rounded-2xl px-3.5 py-3" style={CARD}>
-            <Search className="w-5 h-5 shrink-0" style={{ color: "var(--text-muted)" }} />
-            <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)} placeholder="Search customers, jobs, invoices…" className="bg-transparent text-base outline-none w-full" style={{ color: "var(--text-primary)" }} />
-            {q && <button onClick={() => setQ("")} aria-label="Clear"><X className="w-4 h-4" style={{ color: "var(--text-muted)" }} /></button>}
-          </div>
-          <button onClick={onClose} className="text-sm font-semibold shrink-0 px-1" style={{ color: "#fff" }}>Cancel</button>
+        <div className="flex items-center gap-2.5 rounded-2xl px-3.5 py-3" style={CARD}>
+          <Search className="w-5 h-5 shrink-0" style={{ color: "var(--text-muted)" }} />
+          <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)} placeholder="Search customers, jobs, invoices…" className="bg-transparent text-base outline-none w-full" style={{ color: "var(--text-primary)" }} />
+          {q && <button onClick={() => setQ("")} aria-label="Clear"><X className="w-4 h-4" style={{ color: "var(--text-muted)" }} /></button>}
         </div>
 
         {active && (

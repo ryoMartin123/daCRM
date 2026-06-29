@@ -37,6 +37,9 @@ export const EMPTY_ADDRESS: ParsedAddress = {
 export interface ValidationApiResponse {
   hasCorrection: boolean;
   suggestedAddress?: ParsedAddress;
+  // The full structured address the validator parsed — returned even when the
+  // address is correct as-is, so the form can fill City/State/ZIP from it.
+  standardizedAddress?: ParsedAddress;
   // true  = the validation service actually checked the address
   // false = no key / API error — could not verify (user may continue anyway)
   verified?: boolean;

@@ -7,11 +7,13 @@ import MobileHeader from "@/components/mobile/MobileHeader";
 import { Card, Section, DetailRow, QuickAction, JobCard, EmptyState, ACCENT } from "@/components/mobile/ui";
 import { getCustomer } from "@/lib/customers/data";
 import { getAllJobs } from "@/lib/jobs/data";
+import { useDataVersion } from "@/lib/sync/useDataVersion";
 
 export default function MobileCustomerDetail() {
   const { id } = useParams<{ id: string }>();
-  const customer = useMemo(() => getCustomer(id), [id]);
-  const jobs = useMemo(() => (customer ? getAllJobs().filter(j => j.accountId === customer.id).slice(0, 8) : []), [customer]);
+  const rev = useDataVersion();   // re-read after jobs hydrate / customer stubs seed
+  const customer = useMemo(() => getCustomer(id), [id, rev]);
+  const jobs = useMemo(() => (customer ? getAllJobs().filter(j => j.accountId === customer.id).slice(0, 8) : []), [customer, rev]);
 
   if (!customer) {
     return <div><MobileHeader title="Customer" back /><EmptyState icon={Users} title="Customer not found" /></div>;

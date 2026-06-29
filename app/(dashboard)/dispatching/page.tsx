@@ -22,6 +22,8 @@ import {
   getCalendarItems, getUnscheduledItems, getUnscheduledJobs, getSessionCalendarItems, getTechnicians, getStaffRoster, markSourceScheduled, getSchedulableVisits, type CalendarScope, type TechRosterEntry, type SchedulableVisit,
 } from "@/lib/calendar/data";
 import { createJob, updateJob, getJob, resolveJobTypeColor, type JobType } from "@/lib/jobs/data";
+import { updateAppointment } from "@/lib/appointments/data";
+import { scheduleExistingJob } from "@/lib/jobs/serviceCall";
 import { syncAgreementVisitFromJob, materializeVisitJob } from "@/lib/agreements/data";
 import JobStageControl from "@/components/jobs/JobStageControl";
 import { getCustomer } from "@/lib/customers/data";
@@ -397,6 +399,12 @@ export default function CalendarPage() {
       const updated = updateJob(selScheduled.sourceId, { assignedTo: tech, assignedToInitials: initials(tech) });
       if (updated) syncAgreementVisitFromJob(updated);
       setRefreshKey(k => k + 1);
+    } else if (selScheduled.sourceModule === "appointments" && selScheduled.sourceId) {
+      // Reassign the appointment; mirror the primary tech onto the job for
+      // job-centric views (mobile, jobs list). The work order is untouched.
+      const appt = updateAppointment(selScheduled.sourceId, { techIds: tech ? [tech] : [] });
+      if (appt) updateJob(appt.jobId, { assignedTo: tech, assignedToInitials: initials(tech) });
+      setRefreshKey(k => k + 1);
     } else {
       setEdits(e => ({ ...e, [selScheduled.id]: { ...e[selScheduled.id], assignedTo: tech } }));
     }
@@ -413,6 +421,20 @@ export default function CalendarPage() {
       // If this job is a booked agreement visit, mirror the new date/tech back onto
       // the linked visit so the agreement's plan stays in step (no-op for plain jobs).
       if (updated) syncAgreementVisitFromJob(updated);
+      setRefreshKey(k => k + 1);
+      return;
+    }
+    if (item?.sourceModule === "appointments" && item.sourceId) {
+      // Move/resize the appointment (the dispatch event); mirror schedule + tech
+      // onto the job so job-centric views stay in step. Work order untouched.
+      const appt = updateAppointment(item.sourceId, {
+        scheduledDate: jobDateStr(start), scheduledTime: jobTimeStr(start), durationMinutes,
+        ...(tech ? { techIds: [tech] } : {}),
+      });
+      if (appt) updateJob(appt.jobId, {
+        scheduledDate: appt.scheduledDate, scheduledTime: appt.scheduledTime, durationMinutes,
+        ...(tech ? { assignedTo: tech, assignedToInitials: initials(tech) } : {}),
+      });
       setRefreshKey(k => k + 1);
       return;
     }
@@ -457,6 +479,12 @@ export default function CalendarPage() {
         scheduledDate: jobDateStr(start), scheduledTime: jobTimeStr(start),
         durationMinutes: d.durationMinutes,
         assignedTo: d.tech || "", assignedToInitials: d.tech ? initials(d.tech) : "",
+      });
+      // Convert to the appointment model — the job now dispatches via a work-order
+      // appointment (the board renders that; the job stays the container).
+      scheduleExistingJob(u.sourceId, {
+        scheduledDate: jobDateStr(start), scheduledTime: jobTimeStr(start),
+        durationMinutes: d.durationMinutes, techIds: d.tech ? [d.tech] : [],
       });
       setRefreshKey(k => k + 1);   // re-reads store: item moves out of queue, onto board
       setConfirm(null);
@@ -1155,7 +1183,7 @@ function DispatchBoard({ focus, mode, items, roster, availability, dayStart, day
                 const left = clamp((preview.startMin / totalMin) * 100, 0, 100);
                 const width = clamp((dur / totalMin) * 100, 1, 100 - left);
                 const invalid = laneOverlap(tech.name, preview.startMin, dur, mv.id);
-                const job = mv.sourceModule === "jobs" ? getJob(mv.sourceId) : undefined;
+                const job = mv.sourceModule === "jobs" ? getJob(mv.sourceId) : (mv.jobId ? getJob(mv.jobId) : undefined);
                 const c = invalid ? "#ef4444" : (job ? resolveJobTypeColor(job.type) : mv.color);
                 return (
                   <div className="absolute top-1 bottom-1 rounded-lg pointer-events-none overflow-hidden flex flex-col justify-center px-2 z-30"
@@ -1211,7 +1239,7 @@ function DispatchBoard({ focus, mode, items, roster, availability, dayStart, day
                 const prio = i.priority && i.priority !== "normal" ? PRIORITY_CONFIG[i.priority] : null;
                 // Card body shade = the JOB TYPE; the full-height left section is the
                 // status stage icon. While dragging in-lane, flag an overlapping drop in red.
-                const job = i.sourceModule === "jobs" ? getJob(i.sourceId) : undefined;
+                const job = i.sourceModule === "jobs" ? getJob(i.sourceId) : (i.jobId ? getJob(i.jobId) : undefined);
                 const typeColor = job ? resolveJobTypeColor(job.type) : i.color;
                 const invalid = tracking && laneOverlap(p!.tech, p!.startMin, p!.durationMinutes, i.id);
                 return (
@@ -1222,15 +1250,19 @@ function DispatchBoard({ focus, mode, items, roster, availability, dayStart, day
                     style={{ left: `${left}%`, width: `${width}%`, backgroundColor: invalid ? "#ef444426" : typeColor + "26", cursor: p ? "grabbing" : "grab", boxShadow: p ? (invalid ? "0 0 0 2px #ef4444, 0 4px 14px rgba(0,0,0,0.25)" : "0 4px 14px rgba(0,0,0,0.25)") : undefined, opacity: movingAway ? 0.55 : 1, zIndex: p ? 20 : 1 }}>
                     {/* Stage icon as the full-height left section, colored by status —
                         click it to change status. */}
-                    <JobStageControl variant="bar" jobId={i.sourceId} statusKey={i.status} onChanged={onItemChanged} size={16} />
+                    {/* Appointment cards carry the job id separately (sourceId is the
+                        appointment); legacy job cards fall back to sourceId. */}
+                    <JobStageControl variant="bar" jobId={i.jobId ?? i.sourceId} statusKey={i.status} onChanged={onItemChanged} size={16} />
                     <div className="flex-1 min-w-0 px-1.5 py-1 flex flex-col justify-center">
                       <div className="flex items-center gap-1">
                         <p className="text-[10px] font-semibold truncate leading-tight" style={{ color: "var(--text-primary)" }}>{i.customerName ?? i.title}</p>
+                        {i.techIds && i.techIds.length > 1 && <span className="text-[8px] font-bold px-1 rounded shrink-0" style={{ backgroundColor: "var(--bg-surface-2)", color: "var(--text-secondary)" }}>+{i.techIds.length - 1}</span>}
                         {movingAway && <span className="text-[8px] font-bold px-1 rounded shrink-0" style={{ backgroundColor: "var(--accent-soft-2-bg)", color: "var(--accent-text)" }}>→ {p!.tech}</span>}
                         {!movingAway && prio && <span className="text-[8px] font-bold px-1 rounded shrink-0" style={{ backgroundColor: prio.bg, color: prio.color }}>{prio.label}</span>}
                       </div>
+                      {/* Lead the subline with the work-order scope when present, else job type. */}
                       <p className="text-[9px] truncate leading-tight" style={{ color: "var(--text-muted)" }}>
-                        {tracking ? `${minToTime(sm)} · ${dur}m` : `${fmtTime(i.start)} · ${i.jobType ? jobTypeLabel(i.jobType) : ""}${i.city ? ` · ${i.city}` : ""}`}
+                        {tracking ? `${minToTime(sm)} · ${dur}m` : `${fmtTime(i.start)} · ${i.workOrderTitle ?? (i.jobType ? jobTypeLabel(i.jobType) : "")}${i.city ? ` · ${i.city}` : ""}`}
                       </p>
                     </div>
                     {/* Resize handle (right edge) */}

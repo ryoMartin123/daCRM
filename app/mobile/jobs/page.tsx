@@ -5,6 +5,7 @@ import { Briefcase } from "lucide-react";
 import MobileHeader from "@/components/mobile/MobileHeader";
 import { JobCard, EmptyState, ACCENT } from "@/components/mobile/ui";
 import { getMyJobsByBucket, type JobBucket } from "@/lib/mobile/data";
+import { useDataVersion } from "@/lib/sync/useDataVersion";
 
 const TABS: { key: JobBucket; label: string }[] = [
   { key: "today", label: "Today" },
@@ -15,8 +16,11 @@ const TABS: { key: JobBucket; label: string }[] = [
 
 export default function JobsPage() {
   const [tab, setTab] = useState<JobBucket>("today");
-  const counts = useMemo(() => Object.fromEntries(TABS.map(t => [t.key, getMyJobsByBucket(t.key).length])) as Record<JobBucket, number>, []);
-  const jobs = useMemo(() => getMyJobsByBucket(tab), [tab]);
+  const rev = useDataVersion();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const counts = useMemo(() => Object.fromEntries(TABS.map(t => [t.key, getMyJobsByBucket(t.key).length])) as Record<JobBucket, number>, [rev]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const jobs = useMemo(() => getMyJobsByBucket(tab), [tab, rev]);
 
   return (
     <div>

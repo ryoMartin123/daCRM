@@ -5,7 +5,7 @@
 // a circular plus on the right that opens quick actions. Replaces the hamburger
 // drawer for broad-access users; safe-area aware.
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Plus, X, Briefcase, UserPlus, Camera, CheckSquare, Receipt, Megaphone } from "lucide-react";
 import MobileSearchPanel from "@/components/mobile/MobileSearchPanel";
@@ -20,11 +20,16 @@ const GLASS: React.CSSProperties = {
 export default function MobileCommandBar() {
   const [sheet, setSheet] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Open AND focus the input in the same tap so iOS raises the keyboard
+  // immediately (a deferred focus won't — it must happen in the user gesture).
+  const openSearch = () => { setSearchOpen(true); searchInputRef.current?.focus(); };
 
   return (
     <>
       <div className="fixed left-0 right-0 z-50 flex items-center gap-2.5 px-4 pointer-events-none" style={{ bottom: "calc(env(safe-area-inset-bottom) + 12px)" }}>
-        <button onClick={() => setSearchOpen(true)} className="pointer-events-auto flex-1 flex items-center gap-2.5 rounded-full px-4 py-3.5 active:scale-[0.99] transition-transform" style={GLASS}>
+        <button onClick={openSearch} className="pointer-events-auto flex-1 flex items-center gap-2.5 rounded-full px-4 py-3.5 active:scale-[0.99] transition-transform" style={GLASS}>
           <Search className="w-5 h-5 shrink-0" style={{ color: "var(--text-muted)" }} />
           <span className="text-sm" style={{ color: "var(--text-muted)" }}>Search all of Routiqa…</span>
         </button>
@@ -33,7 +38,7 @@ export default function MobileCommandBar() {
         </button>
       </div>
 
-      <MobileSearchPanel open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <MobileSearchPanel open={searchOpen} onClose={() => setSearchOpen(false)} inputRef={searchInputRef} />
       <QuickActions open={sheet} onClose={() => setSheet(false)} />
     </>
   );

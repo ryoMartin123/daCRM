@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
+import JobsHydrator from "@/components/providers/JobsHydrator";
 import PlusClickEnhancer from "@/components/shared/PlusClickEnhancer";
 import "./globals.css";
 
@@ -58,6 +59,7 @@ export default function RootLayout({
       </head>
       <body className={`${inter.variable} antialiased`} suppressHydrationWarning>
         <ThemeProvider>{children}</ThemeProvider>
+        <JobsHydrator />
         <PlusClickEnhancer />
       </body>
     </html>

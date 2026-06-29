@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import Select from "@/components/ui/Select";
 import StatusBadge from "@/components/shared/StatusBadge";
-import { getWorkOrder, getJob, resolveJobStatus } from "@/lib/jobs/data";
+import { getWorkOrder, getWorkOrderById, getJob, resolveJobStatus } from "@/lib/jobs/data";
 import { getJobStatuses, jobTypeLabel } from "@/lib/job-config/data";
 import {
   LAYER_CONFIG, PRIORITY_CONFIG, type CalendarItem, type UnscheduledItem,
@@ -41,17 +41,23 @@ export default function CalendarItemDrawer({
   const item = scheduled ?? unscheduled!;
   const cfg = LAYER_CONFIG[item.type];
   const isScheduled = !!scheduled;
-  const href = recordHref(item.sourceModule, item.sourceId);
+  // The job behind this card. For appointment cards the job id is carried
+  // separately (sourceId is the appointment); legacy job cards use sourceId.
+  const jobId = scheduled?.jobId ?? (scheduled?.sourceModule === "jobs" ? scheduled.sourceId : undefined);
+  const href = item.sourceModule === "appointments"
+    ? (jobId ? `/jobs/${jobId}` : null)
+    : recordHref(item.sourceModule, item.sourceId);
 
-  // The job behind a scheduled job item — read-only status display here; status
-  // is changed only from the board stage icon (or the mobile app, later).
-  const job = isScheduled && scheduled!.sourceModule === "jobs" && scheduled!.type === "job"
-    ? getJob(scheduled!.sourceId) : undefined;
+  // The job behind a scheduled item — read-only status display here; status is
+  // changed only from the board stage icon (or the mobile app, later).
+  const job = isScheduled && jobId ? getJob(jobId) : undefined;
   const jobStatus = job ? resolveJobStatus(job.status, getJobStatuses().filter(s => s.active)) : null;
 
-  // Work order summary (scheduled jobs only)
-  const wo = isScheduled && scheduled!.sourceModule === "jobs" && scheduled!.type === "job"
-    ? getWorkOrder(scheduled!.sourceId) : undefined;
+  // Work order summary — by id for appointment cards, by job for legacy job cards.
+  const wo = isScheduled
+    ? (scheduled!.workOrderId ? getWorkOrderById(scheduled!.workOrderId)
+       : (scheduled!.sourceModule === "jobs" && scheduled!.type === "job" ? getWorkOrder(scheduled!.sourceId) : undefined))
+    : undefined;
   const done = wo?.checklist.filter(c => c.isComplete).length ?? 0;
   const total = wo?.checklist.length ?? 0;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;

@@ -40,10 +40,10 @@ const inputStyle = { border: "1px solid var(--border)", backgroundColor: "var(--
 const clone = (t: MapTemplate): MapTemplate => JSON.parse(JSON.stringify(t));
 
 export default function MapBuilder({
-  template, typeOptions, onSave, onCancel,
+  template, typeOptions, onSave, onCancel, readOnly = false,
 }: {
   template: MapTemplate; typeOptions: ProjectTypeOption[];
-  onSave: (t: MapTemplate) => void; onCancel: () => void;
+  onSave: (t: MapTemplate) => void; onCancel: () => void; readOnly?: boolean;
 }) {
   const [draft, setDraft] = useState<MapTemplate>(() => clone(template));
   const [selKey, setSelKey] = useState<string | null>(null);
@@ -95,13 +95,17 @@ export default function MapBuilder({
       <header className="flex items-center gap-3 px-4 h-14 shrink-0" style={{ borderBottom: "1px solid var(--border)", backgroundColor: "var(--bg-surface)" }}>
         <button onClick={onCancel} className="flex items-center gap-1.5 text-sm font-medium" style={{ color: "var(--text-secondary)" }}><ArrowLeft className="w-4 h-4" /> Maps</button>
         <div className="h-5 w-px" style={{ backgroundColor: "var(--border)" }} />
-        <input value={draft.name} onChange={e => patch({ name: e.target.value })} placeholder="Map name" className="flex-1 max-w-md text-base font-semibold bg-transparent outline-none" style={{ color: "var(--text-primary)" }} />
+        <input value={draft.name} readOnly={readOnly} onChange={e => patch({ name: e.target.value })} placeholder="Map name" className="flex-1 max-w-md text-base font-semibold bg-transparent outline-none" style={{ color: "var(--text-primary)" }} />
         <div className="flex items-center gap-2 ml-auto">
           <button onClick={() => setSetupOpen(o => !o)} aria-expanded={setupOpen} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
             style={{ border: "1px solid var(--border)", color: setupOpen ? "var(--accent-text)" : "var(--text-secondary)", backgroundColor: setupOpen ? "var(--accent-soft-bg)" : "var(--bg-surface)" }}>
             <SlidersHorizontal className="w-3.5 h-3.5" /> Setup
           </button>
-          <button onClick={() => onSave(draft)} disabled={!draft.name.trim()} className="px-4 py-1.5 rounded-lg text-sm font-medium text-white disabled:opacity-40" style={{ backgroundColor: ACCENT }}>Save map</button>
+          {readOnly ? (
+            <span className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: "var(--bg-input)", color: "var(--text-muted)" }}>Built-in · read-only</span>
+          ) : (
+            <button onClick={() => onSave(draft)} disabled={!draft.name.trim()} className="px-4 py-1.5 rounded-lg text-sm font-medium text-white disabled:opacity-40" style={{ backgroundColor: ACCENT }}>Save map</button>
+          )}
         </div>
       </header>
 
@@ -109,7 +113,7 @@ export default function MapBuilder({
           always get the full width. */}
       <div className="flex-1 relative min-h-0">
         <div className="absolute inset-0">
-          <LaneCanvas lanes={lanes} nodesIn={nodesIn} nodes={draft.nodes} selKey={selKey} onSelect={setSelKey} onDeselect={() => setSelKey(null)} onAdd={addNode} onMove={moveNode} />
+          <LaneCanvas lanes={lanes} nodesIn={nodesIn} nodes={draft.nodes} selKey={selKey} onSelect={setSelKey} onDeselect={() => setSelKey(null)} onAdd={addNode} onMove={moveNode} readOnly={readOnly} />
         </div>
 
         <div className="absolute bottom-3 left-3 z-10 pointer-events-none flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px]" style={{ backgroundColor: "color-mix(in srgb, var(--bg-surface) 85%, transparent)", border: "1px solid var(--border-subtle)", color: "var(--text-muted)", backdropFilter: "blur(8px)" }}>
@@ -123,6 +127,7 @@ export default function MapBuilder({
                 <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Map setup</p>
                 <button onClick={() => setSetupOpen(false)}><X className="w-4 h-4" style={{ color: "var(--text-muted)" }} /></button>
               </div>
+              <fieldset disabled={readOnly} className="space-y-5 border-0 p-0 m-0 min-w-0">
               <RailGroup icon={Split} title="Runs for">
                 <div className="flex flex-wrap gap-1.5">
                   {typeOptions.map(t => {
@@ -150,6 +155,7 @@ export default function MapBuilder({
                   <AddGroupInput onAdd={addGroup} />
                 </div>
               </RailGroup>
+              </fieldset>
               <div className="rounded-xl p-3 text-[11px] leading-relaxed" style={{ backgroundColor: "var(--bg-surface-2)", border: "1px solid var(--border-subtle)", color: "var(--text-muted)" }}>
                 <b style={{ color: "var(--text-secondary)" }}>{draft.nodes.length}</b> steps across <b style={{ color: "var(--text-secondary)" }}>{draft.groups.length}</b> lanes.
               </div>
@@ -159,7 +165,7 @@ export default function MapBuilder({
         {/* Node inspector — floating popup (doesn't consume canvas width) */}
         {sel && (
           <aside className="absolute top-3 right-3 z-30 w-80 max-h-[calc(100%-1.5rem)] flex flex-col rounded-2xl overflow-hidden" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "0 24px 60px -12px rgba(0,0,0,0.45)" }}>
-            <Inspector key={sel.key} node={sel} draft={draft} onPatch={p => patchNode(sel.key, p)} onSetSource={v => setSource(sel.key, v)} onToggleDep={d => toggleDep(sel.key, d)} onRemove={() => { removeNode(sel.key); setSelKey(null); }} onClose={() => setSelKey(null)} />
+            <Inspector key={sel.key} node={sel} draft={draft} onPatch={p => patchNode(sel.key, p)} onSetSource={v => setSource(sel.key, v)} onToggleDep={d => toggleDep(sel.key, d)} onRemove={() => { removeNode(sel.key); setSelKey(null); }} onClose={() => setSelKey(null)} readOnly={readOnly} />
           </aside>
         )}
       </div>
@@ -171,10 +177,10 @@ export default function MapBuilder({
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
 function LaneCanvas({
-  lanes, nodesIn, nodes, selKey, onSelect, onDeselect, onAdd, onMove,
+  lanes, nodesIn, nodes, selKey, onSelect, onDeselect, onAdd, onMove, readOnly,
 }: {
   lanes: string[]; nodesIn: (g: string) => TemplateNode[]; nodes: TemplateNode[];
-  selKey: string | null; onSelect: (k: string) => void; onDeselect: () => void; onAdd: (g: string) => void; onMove: (k: string, d: -1 | 1) => void;
+  selKey: string | null; onSelect: (k: string) => void; onDeselect: () => void; onAdd: (g: string) => void; onMove: (k: string, d: -1 | 1) => void; readOnly?: boolean;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);   // clips; receives pointer/wheel
   const worldRef = useRef<HTMLDivElement>(null);      // transformed content
@@ -313,12 +319,14 @@ function LaneCanvas({
                 <div className="space-y-2.5">
                   {items.map((n, i) => (
                     <NodeCard key={n.key} node={n} selected={n.key === selKey} onClick={() => onSelect(n.key)} onDoubleClick={onDeselect}
-                      onUp={() => onMove(n.key, -1)} onDown={() => onMove(n.key, 1)} first={i === 0} last={i === items.length - 1}
+                      onUp={() => onMove(n.key, -1)} onDown={() => onMove(n.key, 1)} first={i === 0} last={i === items.length - 1} readOnly={readOnly}
                       setRef={el => { if (el) cardRefs.current.set(n.key, el); else cardRefs.current.delete(n.key); }} />
                   ))}
-                  <button onClick={() => onAdd(g)} data-add className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-medium transition-colors hover:bg-[var(--bg-surface-2)]" style={{ border: "1.5px dashed var(--border)", color: "var(--text-muted)" }}>
-                    <Plus className="w-3.5 h-3.5" /> Add step
-                  </button>
+                  {!readOnly && (
+                    <button onClick={() => onAdd(g)} data-add className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-medium transition-colors hover:bg-[var(--bg-surface-2)]" style={{ border: "1.5px dashed var(--border)", color: "var(--text-muted)" }}>
+                      <Plus className="w-3.5 h-3.5" /> Add step
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -343,8 +351,8 @@ function CtrlBtn({ onClick, title, children }: { onClick: () => void; title: str
   return <button onClick={onClick} title={title} className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-secondary)" }}>{children}</button>;
 }
 
-function NodeCard({ node, selected, onClick, onDoubleClick, onUp, onDown, first, last, setRef }: {
-  node: TemplateNode; selected: boolean; onClick: () => void; onDoubleClick: () => void; onUp: () => void; onDown: () => void; first: boolean; last: boolean; setRef: (el: HTMLElement | null) => void;
+function NodeCard({ node, selected, onClick, onDoubleClick, onUp, onDown, first, last, setRef, readOnly }: {
+  node: TemplateNode; selected: boolean; onClick: () => void; onDoubleClick: () => void; onUp: () => void; onDown: () => void; first: boolean; last: boolean; setRef: (el: HTMLElement | null) => void; readOnly?: boolean;
 }) {
   const Icon = TYPE_ICON[node.type] ?? CheckSquare;
   const badges = [
@@ -360,7 +368,7 @@ function NodeCard({ node, selected, onClick, onDoubleClick, onUp, onDown, first,
       <div className="flex items-start gap-2">
         <span className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "var(--accent-soft-bg)" }}><Icon className="w-3.5 h-3.5" style={{ color: ACCENT }} /></span>
         <p className="text-[13px] font-semibold leading-snug flex-1 min-w-0" style={{ color: "var(--text-primary)" }}>{node.title}</p>
-        <div className="flex flex-col opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+        <div className={`flex flex-col opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ${readOnly ? "hidden" : ""}`}>
           <button onClick={e => { e.stopPropagation(); onUp(); }} disabled={first} className="disabled:opacity-20" style={{ color: "var(--text-muted)" }}><ChevronUp className="w-3 h-3" /></button>
           <button onClick={e => { e.stopPropagation(); onDown(); }} disabled={last} className="disabled:opacity-20" style={{ color: "var(--text-muted)" }}><ChevronDown className="w-3 h-3" /></button>
         </div>
@@ -379,20 +387,20 @@ function NodeCard({ node, selected, onClick, onDoubleClick, onUp, onDown, first,
 }
 
 // ─── Inspector ────────────────────────────────────────────
-function Inspector({ node, draft, onPatch, onSetSource, onToggleDep, onRemove, onClose }: {
-  node: TemplateNode; draft: MapTemplate; onPatch: (p: Partial<TemplateNode>) => void; onSetSource: (v: string) => void; onToggleDep: (d: string) => void; onRemove: () => void; onClose: () => void;
+function Inspector({ node, draft, onPatch, onSetSource, onToggleDep, onRemove, onClose, readOnly }: {
+  node: TemplateNode; draft: MapTemplate; onPatch: (p: Partial<TemplateNode>) => void; onSetSource: (v: string) => void; onToggleDep: (d: string) => void; onRemove: () => void; onClose: () => void; readOnly?: boolean;
 }) {
   const others = draft.nodes.filter(n => n.key !== node.key);
   return (
     <>
       <div className="flex items-center justify-between px-4 py-3 shrink-0" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-        <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Edit step</p>
+        <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>{readOnly ? "Step" : "Edit step"}</p>
         <div className="flex items-center gap-1">
-          <button onClick={onRemove} title="Delete step" className="p-1.5 rounded-lg hover:bg-red-50" style={{ color: "#9ca3af" }}><Trash2 className="w-4 h-4" /></button>
+          {!readOnly && <button onClick={onRemove} title="Delete step" className="p-1.5 rounded-lg hover:bg-red-50" style={{ color: "#9ca3af" }}><Trash2 className="w-4 h-4" /></button>}
           <button onClick={onClose} aria-label="Close" className="p-1.5 rounded-lg hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-muted)" }}><X className="w-4 h-4" /></button>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-5">
+      <fieldset disabled={readOnly} className="flex-1 overflow-y-auto p-4 space-y-5 border-0 m-0 min-w-0">
       <Field label="Title"><input value={node.title} onChange={e => onPatch({ title: e.target.value })} className={inputCls} style={inputStyle} /></Field>
       <div className="grid grid-cols-2 gap-2.5">
         <Field label="Lane"><UiSelect size="sm" value={node.group} onChange={v => onPatch({ group: v })} options={draft.groups.map(g => ({ value: g, label: g }))} /></Field>
@@ -428,7 +436,7 @@ function Inspector({ node, draft, onPatch, onSetSource, onToggleDep, onRemove, o
       <ConditionEditor node={node} onPatch={onPatch} />
 
       <Field label="Notes"><textarea value={node.notes ?? ""} onChange={e => onPatch({ notes: e.target.value || undefined })} rows={2} className={inputCls} style={inputStyle} /></Field>
-      </div>
+      </fieldset>
     </>
   );
 }

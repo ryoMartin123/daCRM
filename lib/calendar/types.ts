@@ -74,7 +74,14 @@ export interface CalendarItem {
 
   // Source linkage
   sourceId: string;
-  sourceModule: "jobs" | "tasks" | "agreements" | "projects" | "quotes" | "calendar_events";
+  sourceModule: "jobs" | "tasks" | "agreements" | "projects" | "quotes" | "calendar_events" | "appointments";
+
+  // Appointment / work-order context (set when the item is an appointment) — lets
+  // the dispatch card lead with the work-order scope while keeping job context.
+  jobId?: string;
+  workOrderId?: string;
+  workOrderTitle?: string;
+  techIds?: string[];        // crew (primary first)
 
   // Display
   status?: string;

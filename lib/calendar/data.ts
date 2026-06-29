@@ -1,7 +1,8 @@
 // Calendar aggregator — normalizes scheduled records from many modules into
 // CalendarItem[]. Filtering by hierarchy scope happens here so views stay dumb.
 
-import { ALL_JOBS, getAllJobs, getSessionJobs, WORK_ORDERS, JOB_STATUS_CONFIG, type Job } from "@/lib/jobs/data";
+import { ALL_JOBS, getAllJobs, getSessionJobs, getJob, getWorkOrderById, WORK_ORDERS, JOB_STATUS_CONFIG, type Job } from "@/lib/jobs/data";
+import { getAllAppointments, jobIdsWithAppointments, type Appointment } from "@/lib/appointments/data";
 import { getAllTasks } from "@/lib/tasks/data";
 import { getAllAgreements, getVisitsToSchedule, type CustomerAgreement, type AgreementVisit } from "@/lib/agreements/data";
 import { getCustomer, getProperties } from "@/lib/customers/data";
@@ -92,6 +93,37 @@ function jobToItem(job: Job): CalendarItem | null {
     jobType: job.type,
     priority: job.priority,
     description: job.description,
+  };
+}
+
+// An Appointment → CalendarItem. The card LEADS with the work-order scope but
+// carries full job context (status/lane/priority come from the Job; the time +
+// crew come from the Appointment). This is what makes dispatch appointment-driven.
+function apptToItem(appt: Appointment): CalendarItem | null {
+  const job = getJob(appt.jobId);
+  if (!job || job.status === "canceled") return null;
+  const start = parseDateTime(appt.scheduledDate, appt.scheduledTime);
+  if (!start) return null;
+  const end = new Date(start.getTime() + appt.durationMinutes * 60_000);
+  const wo = getWorkOrderById(appt.workOrderId);
+  const cfg = JOB_STATUS_CONFIG[job.status];
+  const type = (job.dispatchType ?? "job") as CalendarItemType;
+  const primary = appt.techIds[0] ?? "";
+  return {
+    id: `appt-${appt.id}`,
+    type,
+    title: wo?.title || job.title,
+    start, end, allDay: false, durationMinutes: appt.durationMinutes,
+    assignedTo: primary, assignedToInitials: primary ? initials(primary) : "",
+    companyId: job.companyId, locationId: job.locationId, serviceAreaId: job.serviceAreaId,
+    sourceId: appt.id, sourceModule: "appointments",
+    status: cfg?.label ?? job.status,
+    lane: jobStatusToLane(job.status),
+    color: (LAYER_CONFIG[type] ?? LAYER_CONFIG.job).color,
+    customerName: job.customerName, address: job.propertyAddress,
+    city: cityFromAddress(job.propertyAddress),
+    jobType: job.type, priority: job.priority, description: job.description,
+    jobId: job.id, workOrderId: appt.workOrderId, workOrderTitle: wo?.title, techIds: appt.techIds,
   };
 }
 
@@ -319,7 +351,16 @@ export function getSchedulableVisits(scope: CalendarScope): SchedulableVisit[] {
 // in client-side via an effect so they appear without a hydration mismatch.
 export function getSessionCalendarItems(scope: CalendarScope): CalendarItem[] {
   const out: CalendarItem[] = [];
+  const apptJobIds = jobIdsWithAppointments();
+  // Appointments are the dispatch events (the new model).
+  for (const appt of getAllAppointments()) {
+    const item = apptToItem(appt);
+    if (item && inScope(item, scope)) out.push(item);
+  }
+  // Legacy jobs — but suppress any that now have appointments (rendered above),
+  // so a job shows via its appointments, never both.
   for (const job of getSessionJobs()) {
+    if (apptJobIds.has(job.id)) continue;
     const item = jobToItem(job);          // null when the job has no scheduled date
     if (item && inScope(item, scope)) out.push(item);
   }
@@ -332,8 +373,10 @@ export function getSessionCalendarItems(scope: CalendarScope): CalendarItem[] {
 const JOB_DONE = new Set(["completed", "invoiced", "closed", "canceled", "no_show"]);
 export function getUnscheduledJobs(scope: CalendarScope): UnscheduledItem[] {
   const out: UnscheduledItem[] = [];
+  const apptJobIds = jobIdsWithAppointments();
   for (const job of getAllJobs()) {
     if (JOB_DONE.has(job.status)) continue;
+    if (apptJobIds.has(job.id)) continue;                               // scheduled via an appointment
     if (parseDateTime(job.scheduledDate, job.scheduledTime)) continue;  // already scheduled
     if (!inScope({ companyId: job.companyId, locationId: job.locationId, serviceAreaId: job.serviceAreaId }, scope)) continue;
     out.push({

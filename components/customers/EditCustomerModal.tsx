@@ -7,6 +7,7 @@ import { useCustomers } from "@/components/providers/CustomerProvider";
 import { getAllLocations } from "@/lib/hierarchy/data";
 import { formatPhone, validatePhone, validateEmail } from "@/lib/utils/validation";
 import type { AccountType, Customer, CustomerType, CustomerStatus } from "@/lib/customers/data";
+import { syncJobsAddressForAccount } from "@/lib/jobs/data";
 import { AddressAutocomplete, EMPTY_ADDRESS, type ParsedAddress } from "@/components/address/AddressAutocomplete";
 import UiSelect from "@/components/ui/Select";
 
@@ -57,7 +58,10 @@ function toForm(c: Customer): EditForm {
       city: c.city ?? "",
       state: c.state || "GA",
       postalCode: c.zip ?? "",
-      formattedAddress: [c.address, c.city, c.state].filter(Boolean).join(", "),
+      formattedAddress: [c.address, c.city, c.state, c.zip].filter(Boolean).join(", "),
+      // An existing saved address is treated as verified — the breakdown stays
+      // hidden with an "Edit manually" escape, like a freshly-picked address.
+      validationStatus: c.address ? "validated" : "unvalidated",
     },
     locationId: c.locationId,
     serviceAreaId: c.serviceAreaId ?? "",
@@ -149,6 +153,14 @@ export default function EditCustomerModal({
     };
 
     updateCustomer(customer.id, patch);
+
+    // Cascade the address change to jobs that were using this customer's address.
+    const fmt = (a?: string, c?: string, s?: string, z?: string) =>
+      [a, c, [s, z].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+    const oldAddr = fmt(customer.address, customer.city, customer.state, customer.zip);
+    const newAddr = fmt(patch.address, patch.city, patch.state, patch.zip);
+    if (oldAddr !== newAddr) syncJobsAddressForAccount(customer.id, oldAddr, newAddr);
+
     onSaved?.();
     onClose();
   }

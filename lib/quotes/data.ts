@@ -9,7 +9,7 @@
 import type { Quote, Invoice, QuoteStatus, QuoteMode, QuoteRenderMode, QuotePricing, InvoiceStatus, LineItemCategory, QuoteSection } from "./types";
 import type { QuoteBlock } from "./blocks";
 import { QUOTE_STATUS_STYLE } from "./types";
-import { createJob, getJob, type Job } from "@/lib/jobs/data";
+import { createJob, getJob, getWorkOrderById, type Job } from "@/lib/jobs/data";
 import { createProject, type Project } from "@/lib/projects/data";
 import { currentUser } from "@/lib/hierarchy/data";   // signed-in user (org admin) — drives createdBy / assignedTo / activity actor
 
@@ -444,6 +444,36 @@ export function createInvoiceFromQuote(id: string): InvoiceRecord | undefined {
   });
   persistEdit(id, {}, newActivity("converted", `Invoice ${inv.invoiceNumber} created from ${q.quoteNumber}`));
   return inv;
+}
+
+// Build an invoice from a Work Order's captured parts/labor/fees — the field→billing
+// bridge. The invoice links back to the work order's Job for context.
+export function createInvoiceFromWorkOrder(workOrderId: string): InvoiceRecord | undefined {
+  const wo = getWorkOrderById(workOrderId);
+  if (!wo) return;
+  const job = getJob(wo.jobId);
+  if (!job) return;
+  const catFor = (k: "part" | "labor" | "fee"): LineItemCategory =>
+    k === "part" ? "Materials" : k === "labor" ? "Labor" : "Other";
+  const lineItems: LineItem[] = (wo.lineItems ?? []).map((li, i) => ({
+    id: `li-wo-${Date.now()}-${i}`,
+    name: li.description,
+    description: li.description,
+    quantity: li.qty,
+    unitPrice: li.unitPrice,
+    total: li.qty * li.unitPrice,
+    category: catFor(li.kind),
+    taxable: li.kind !== "labor",
+  }));
+  const due = new Date(); due.setDate(due.getDate() + 30);
+  const dueDate = due.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return createInvoice({
+    customerId: job.accountId, customerName: job.customerName, customerInitials: job.customerInitials, locationName: job.locationName,
+    companyId: job.companyId, locationId: job.locationId, serviceAreaId: job.serviceAreaId,
+    title: wo.title || job.title, dueDate, lineItems,
+    jobId: job.id, projectId: job.projectId,
+    linkedLabel: `Work Order: ${wo.title}`, linkedType: "job", linkedId: job.id,
+  });
 }
 
 // ─── Lookup helpers ───────────────────────────────────────

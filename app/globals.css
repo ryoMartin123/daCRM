@@ -906,3 +906,101 @@ button[aria-expanded="true"]:hover .lucide-circle-plus {
   button:active .lucide-plus,
   button[aria-expanded="true"] .lucide-plus { transform: none; }
 }
+
+/* ─── Mobile page transition ──────────────────────────────
+   Applied to a wrapper keyed by pathname in MobileShell, so each route change
+   replays a quick fade + rise. Respects reduced-motion. */
+@keyframes mobilePageIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.mobile-page-in {
+  animation: mobilePageIn 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mobile-page-in { animation: none; }
+}
+
+/* ─── Marketing site (public) ─────────────────────────────
+   Helpers used only by the (site) route group. The site forces the dark token
+   set via a [data-theme="dark"] wrapper, so these read the same CSS variables. */
+
+/* Ambient hero backdrop: a soft indigo glow over a faint engineering grid —
+   premium and operational, not neon. */
+.site-hero-bg {
+  background-color: var(--bg-page);
+  background-image:
+    radial-gradient(60% 50% at 50% -8%, rgba(79, 70, 229, 0.22) 0%, rgba(79, 70, 229, 0) 60%),
+    linear-gradient(to right, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 100% 100%, 48px 48px, 48px 48px;
+  background-position: center top, center, center;
+}
+
+/* Faint grid for secondary sections. */
+.site-grid-bg {
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* Indigo gradient text for headline emphasis (kept subtle, not rainbow). */
+.site-gradient-text {
+  background: linear-gradient(180deg, #ffffff 0%, #c7d2fe 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Frosted top nav. */
+.site-nav {
+  background-color: color-mix(in srgb, var(--bg-page) 78%, transparent);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* Section reveal on scroll-in (progressive enhancement; visible by default). */
+@keyframes siteFadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+.site-reveal { animation: siteFadeUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+@media (prefers-reduced-motion: reduce) { .site-reveal { animation: none; } }
+
+/* ── Hero platform reveal ──────────────────────────────────
+   Floating module cards orbit the central product stage; the centering offset is
+   baked into the keyframe so transform-centered cards still drift gently. Per-card
+   duration/delay set inline. */
+@keyframes siteFloat {
+  0%, 100% { transform: translate(-50%, -50%); }
+  50%      { transform: translate(-50%, calc(-50% - 12px)); }
+}
+.site-float { animation: siteFloat 7s ease-in-out infinite; will-change: transform; }
+
+/* Animated data-flow connectors from each module into the core. */
+@keyframes siteDash { to { stroke-dashoffset: -20; } }
+.site-connector { stroke-dasharray: 3 7; animation: siteDash 1.4s linear infinite; }
+
+/* Slow ambient drift for the backdrop constellation. */
+@keyframes siteHalo { 0%,100% { opacity: 0.5; } 50% { opacity: 0.85; } }
+.site-halo { animation: siteHalo 6s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .site-float, .site-connector, .site-halo { animation: none; }
+}
+
+/* ── Hero product reel (simulated user building the software) ── */
+/* Click ripple under the simulated cursor. */
+@keyframes siteRipple { from { transform: translate(-50%, -50%) scale(0.35); opacity: 0.55; } to { transform: translate(-50%, -50%) scale(2.6); opacity: 0; } }
+.site-ripple { animation: siteRipple 0.6s ease-out forwards; }
+/* A map pin dropping in. */
+@keyframes sitePinDrop { 0% { transform: translate(-50%, -180%) scale(0.5); opacity: 0; } 65% { transform: translate(-50%, -100%) scale(1.06); opacity: 1; } 100% { transform: translate(-50%, -100%) scale(1); opacity: 1; } }
+.site-pin-drop { animation: sitePinDrop 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+/* Reveal-in for built elements (cards, nodes). */
+@keyframes siteBuildIn { from { opacity: 0; transform: translateY(8px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.site-build-in { animation: siteBuildIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+/* Stroke draw-on (connectors, routes, service-area boundary). */
+@keyframes siteDraw { to { stroke-dashoffset: 0; } }
+.site-draw { animation: siteDraw 0.8s ease forwards; }
+@media (prefers-reduced-motion: reduce) {
+  .site-ripple, .site-pin-drop, .site-build-in, .site-draw { animation: none; }
+}

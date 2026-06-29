@@ -9,6 +9,7 @@
 // so a job created anywhere shows on its account.
 
 import { getAllJobs, type JobStatus as RealJobStatus, type JobType as RealJobType } from "@/lib/jobs/data";
+import { notifyDataChanged, invalidateOnStorage } from "@/lib/sync/liveData";
 import { getAllLeads, LEAD_SOURCE_LABELS, type LeadStage } from "@/lib/leads/data";
 import { getTasksForCustomer, type TaskType as RealTaskType } from "@/lib/tasks/data";
 
@@ -194,6 +195,7 @@ export function _addToStore(customer: Customer): void {
 export function addCustomerPersisted(customer: Customer): void {
   _addToStore(customer);
   try { localStorage.setItem("crm-extra-customers", JSON.stringify(_extra)); } catch { /* ignore */ }
+  notifyDataChanged();
 }
 
 // A persisted record is only usable if it has the string fields the list/detail
@@ -225,6 +227,10 @@ function ensureLoaded(): void {
   if (_loaded || _extra.length || typeof window === "undefined") return;
   _loadFromStorage();
 }
+
+// Cross-tab live sync: when another tab writes customers, drop the cache so the
+// next read reloads from storage.
+invalidateOnStorage(["crm-extra-customers"], () => { _extra = []; _loaded = false; });
 
 // Patch a runtime customer (e.g. saving a service address captured at job time).
 // Seed customers aren't patched here (the prototype's seed is empty post-clear).
@@ -263,6 +269,39 @@ export function getCustomer(id: string): Customer | undefined {
 export function getAllCustomers(): Customer[] {
   ensureLoaded();
   return [...ALL_CUSTOMERS, ..._extra];
+}
+
+// Seed minimal customer STUBS for accounts referenced by shared (Supabase) jobs
+// but missing from THIS device's localStorage — so the mobile app can still
+// resolve a job's customer (name/initials/address) even though customers aren't
+// synced cross-device. Only ADDS unknown ids; never overwrites a real record.
+// Mobile-only by convention (see components/mobile/MobileShell). Phone/email are
+// unknown here, so Call/Text stay disabled until customers are properly synced.
+export function upsertCustomerStubsFromJobs(stubs: {
+  id: string; name?: string; initials?: string; address?: string;
+  companyId?: string; locationId?: string; locationName?: string; serviceAreaId?: string;
+}[]): number {
+  ensureLoaded();
+  const known = new Set([...ALL_CUSTOMERS, ..._extra].map(c => c.id));
+  const additions: Customer[] = [];
+  for (const s of stubs) {
+    if (!s.id || known.has(s.id)) continue;
+    known.add(s.id);
+    additions.push({
+      id: s.id, name: s.name || "Customer", initials: s.initials || "?",
+      accountType: "residential", type: "Residential", status: "Customer",
+      companyId: s.companyId || "", locationId: s.locationId || "", serviceAreaId: s.serviceAreaId,
+      locationName: s.locationName || "",
+      address: s.address || "", city: "", state: "", zip: "",
+      phone: "", since: "", tags: [], notes: "",
+    });
+  }
+  if (additions.length) {
+    _extra = [..._extra, ...additions];
+    try { localStorage.setItem("crm-extra-customers", JSON.stringify(_extra)); } catch { /* ignore */ }
+    notifyDataChanged();
+  }
+  return additions.length;
 }
 
 // ─── By-company helpers (hierarchy cascade) ───────────────

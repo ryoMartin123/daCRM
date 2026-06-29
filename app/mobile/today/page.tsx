@@ -2,18 +2,23 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Clock, Navigation, ChevronRight, CheckSquare, Briefcase, Route, Play, AlarmClock } from "lucide-react";
+import { Clock, Navigation, ChevronRight, CheckSquare, Briefcase, Route, Play, AlarmClock, MapPin } from "lucide-react";
 import MobileHeader from "@/components/mobile/MobileHeader";
 import { Section, Card, JobCard, StatusChip, EmptyState, ACCENT, prettyType, areaOf } from "@/components/mobile/ui";
 import { getCurrentTech, getMyJobsByBucket, getCurrentJob, getMyTasks, getClockState, toggleClock, getMobileExperience, type MobileExperience } from "@/lib/mobile/data";
+import { useDataVersion } from "@/lib/sync/useDataVersion";
 import MobileNavHome from "@/components/mobile/MobileNavHome";
 
 export default function TodayPage() {
   // Computed on mount; the page remounts on navigation so data stays fresh.
+  const rev = useDataVersion();   // re-read when CRM/desktop data changes (no refresh)
   const me = useMemo(() => getCurrentTech(), []);
-  const jobs = useMemo(() => getMyJobsByBucket("today"), []);
-  const current = useMemo(() => getCurrentJob(), []);
-  const tasks = useMemo(() => getMyTasks().slice(0, 3), []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const jobs = useMemo(() => getMyJobsByBucket("today"), [rev]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const current = useMemo(() => getCurrentJob(), [rev]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const tasks = useMemo(() => getMyTasks().slice(0, 3), [rev]);
   const [clock, setClock] = useState<{ in: boolean; since?: string }>({ in: false });
   const [exp, setExp] = useState<MobileExperience>("field");
   useEffect(() => { setClock(getClockState()); setExp(getMobileExperience()); }, []);
@@ -59,15 +64,22 @@ export default function TodayPage() {
                 <p className="mt-1.5 text-xl font-bold leading-tight" style={{ color: "var(--text-primary)" }}>{current.customerName}</p>
                 <p className="text-sm" style={{ color: "var(--text-muted)" }}>{prettyType(current.type)} · {areaOf(current.propertyAddress) || "No address"}</p>
               </div>
-              <div className="grid grid-cols-2 gap-2 p-3 pt-0">
-                <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(current.propertyAddress || "")}`} target="_blank" rel="noreferrer"
-                  className="min-h-[48px] rounded-xl flex items-center justify-center gap-2 text-sm font-semibold active:scale-[0.99] transition-transform"
-                  style={{ border: "1px solid var(--border)", color: "var(--text-primary)" }}>
-                  <Navigation className="w-4 h-4" /> Directions
-                </a>
-                <Link href={`/mobile/jobs/${current.id}`} className="min-h-[48px] rounded-xl flex items-center justify-center gap-2 text-sm font-semibold text-white active:scale-[0.99] transition-transform" style={{ backgroundColor: ACCENT }}>
-                  <Play className="w-4 h-4" /> Open job
-                </Link>
+              <div className="p-3 pt-0 space-y-2">
+                {current.propertyAddress && (
+                  <Link href={`/mobile/navigate/${current.id}`} className="min-h-[52px] rounded-xl flex items-center justify-center gap-2 text-base font-bold text-white active:scale-[0.99] transition-transform" style={{ backgroundColor: ACCENT, boxShadow: `0 8px 22px -8px ${ACCENT}` }}>
+                    <Navigation className="w-5 h-5" /> Start Route
+                  </Link>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(current.propertyAddress || "")}`} target="_blank" rel="noreferrer"
+                    className="min-h-[48px] rounded-xl flex items-center justify-center gap-2 text-sm font-semibold active:scale-[0.99] transition-transform"
+                    style={{ border: "1px solid var(--border)", color: "var(--text-primary)" }}>
+                    <MapPin className="w-4 h-4" /> Directions
+                  </a>
+                  <Link href={`/mobile/jobs/${current.id}`} className="min-h-[48px] rounded-xl flex items-center justify-center gap-2 text-sm font-semibold active:scale-[0.99] transition-transform" style={{ border: "1px solid var(--border)", color: "var(--text-primary)" }}>
+                    <Play className="w-4 h-4" /> Open job
+                  </Link>
+                </div>
               </div>
             </Card>
           </Section>

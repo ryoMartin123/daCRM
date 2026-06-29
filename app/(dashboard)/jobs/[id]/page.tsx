@@ -7,6 +7,7 @@ import { ArrowLeft, CheckCircle, Circle, ChevronRight, Phone, MapPin, User, Cloc
 import { cn } from "@/lib/utils";
 import { getJob, updateJob, deleteJob, getWorkOrder, updateWorkOrder, getJobNotes, resolveJobStatus, type JobNoteType } from "@/lib/jobs/data";
 import WorkOrderWizard from "@/components/jobs/WorkOrderWizard";
+import WorkOrderBilling from "@/components/jobs/WorkOrderBilling";
 import { getJobStatuses } from "@/lib/job-config/data";
 import StatusBadge from "@/components/shared/StatusBadge";
 import ActionsMenu from "@/components/shared/ActionsMenu";
@@ -219,6 +220,9 @@ function WorkOrderTab({ jobId }: { jobId: string }) {
           </>
         )}
       </div>
+      {/* Parts & labor → invoice (the field→billing bridge) */}
+      {wo && <WorkOrderBilling workOrderId={wo.id} />}
+
       {/* Template header */}
       <div className="rounded-xl p-6" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
         <div className="flex items-start justify-between mb-1">

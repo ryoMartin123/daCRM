@@ -69,9 +69,17 @@ export function getMobileUser(): AppUser {
 const DONE: JobStatus[] = ["completed", "invoiced", "closed"];
 const sortByTime = (a: Job, b: Job) => (a.scheduledTime || "").localeCompare(b.scheduledTime || "");
 
+// DEV: surface EVERY dispatch-scheduled job in the mobile preview, so anything you
+// put on the dispatch board shows up here for testing — regardless of who it's
+// assigned to. Flip to false to scope back to the signed-in tech's own jobs once
+// real permissions/users land.
+export const MOBILE_DEV_ALL_JOBS = true;
+
 export function getMyJobs(): Job[] {
+  const open = getAllJobs().filter(j => j.status !== "canceled");
+  if (MOBILE_DEV_ALL_JOBS) return open;
   const me = getCurrentTech();
-  return getAllJobs().filter(j => j.assignedTo === me?.fullName && j.status !== "canceled");
+  return open.filter(j => j.assignedTo === me?.fullName);
 }
 
 export type JobBucket = "today" | "upcoming" | "completed" | "followup";

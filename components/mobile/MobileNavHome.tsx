@@ -25,6 +25,7 @@ import { appAccessForUser } from "@/lib/platform/access";
 import type { PlatformAppId } from "@/lib/platform/apps";
 import { prettyType } from "@/components/mobile/ui";
 import { activityMeta, activityLabel } from "@/lib/mobile/activityMeta";
+import { useDataVersion } from "@/lib/sync/useDataVersion";
 import BottomSheet from "@/components/mobile/BottomSheet";
 import MyPortalContent from "@/components/mobile/MyPortalContent";
 
@@ -37,13 +38,16 @@ const GLASS: React.CSSProperties = {
 
 export default function MobileNavHome() {
   const [portalOpen, setPortalOpen] = useState(false);
+  const rev = useDataVersion();
   const user = useMemo(() => getMobileUser(), []);
   const role = user?.assignments?.[0]?.role?.replace(/_/g, " ") ?? "Team member";
   const firstName = user?.fullName?.split(" ")[0] ?? "there";
   const firstLetter = (user?.fullName?.trim()?.[0] ?? "?").toUpperCase();
 
-  const todayJobs = useMemo(() => getMyJobsByBucket("today"), []);
-  const current = useMemo(() => getCurrentJob(), []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const todayJobs = useMemo(() => getMyJobsByBucket("today"), [rev]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const current = useMemo(() => getCurrentJob(), [rev]);
   // Activity is derived per customer from their jobs/quotes/invoices. The
   // customer store needs a provider (absent in mobile), so collect customer ids
   // straight from those records — which DO lazy-load from storage — and derive.

@@ -45,40 +45,32 @@ export async function POST(request: NextRequest) {
       verdict.hasReplacedComponents === true ||
       verdict.hasInferredComponents === true;
 
-    if (!hasCorrection) {
-      // Service ran successfully and the address is good as entered.
-      return NextResponse.json<ValidationApiResponse>({ hasCorrection: false, verified: true });
-    }
-
-    // Build suggested address from API response
+    // Build the standardized address from the validator's structured response —
+    // always, so the form can fill City/State/ZIP even when nothing changed.
     const postal = result.address?.postalAddress;
     const geocode = result.geocode;
-
-    if (!postal) {
-      return NextResponse.json<ValidationApiResponse>({ hasCorrection: false, verified: true });
-    }
-
-    const lines: string[] = postal.addressLines ?? [];
-    const suggested: ParsedAddress = {
-      addressLine1:     lines[0] ?? body.addressLine1,
-      addressLine2:     lines[1] ?? undefined,
+    const standardizedAddress: ParsedAddress | undefined = postal ? {
+      addressLine1:     postal.addressLines?.[0] ?? body.addressLine1,
+      addressLine2:     postal.addressLines?.[1] ?? undefined,
       city:             postal.locality ?? body.city,
       state:            postal.administrativeArea ?? body.state,
       postalCode:       postal.postalCode ?? body.postalCode,
       country:          postal.regionCode ?? body.country,
-      formattedAddress: [
-        lines.join(", "),
-        postal.locality,
-        postal.administrativeArea,
-        postal.postalCode,
-      ].filter(Boolean).join(", "),
+      formattedAddress: [(postal.addressLines ?? []).join(", "), postal.locality, postal.administrativeArea, postal.postalCode].filter(Boolean).join(", "),
       latitude:         geocode?.location?.latitude,
       longitude:        geocode?.location?.longitude,
       placeId:          geocode?.placeId,
       validationStatus: "validated",
-    };
+    } : undefined;
 
-    return NextResponse.json<ValidationApiResponse>({ hasCorrection: true, verified: true, suggestedAddress: suggested });
+    if (!hasCorrection) {
+      // Good as entered — still hand back the structured parts to fill the form.
+      return NextResponse.json<ValidationApiResponse>({ hasCorrection: false, verified: true, standardizedAddress });
+    }
+    if (!standardizedAddress) {
+      return NextResponse.json<ValidationApiResponse>({ hasCorrection: false, verified: true });
+    }
+    return NextResponse.json<ValidationApiResponse>({ hasCorrection: true, verified: true, suggestedAddress: standardizedAddress, standardizedAddress });
   } catch {
     // Network/API error — could not verify, but the address is still usable.
     return NextResponse.json<ValidationApiResponse>({ hasCorrection: false, verified: false });
