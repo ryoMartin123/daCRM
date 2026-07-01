@@ -10,11 +10,12 @@ import {
   createJob, createWorkOrder, getWorkOrder, getJob, materializeWorkOrderForJob,
   type Job, type WorkOrder, type NewJobInput,
 } from "@/lib/jobs/data";
-import { createAppointment, type Appointment } from "@/lib/appointments/data";
+import { createAppointment, type Appointment, type VisitType } from "@/lib/appointments/data";
 
 export interface CreateServiceCallInput extends NewJobInput {
   techIds?: string[];        // crew (primary first); falls back to assignedTo
   workOrderTitle?: string;   // optional WO title override (defaults to job title)
+  visitType?: VisitType;     // field-event purpose of the first visit (defaults to "service")
 }
 
 export function createServiceCall(input: CreateServiceCallInput): { job: Job; workOrder: WorkOrder; appointment: Appointment } {
@@ -24,9 +25,9 @@ export function createServiceCall(input: CreateServiceCallInput): { job: Job; wo
   // 2) Guarantee a work order (every dispatched visit has one).
   let workOrder = getWorkOrder(job.id);
   if (!workOrder) workOrder = createWorkOrder({ jobId: job.id, title: input.workOrderTitle ?? input.title, checklist: [] });
-  // 3) Appointment — the dispatch event.
+  // 3) Appointment — the dispatch event (a "Visit").
   const appointment = createAppointment({
-    jobId: job.id, workOrderId: workOrder.id, techIds,
+    jobId: job.id, workOrderId: workOrder.id, techIds, visitType: input.visitType ?? "service",
     scheduledDate: input.scheduledDate, scheduledTime: input.scheduledTime, durationMinutes: input.durationMinutes,
   });
   return { job, workOrder, appointment };
@@ -40,6 +41,7 @@ export interface ReturnVisitInput {
   scheduledTime?: string;
   durationMinutes?: number;
   techIds?: string[];
+  visitType?: VisitType;     // return | callback | warranty | follow_up | … (defaults to "return")
 }
 // Convert an EXISTING job into the appointment model when it's scheduled (e.g.
 // dragged from the unscheduled queue onto the board): ensure a work order exists
@@ -67,7 +69,7 @@ export function addReturnVisit(jobId: string, input: ReturnVisitInput): { workOr
     jobId, title: input.workOrderTitle, instructions: input.instructions, checklist: input.checklist ?? [],
   });
   const appointment = createAppointment({
-    jobId, workOrderId: workOrder.id, techIds: input.techIds,
+    jobId, workOrderId: workOrder.id, techIds: input.techIds, visitType: input.visitType ?? "return",
     scheduledDate: input.scheduledDate, scheduledTime: input.scheduledTime, durationMinutes: input.durationMinutes,
   });
   return { workOrder, appointment };

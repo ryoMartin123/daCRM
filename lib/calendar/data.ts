@@ -2,7 +2,7 @@
 // CalendarItem[]. Filtering by hierarchy scope happens here so views stay dumb.
 
 import { ALL_JOBS, getAllJobs, getSessionJobs, getJob, getWorkOrderById, WORK_ORDERS, JOB_STATUS_CONFIG, type Job } from "@/lib/jobs/data";
-import { getAllAppointments, jobIdsWithAppointments, type Appointment } from "@/lib/appointments/data";
+import { getAllAppointments, getAppointmentsForJob, jobIdsWithAppointments, type Appointment } from "@/lib/appointments/data";
 import { getAllTasks } from "@/lib/tasks/data";
 import { getAllAgreements, getVisitsToSchedule, type CustomerAgreement, type AgreementVisit } from "@/lib/agreements/data";
 import { getCustomer, getProperties } from "@/lib/customers/data";
@@ -109,6 +109,13 @@ function apptToItem(appt: Appointment): CalendarItem | null {
   const cfg = JOB_STATUS_CONFIG[job.status];
   const type = (job.dispatchType ?? "job") as CalendarItemType;
   const primary = appt.techIds[0] ?? "";
+  // Where this visit sits among the job's visits (chronological), so the board
+  // can label multi-visit jobs "Visit 2 of 3".
+  const siblings = getAppointmentsForJob(job.id)
+    .filter(a => a.scheduledDate && a.status !== "canceled")
+    .sort((a, b) => `${a.scheduledDate} ${a.scheduledTime}`.localeCompare(`${b.scheduledDate} ${b.scheduledTime}`));
+  const visitCount = siblings.length;
+  const visitIndex = visitCount > 1 ? siblings.findIndex(a => a.id === appt.id) + 1 : undefined;
   return {
     id: `appt-${appt.id}`,
     type,
@@ -124,6 +131,8 @@ function apptToItem(appt: Appointment): CalendarItem | null {
     city: cityFromAddress(job.propertyAddress),
     jobType: job.type, priority: job.priority, description: job.description,
     jobId: job.id, workOrderId: appt.workOrderId, workOrderTitle: wo?.title, techIds: appt.techIds,
+    visitType: appt.visitType,
+    ...(visitIndex ? { visitIndex, visitCount } : {}),
   };
 }
 

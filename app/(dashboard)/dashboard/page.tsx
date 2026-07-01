@@ -19,9 +19,10 @@ import {
 import { getReports } from "@/lib/analytics/store";
 import Link from "next/link";
 import {
-  DEFAULT_LAYOUT, loadLayout, saveLayout, nextFreeY,
+  DEFAULT_LAYOUT, loadLayout, saveLayout, saveLayoutForScope, scopeKeyOf, nextFreeY,
   type LayoutItem as DashItem,
 } from "@/lib/dashboard/layouts";
+import { resolveLayoutForScope } from "@/lib/dashboard/templates";
 
 // Live date + time-of-day greeting. Computed after mount (empty on the server)
 // so the client fills in the real local date without a hydration mismatch.
@@ -278,13 +279,27 @@ export default function DashboardPage() {
   const contextLevel = getContextLevel(effectiveCompanyId, effectiveLocationId, effectiveServiceAreaId);
   const greeting = useGreeting();
 
-  const [layout,       setLayout]       = useState<DashItem[]>(() => loadLayout());
+  // Each scope (org / company / location) has its own layout, auto-loaded on switch.
+  const scopeKey = scopeKeyOf(effectiveCompanyId, effectiveLocationId);
+  const [layout,       setLayout]       = useState<DashItem[]>(() => resolveLayoutForScope(scopeKey));
   const [draft,        setDraft]        = useState<DashItem[]>(layout);
   const [customizing,  setCustomizing]  = useState(false);
   const [showAddPanel, setShowAddPanel] = useState(false);
   const [dockPos,      setDockPos]      = useState<DockPos>(null);
   // Widget being dragged out of the Add-Widgets drawer onto the grid.
   const [dragWidget,   setDragWidget]   = useState<{ id: string; w: number; h: number } | null>(null);
+
+  // Switching scope swaps in that scope's layout (its own edits, an assigned
+  // template default, or the org layout as a fallback).
+  const prevScopeRef = useRef(scopeKey);
+  useEffect(() => {
+    if (prevScopeRef.current === scopeKey) return;
+    prevScopeRef.current = scopeKey;
+    const next = resolveLayoutForScope(scopeKey);
+    setLayout(next);
+    setDraft(next);
+    setCustomizing(false);
+  }, [scopeKey]);
 
   // Widgets visible + allowed at current context level, sorted by y then x
   const contextVisible = useMemo(() =>
@@ -358,7 +373,7 @@ export default function DashboardPage() {
   }
 
   function handleSave() {
-    saveLayout(draft);
+    saveLayoutForScope(scopeKey, draft);   // persist per active scope
     setLayout(draft);
     setCustomizing(false);
     setShowAddPanel(false);

@@ -3,11 +3,12 @@
 import Link from "next/link";
 import {
   X, Clock, MapPin, CheckCircle, Circle, ChevronRight, Briefcase,
-  CalendarClock, User, Tag, AlertTriangle, FileText,
+  CalendarClock, User, Tag, AlertTriangle, FileText, Link2,
 } from "lucide-react";
 import Select from "@/components/ui/Select";
 import StatusBadge from "@/components/shared/StatusBadge";
 import { getWorkOrder, getWorkOrderById, getJob, resolveJobStatus } from "@/lib/jobs/data";
+import { VISIT_TYPE_CONFIG } from "@/lib/appointments/data";
 import { getJobStatuses, jobTypeLabel } from "@/lib/job-config/data";
 import {
   LAYER_CONFIG, PRIORITY_CONFIG, type CalendarItem, type UnscheduledItem,
@@ -75,11 +76,19 @@ export default function CalendarItemDrawer({
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
               <StatusBadge label={cfg.label} color={cfg.color} />
+              {scheduled?.visitType && VISIT_TYPE_CONFIG[scheduled.visitType] && (
+                <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: VISIT_TYPE_CONFIG[scheduled.visitType].color + "22", color: VISIT_TYPE_CONFIG[scheduled.visitType].color }}>{VISIT_TYPE_CONFIG[scheduled.visitType].short}</span>
+              )}
               {priority && <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: PRIORITY_CONFIG[priority].bg, color: PRIORITY_CONFIG[priority].color }}>{PRIORITY_CONFIG[priority].label}</span>}
               {!isScheduled && <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: "#fef3c7", color: "#92400e" }}>Unscheduled</span>}
             </div>
             <h2 className="text-base font-semibold leading-snug" style={{ color: "var(--text-primary)" }}>{item.title}</h2>
             {item.customerName && <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>{item.customerName}</p>}
+            {scheduled?.visitCount && scheduled.visitCount > 1 && (
+              <p className="inline-flex items-center gap-1 text-xs mt-1" style={{ color: "var(--accent-text)" }}>
+                <Link2 className="w-3 h-3" /> Visit {scheduled.visitIndex} of {scheduled.visitCount} · same job
+              </p>
+            )}
           </div>
           <button onClick={onClose} style={{ color: "var(--text-muted)" }}><X className="w-4 h-4" /></button>
         </div>

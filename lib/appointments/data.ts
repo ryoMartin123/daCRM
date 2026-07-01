@@ -13,10 +13,41 @@ import { notifyDataChanged, invalidateOnStorage } from "@/lib/sync/liveData";
 export type AppointmentStatus =
   | "scheduled" | "en_route" | "in_progress" | "completed" | "canceled" | "no_show";
 
+// ─── Visit type ───────────────────────────────────────────
+// The Appointment IS the Visit: it answers "what kind of field event is this?"
+// (visitType) as well as "when / who" (schedule). We deliberately did NOT add a
+// separate Visit entity — a reschedule edits this appointment's time; a return /
+// callback / follow-up creates a NEW appointment (a new visit) on the same job.
+export type VisitType =
+  | "service" | "maintenance" | "diagnostic" | "estimate" | "install"
+  | "return" | "callback" | "warranty" | "inspection" | "punch_list"
+  | "startup" | "delivery" | "follow_up";
+
+export const VISIT_TYPE_CONFIG: Record<VisitType, { label: string; short: string; color: string }> = {
+  service:     { label: "Service Visit",     short: "Service",     color: "#4f46e5" },
+  maintenance: { label: "Maintenance Visit", short: "Maintenance", color: "#059669" },
+  diagnostic:  { label: "Diagnostic Visit",  short: "Diagnostic",  color: "#0891b2" },
+  estimate:    { label: "Estimate Visit",    short: "Estimate",    color: "#7c3aed" },
+  install:     { label: "Install Visit",     short: "Install",     color: "#2563eb" },
+  return:      { label: "Return Visit",      short: "Return",      color: "#f59e0b" },
+  callback:    { label: "Callback Visit",    short: "Callback",    color: "#dc2626" },
+  warranty:    { label: "Warranty Visit",    short: "Warranty",    color: "#db2777" },
+  inspection:  { label: "Inspection Visit",  short: "Inspection",  color: "#0d9488" },
+  punch_list:  { label: "Punch List Visit",  short: "Punch List",  color: "#9333ea" },
+  startup:     { label: "Startup Visit",     short: "Startup",     color: "#0ea5e9" },
+  delivery:    { label: "Delivery Visit",    short: "Delivery",    color: "#65a30d" },
+  follow_up:   { label: "Follow-Up Visit",   short: "Follow-Up",   color: "#f97316" },
+};
+
+// The visit types a user can pick when scheduling a return/second trip. (A first
+// visit's type usually comes from the job type; returns are these.)
+export const RETURN_VISIT_TYPES: VisitType[] = ["return", "callback", "warranty", "follow_up", "punch_list", "startup"];
+
 export interface Appointment {
   id: string;
   jobId: string;
   workOrderId: string;
+  visitType?: VisitType;      // the field-event purpose (Appointment = Visit)
   techIds: string[];          // crew — primary first; [] = unassigned
   scheduledDate: string;      // YYYY-MM-DD ("" = unscheduled)
   scheduledTime: string;      // HH:MM
@@ -51,6 +82,7 @@ export function jobIdsWithAppointments(): Set<string> { return new Set(store().m
 export interface NewAppointmentInput {
   jobId: string;
   workOrderId: string;
+  visitType?: VisitType;
   techIds?: string[];
   scheduledDate?: string;
   scheduledTime?: string;
@@ -62,6 +94,7 @@ export function createAppointment(input: NewAppointmentInput): Appointment {
     id: `appt-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
     jobId: input.jobId,
     workOrderId: input.workOrderId,
+    visitType: input.visitType,
     techIds: input.techIds ?? [],
     scheduledDate: input.scheduledDate ?? "",
     scheduledTime: input.scheduledTime ?? "",

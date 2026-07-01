@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { useHierarchy } from "@/components/providers/HierarchyProvider";
 import { useGoogleMaps } from "@/hooks/useGoogleMaps";
+import { useDataVersion } from "@/lib/sync/useDataVersion";
+import { getLiveLocations, relativeTime, getTechTrail, trackStateFor, TRACK_STATE_META } from "@/lib/tech-tracking/data";
 import { todayYMD } from "@/lib/utils/schedule";
 import {
   getMapJobs, getMapTechnicians, buildRoute, assignJob, computeSuggestions, suggestForJob, suggestForTech, geocodeJobAddresses,
@@ -44,6 +46,7 @@ export default function DispatchMap({ dateFilter }: { dateFilter: MapDateFilter 
   const { effectiveCompanyId, effectiveLocationId, effectiveServiceAreaId } = useHierarchy();
   const { loaded: mapsLoaded } = useGoogleMaps();
   const [refreshKey, setRefreshKey] = useState(0);
+  const dataRev = useDataVersion();
   const [tab, setTab] = useState<Tab>("jobs");
   const [search, setSearch] = useState("");
   const [selJobId, setSelJobId] = useState<string | null>(null);
@@ -69,7 +72,41 @@ export default function DispatchMap({ dateFilter }: { dateFilter: MapDateFilter 
   // Only dispatch-board members for the active scope can be assigned / suggested.
   // refreshKey re-anchors tech positions as job addresses geocode in.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const techs = useMemo(() => getMapTechnicians(effectiveCompanyId, effectiveLocationId), [effectiveCompanyId, effectiveLocationId, refreshKey]);
+  // Base roster positions are deterministic mocks; overlay any live GPS fixes so a
+  // clocked-in tech's marker tracks their phone. dataRev bumps on every report.
+  const baseTechs = useMemo(() => getMapTechnicians(effectiveCompanyId, effectiveLocationId), [effectiveCompanyId, effectiveLocationId, refreshKey]);
+  const techs = useMemo(() => {
+    const live = getLiveLocations();
+    const now = Date.now();
+    const baseNames = new Set(baseTechs.map(t => t.name));
+    const merged: MapTech[] = baseTechs.map(t => {
+      const l = live[t.name];
+      const state = trackStateFor(l, now);
+      // live/stale/lost all have a real last-known position to show; off keeps the
+      // roster's mock spot (gray) so off-duty techs still list cleanly.
+      if (l && state !== "off") {
+        return { ...t, current: { lat: l.lat, lng: l.lng }, lastCheckIn: relativeTime(l.recordedAt, now), live: state === "live", trackState: state, heading: l.heading, gpsError: l.gpsError };
+      }
+      return { ...t, live: false, trackState: "off" as const };
+    });
+    // Surface anyone clocked in (any non-off state) who isn't on the mock board
+    // roster — e.g. the org owner — so every active field user shows on the map.
+    for (const l of Object.values(live)) {
+      if (baseNames.has(l.techName)) continue;
+      const state = trackStateFor(l, now);
+      if (state === "off") continue;
+      if (effectiveCompanyId && l.companyId && l.companyId !== effectiveCompanyId) continue;
+      if (effectiveLocationId && l.locationId && l.locationId !== effectiveLocationId) continue;
+      const initials = l.techName.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
+      merged.push({
+        name: l.techName, initials, status: "available", skills: [], truck: "—",
+        base: { lat: l.lat, lng: l.lng }, current: { lat: l.lat, lng: l.lng },
+        lastCheckIn: relativeTime(l.recordedAt, now), live: state === "live", trackState: state, heading: l.heading, gpsError: l.gpsError,
+      });
+    }
+    return merged;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- dataRev captures live-location writes
+  }, [baseTechs, dataRev, effectiveCompanyId, effectiveLocationId]);
   const suggestions = useMemo(() => computeSuggestions(jobs, techs), [jobs, techs]);
 
   useEffect(() => {
@@ -104,6 +141,9 @@ export default function DispatchMap({ dateFilter }: { dateFilter: MapDateFilter 
   const selTechObj = selTech ? techs.find(t => t.name === selTech) ?? null : null;
   const selRoute = selTechObj ? buildRoute(selTechObj, jobs) : null;
   const flyTo = selJob ? { lat: selJob.lat, lng: selJob.lng } : (selTechObj?.current ?? null);
+  // Today's breadcrumb for a live, selected tech — drawn as a dashed trail.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- dataRev captures new fixes
+  const techTrail = useMemo(() => (selTechObj?.live ? getTechTrail(selTechObj.name).map(p => ({ lat: p.lat, lng: p.lng })) : []), [selTech, selTechObj?.live, dataRev]);
 
   const techJobCount = (name: string) => jobs.filter(j => j.assignedTo === name).length;
   const techNext = (name: string) => jobs.filter(j => j.assignedTo === name && j.day != null).sort((a, b) => a.day! - b.day!)[0];
@@ -111,6 +151,14 @@ export default function DispatchMap({ dateFilter }: { dateFilter: MapDateFilter 
   const techAtRisk = (name: string) => { const r = techRouteOf(name); return r.totalJobMin + r.totalDriveMin > 480; };
   const techNames = techs.map(t => t.name);
   const riskTechNames = new Set(techs.filter(t => t.status === "delayed").map(t => t.name));
+
+  // Compact status card shown above the selected tech's marker on the map.
+  const selState = TRACK_STATE_META[selTechObj?.trackState ?? "off"];
+  const techPopover = selTechObj?.current ? {
+    lat: selTechObj.current.lat, lng: selTechObj.current.lng, name: selTechObj.name,
+    stateLabel: selState.label, stateColor: selState.color, updatedAgo: selTechObj.lastCheckIn,
+    subtitle: (() => { const n = techNext(selTechObj.name); return n ? `Next: ${n.customerName} · ${n.scheduledTime}` : undefined; })(),
+  } : null;
 
   // Overview metrics.
   const stats = {
@@ -219,14 +267,15 @@ export default function DispatchMap({ dateFilter }: { dateFilter: MapDateFilter 
         </aside>
 
         {/* ── Map (hero) — runs full-width to the right edge ── */}
-        <div className="flex-1 min-w-0 rounded-2xl overflow-hidden relative" style={{ border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
-          <GoogleMapView jobs={mapJobs} techs={techs} route={selRoute} selectedJobId={selJobId} onSelectJob={pickJob}
+        <div className="flex-1 min-w-0 rounded-2xl overflow-hidden relative" style={{ border: "1px solid var(--border)", boxShadow: "var(--shadow-card)" }}>
+          <GoogleMapView jobs={mapJobs} techs={techs} route={selRoute} trail={techTrail} selectedJobId={selJobId} onSelectJob={pickJob}
+            onSelectTech={pickTech} selectedTechName={selTech} techPopover={techPopover}
             flyTo={flyTo} showTechs={showTechs || tab === "techs" || !!selTech} traffic={traffic} cluster={cluster} onRouteMeta={setRouteMeta} />
 
           {/* Top overlay: status pill (left) + layer toggles (right) */}
           <div className="absolute top-3 left-3 right-3 flex items-start justify-between gap-2 pointer-events-none">
             {showStatus ? (
-              <div className="pointer-events-auto rounded-lg pl-3 pr-1.5 py-1.5 flex items-center gap-2 text-xs" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+              <div className="pointer-events-auto rounded-lg pl-3 pr-1.5 py-1.5 flex items-center gap-2 text-xs" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "var(--shadow-card)" }}>
                 <span className="font-semibold" style={{ color: "var(--text-primary)" }}>{dateFilter.mode === "today" ? "Today" : "Custom range"}</span>
                 <span style={{ color: "var(--border)" }}>·</span>
                 <span style={{ color: "var(--text-secondary)" }}>{mapJobs.length} on map</span>
@@ -307,13 +356,18 @@ function JobRow({ job, atRisk, selected, onClick }: { job: MapJob; atRisk: boole
 
 function TechRow({ tech, jobs, next, atRisk, selected, onClick }: { tech: MapTech; jobs: number; next?: MapJob; atRisk: boolean; selected: boolean; onClick: () => void }) {
   const sc = TECH_STATUS_CONFIG[tech.status];
+  const ts = TRACK_STATE_META[tech.trackState ?? "off"];
+  const tracked = (tech.trackState ?? "off") !== "off";
   return (
     <button onClick={onClick} className="w-full text-left rounded-xl p-2.5 transition-all hover:-translate-y-px flex items-start gap-2.5"
       style={{ border: `1px solid ${selected ? ACCENT : "var(--border-subtle)"}`, backgroundColor: selected ? ACCENT + "0d" : "var(--bg-surface)", boxShadow: selected ? "var(--shadow-card)" : "none" }}>
-      <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 text-[11px] font-bold text-white" style={{ backgroundColor: sc.color }}>{tech.initials}</span>
+      <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 text-[11px] font-bold text-white" style={{ backgroundColor: sc.color, boxShadow: tracked ? `0 0 0 2px var(--bg-surface), 0 0 0 3.5px ${ts.color}` : "none" }}>{tech.initials}</span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{tech.name}</p>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{tech.name}</p>
+            {tracked && <span className="inline-flex items-center gap-1 text-[8px] font-bold px-1.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: ts.color + "22", color: ts.color }}><span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: ts.color }} />{ts.short.toUpperCase()}</span>}
+          </div>
           <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded shrink-0" style={{ backgroundColor: sc.color + "22", color: sc.color }}>{sc.label}</span>
         </div>
         <p className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>
@@ -441,19 +495,39 @@ function JobInspector({ job, techNames, routePos, onAssign, onClose }: {
 // ── Right inspector: technician ──
 function TechInspector({ tech, route, next, meta, onClose }: { tech: MapTech; route: ReturnType<typeof buildRoute>; next?: MapJob; meta?: { durationMin: number; distanceMi: number; live: boolean } | null; onClose: () => void }) {
   const sc = TECH_STATUS_CONFIG[tech.status];
+  const state = tech.trackState ?? "off";
+  const ts = TRACK_STATE_META[state];
+  const tracked = state !== "off";
+  const trackingLine = state === "live" ? "Live GPS active"
+    : state === "stale" ? "GPS slow — recently seen"
+    : state === "lost" ? (tech.gpsError === "permission" ? "Location permission denied" : tech.gpsError === "unavailable" ? "GPS unavailable on device" : "Signal lost — no recent fix")
+    : state === "clocked_in" ? "Clocked in — GPS paused"
+    : "Off duty — not tracking";
   return (
     <div className="p-4">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2.5 min-w-0">
-          <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-sm font-bold text-white" style={{ backgroundColor: sc.color }}>{tech.initials}</span>
+          <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-sm font-bold text-white" style={{ backgroundColor: sc.color, boxShadow: tracked ? `0 0 0 2px var(--bg-surface), 0 0 0 4px ${ts.color}` : "none" }}>{tech.initials}</span>
           <div className="min-w-0">
-            <p className="text-base font-semibold truncate" style={{ color: "var(--text-primary)" }}>{tech.name}</p>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <p className="text-base font-semibold truncate" style={{ color: "var(--text-primary)" }}>{tech.name}</p>
+              {tracked && <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: ts.color + "22", color: ts.color }}><span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: ts.color }} />{ts.short.toUpperCase()}</span>}
+            </div>
             <p className="text-xs flex items-center gap-1" style={{ color: sc.color }}>
               <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: sc.color }} />{sc.label} · {tech.truck}
             </p>
           </div>
         </div>
         <button onClick={onClose} className="p-1 rounded-lg hover:bg-[var(--bg-surface-2)]" title="Close"><X className="w-4 h-4" style={{ color: "var(--text-muted)" }} /></button>
+      </div>
+
+      {/* Tracking status — the clearest read on clock-in + live GPS state */}
+      <div className="mt-3 rounded-lg px-3 py-2 flex items-center justify-between gap-2" style={{ backgroundColor: ts.color + "14", border: `1px solid ${ts.color}3a` }}>
+        <span className="inline-flex items-center gap-1.5 text-xs font-semibold min-w-0" style={{ color: ts.color }}>
+          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: ts.color }} />
+          <span className="truncate">{trackingLine}</span>
+        </span>
+        <span className="text-[11px] shrink-0" style={{ color: "var(--text-muted)" }}>{tracked ? `Updated ${tech.lastCheckIn}` : tech.lastCheckIn}</span>
       </div>
 
       <div className="grid grid-cols-3 gap-2 mt-3 text-center">
@@ -468,7 +542,7 @@ function TechInspector({ tech, route, next, meta, onClose }: { tech: MapTech; ro
         </p>
       )}
 
-      <p className="text-[11px] mt-3" style={{ color: "var(--text-muted)" }}>Skills: {tech.skills.join(", ")} · Last check-in {tech.lastCheckIn}</p>
+      {tech.skills.length > 0 && <p className="text-[11px] mt-3" style={{ color: "var(--text-muted)" }}>Skills: {tech.skills.join(", ")}</p>}
       {next && <p className="text-[11px] mt-1" style={{ color: "var(--text-secondary)" }}>Next up: {next.customerName} · {next.scheduledTime}</p>}
 
       <div className="mt-3 flex items-center gap-1.5">

@@ -7,7 +7,7 @@ import {
   FileText, Image as ImageIcon, MessageSquare,
   Sliders, ChevronRight, Settings2, ArrowLeft,
   CalendarClock, ListChecks, Package, Tag, Percent, BookOpen, Factory,
-  ShieldCheck, ExternalLink,
+  ShieldCheck, ExternalLink, Navigation, LayoutDashboard,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 
@@ -30,6 +30,8 @@ const WorkOrderTemplatesSection = dynamic(() => import("@/components/settings/Wo
 const PhotoCategoriesSection    = dynamic(() => import("@/components/settings/PhotoCategoriesSection"),    { loading: SectionLoading, ssr: false });
 const IndustryDefaultsSection   = dynamic(() => import("@/components/settings/IndustryDefaultsSection"),   { loading: SectionLoading, ssr: false });
 const CalendarDispatchSection   = dynamic(() => import("@/components/settings/CalendarDispatchSection"),   { loading: SectionLoading, ssr: false });
+const TrackingSection           = dynamic(() => import("@/components/settings/TrackingSection"),           { loading: SectionLoading, ssr: false });
+const DashboardLayoutsSection   = dynamic(() => import("@/components/settings/DashboardLayoutsSection"),   { loading: SectionLoading, ssr: false });
 const TasksSettingsSection      = dynamic(() => import("@/components/settings/TasksSettingsSection"),      { loading: SectionLoading, ssr: false });
 const ItemsCategoriesSection    = dynamic(() => import("@/components/settings/ItemsCategoriesSection"),    { loading: SectionLoading, ssr: false });
 const SalesbookLibrarySection   = dynamic(() => import("@/components/settings/SalesbookLibrarySection"),   { loading: SectionLoading, ssr: false });
@@ -45,10 +47,10 @@ import Commentable from "@/components/comments/Commentable";
 
 // ─── Navigation structure (CRM workflow only) ─────────────
 type SectionKey =
-  | "pipelines" | "job_types" | "projects" | "work_orders" | "tasks" | "photo_categories" | "calendar_dispatch" | "agreements"
+  | "pipelines" | "job_types" | "projects" | "work_orders" | "tasks" | "photo_categories" | "calendar_dispatch" | "tracking" | "agreements"
   | "items_categories" | "salesbook_library" | "terms_conditions" | "taxes_fees"
   | "communication"
-  | "industry" | "custom_fields";
+  | "industry" | "custom_fields" | "dashboard_layouts";
 
 type CategoryKey =
   | "operations" | "sales_catalog" | "customization" | "communication";
@@ -90,6 +92,7 @@ const CATEGORIES: Category[] = [
       { key: "tasks",            label: "Tasks & Comments",     description: "Task types, defaults, and contextual-comment behavior", icon: ListChecks },
       { key: "photo_categories", label: "Photo Categories",     description: "Categories for job and property photos",         icon: ImageIcon },
       { key: "calendar_dispatch",label: "Calendar / Dispatch",  description: "Default view, hours, service blocks, and boards", icon: CalendarClock },
+      { key: "tracking",         label: "Tracking",             description: "Technician GPS routes and location history (last 30 days)", icon: Navigation },
       { key: "agreements",       label: "Agreements",           description: "Plan templates, types, visit & billing rules, benefits, terms", icon: FileText },
     ],
   },
@@ -111,6 +114,7 @@ const CATEGORIES: Category[] = [
     items: [
       { key: "industry",       label: "Industry Defaults",    description: "Default pipeline, job types, and fields by industry", icon: Factory },
       { key: "custom_fields",  label: "Custom Fields",        description: "Add custom fields to any record type",                icon: Sliders },
+      { key: "dashboard_layouts", label: "Dashboard Layouts", description: "Save, apply, and import dashboard layout templates",  icon: LayoutDashboard },
     ],
   },
   {
@@ -132,6 +136,7 @@ const SECTION_LAYERS: Record<SectionKey, SectionLayers> = {
   tasks:              "any",
   photo_categories:   ["org", "company"],
   calendar_dispatch:  ["org", "company", "location"],
+  tracking:           "any",
   agreements:         ["org", "company"],
   items_categories:   ["org", "company"],
   salesbook_library:  ["org", "company"],
@@ -140,6 +145,7 @@ const SECTION_LAYERS: Record<SectionKey, SectionLayers> = {
   communication:      ["org", "company"],
   industry:           ["org", "company"],
   custom_fields:      ["org", "company"],
+  dashboard_layouts:  "any",
 };
 
 // Sections that render as a hub: a container picker first, then the chosen
@@ -295,6 +301,8 @@ export default function SettingsPage() {
         onBack={hubProps?.onBack ?? (() => {})} />;
       case "communication":      return <ComingSoon label="Communication"
         features={["Email provider usage", "SMS provider usage", "Phone / dispatch integration usage", "Conversation inbox"]} />;
+      case "tracking":           return <TrackingSection />;
+      case "dashboard_layouts":  return <DashboardLayoutsSection />;
       case "industry":           return <IndustryDefaultsSection />;
       default:                   return null;
     }
@@ -327,6 +335,8 @@ export default function SettingsPage() {
     // so the scope header + gate stay hidden.
     const isHub = HUB_SECTIONS.has(view.section);
     const onPicker = isHub && !sub;
+    // Read-only viewers (not per-layer config) skip the scope header + edit gate.
+    const isViewer = view.section === "tracking" || view.section === "dashboard_layouts";
     const hubProps: HubProps | undefined = isHub ? {
       activeModule: sub?.key ?? null,
       onOpen: (key, label) => setView(v => v.mode === "section" ? { ...v, sub: { key, label } } : v),
@@ -361,9 +371,9 @@ export default function SettingsPage() {
           </div>
           <SettingsSaveSlot />
         </div>
-        {!onPicker && <EditingScopeHeader sectionLayers={SECTION_LAYERS[view.section] ?? "any"} />}
+        {!onPicker && !isViewer && <EditingScopeHeader sectionLayers={SECTION_LAYERS[view.section] ?? "any"} />}
         <Commentable anchor={{ recordType: "settings", recordId: view.section, recordLabel: item?.label ?? "Settings" }}>
-          {onPicker
+          {onPicker || isViewer
             ? renderSection(view.section, hubProps)
             : (
               <SectionGate layers={SECTION_LAYERS[view.section] ?? "any"} title={item?.label ?? "This setting"}>

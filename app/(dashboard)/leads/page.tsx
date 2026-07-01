@@ -468,8 +468,7 @@ export default function LeadsPage() {
                     border: `1px solid ${active ? "var(--accent-soft-border)" : "transparent"}`,
                   }}>
                   {t.label}
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                    style={{ backgroundColor: active ? "var(--accent-soft-2-bg)" : "var(--bg-input)", color: active ? "var(--accent-text)" : "var(--text-muted)" }}>
+                  <span className="text-xs tabular-nums" style={{ color: active ? "var(--accent-text)" : "var(--text-muted)", opacity: 0.7 }}>
                     {count}
                   </span>
                 </button>

@@ -11,9 +11,10 @@ import { useEffect, useMemo, useRef } from "react";
 import { useGoogleMaps } from "@/hooks/useGoogleMaps";
 import { MarkerClusterer } from "@googlemaps/markerclusterer";
 import {
-  MARKER_CONFIG, TECH_STATUS_CONFIG, MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM,
+  MARKER_CONFIG, MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM,
   type MapJob, type MapTech, type TechRoute,
 } from "@/lib/dispatch-map/data";
+import { TRACK_STATE_META } from "@/lib/tech-tracking/data";
 
 const ACCENT = "#4f46e5"; // CRM indigo
 const svgUrl = (svg: string) => `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
@@ -29,17 +30,32 @@ function jobPin(color: string, selected: boolean, hovered = false): google.maps.
   return { url: svgUrl(svg), scaledSize: new google.maps.Size(w, h), anchor: new google.maps.Point(w / 2, h) };
 }
 // Rounded-square tech marker with initials — visually distinct from job pins.
-function techPin(color: string, initials: string): google.maps.Icon {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 32 32"><rect x="2" y="2" width="28" height="28" rx="9" fill="${color}" stroke="#ffffff" stroke-width="2.5"/><text x="16" y="21" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="700" font-family="system-ui, sans-serif">${initials}</text></svg>`;
-  return { url: svgUrl(svg), scaledSize: new google.maps.Size(30, 30), anchor: new google.maps.Point(15, 15) };
+// Technician marker. Identity (a neutral slate tile + initials) is kept separate
+// from tracking status, which is carried entirely by the ring + corner status dot
+// color (off=gray, clocked-in=blue, live=green, stale=orange, lost=red). Selected
+// adds a soft outer halo ring so the clicked tech stands out.
+function techPin(stateColor: string, initials: string, selected = false): google.maps.Icon {
+  const sel = selected
+    ? `<rect x="1.5" y="1.5" width="33" height="33" rx="12" fill="none" stroke="${stateColor}" stroke-opacity="0.35" stroke-width="3"/>`
+    : "";
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">${sel}<rect x="5" y="5" width="26" height="26" rx="8" fill="#334155" stroke="${stateColor}" stroke-width="3"/><text x="18" y="22.5" text-anchor="middle" fill="#ffffff" font-size="11.5" font-weight="700" font-family="system-ui, sans-serif">${initials}</text><circle cx="30.5" cy="5.5" r="4.5" fill="${stateColor}" stroke="#ffffff" stroke-width="1.75"/></svg>`;
+  return { url: svgUrl(svg), scaledSize: new google.maps.Size(36, 36), anchor: new google.maps.Point(18, 18) };
 }
 
 export interface GoogleMapViewProps {
   jobs: MapJob[];
   techs: MapTech[];
   route?: TechRoute | null;
+  /** Breadcrumb of where a selected live tech has been today (dashed trail). */
+  trail?: { lat: number; lng: number }[];
+  /** Fit the viewport to the trail (history viewer) instead of leaving it put. */
+  fitTrail?: boolean;
   selectedJobId?: string | null;
   onSelectJob?: (id: string) => void;
+  onSelectTech?: (name: string) => void;
+  selectedTechName?: string | null;
+  /** Compact status card shown above the selected tech's marker. */
+  techPopover?: { lat: number; lng: number; name: string; stateLabel: string; stateColor: string; updatedAgo: string; subtitle?: string } | null;
   flyTo?: { lat: number; lng: number } | null;
   showTechs?: boolean;
   traffic?: boolean;
@@ -50,7 +66,7 @@ export interface GoogleMapViewProps {
   onRouteMeta?: (meta: { durationMin: number; distanceMi: number; live: boolean } | null) => void;
 }
 
-export default function GoogleMapView({ jobs, techs, route, selectedJobId, onSelectJob, flyTo, showTechs = true, traffic = false, cluster = true, roadRoute = true, onRouteMeta }: GoogleMapViewProps) {
+export default function GoogleMapView({ jobs, techs, route, trail = [], fitTrail = false, selectedJobId, onSelectJob, onSelectTech, selectedTechName, techPopover, flyTo, showTechs = true, traffic = false, cluster = true, roadRoute = true, onRouteMeta }: GoogleMapViewProps) {
   const { loaded, unavailable } = useGoogleMaps();
 
   const divRef = useRef<HTMLDivElement>(null);
@@ -59,15 +75,20 @@ export default function GoogleMapView({ jobs, techs, route, selectedJobId, onSel
   const jobMarkersRef = useRef<google.maps.Marker[]>([]);
   const techMarkersRef = useRef<google.maps.Marker[]>([]);
   const polyRef = useRef<google.maps.Polyline | null>(null);
+  const trailRef = useRef<google.maps.Polyline | null>(null);
   const dirServiceRef = useRef<google.maps.DirectionsService | null>(null);
   const dirRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
   const routeTokenRef = useRef(0);
   const trafficRef = useRef<google.maps.TrafficLayer | null>(null);
   const pulseRef = useRef<google.maps.OverlayView | null>(null);
+  const techHalosRef = useRef<google.maps.OverlayView[]>([]);
+  const techPopoverRef = useRef<google.maps.OverlayView | null>(null);
   const didFitRef = useRef(false);
   const lastFlyRef = useRef("");
   const onSelectRef = useRef(onSelectJob);
   onSelectRef.current = onSelectJob;
+  const onSelectTechRef = useRef(onSelectTech);
+  onSelectTechRef.current = onSelectTech;
   const onRouteMetaRef = useRef(onRouteMeta);
   onRouteMetaRef.current = onRouteMeta;
 
@@ -76,8 +97,14 @@ export default function GoogleMapView({ jobs, techs, route, selectedJobId, onSel
   // changed, not on every parent re-render (which otherwise flickers the pins
   // and fires redundant Directions requests).
   const jobsSig = useMemo(() => jobs.map(j => `${j.id}:${j.lat.toFixed(5)},${j.lng.toFixed(5)}:${j.kind}`).join("|") + `#${selectedJobId ?? ""}`, [jobs, selectedJobId]);
-  const techsSig = useMemo(() => techs.filter(t => t.current).map(t => `${t.name}:${t.current!.lat.toFixed(5)},${t.current!.lng.toFixed(5)}:${t.status}`).join("|"), [techs]);
-  const routeSig = useMemo(() => (route?.path ?? []).map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join("|"), [route]);
+  const techsSig = useMemo(() => techs.filter(t => t.current).map(t => `${t.name}:${t.current!.lat.toFixed(5)},${t.current!.lng.toFixed(5)}:${t.trackState ?? "off"}`).join("|") + `#${selectedTechName ?? ""}`, [techs, selectedTechName]);
+  // Route path rounded to ~3 decimals (~110m): the live MARKER updates in real
+  // time, but the billable Directions road-route only redraws when the tech
+  // actually moves a block+, so fast GPS updates don't run up Directions usage.
+  const routeSig = useMemo(() => (route?.path ?? []).map(p => `${p.lat.toFixed(3)},${p.lng.toFixed(3)}`).join("|"), [route]);
+  const trailSig = useMemo(() => trail.map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join("|"), [trail]);
+  const haloSig = useMemo(() => techs.filter(t => t.trackState === "live" && t.current).map(t => `${t.current!.lat.toFixed(5)},${t.current!.lng.toFixed(5)}`).join("|"), [techs]);
+  const popoverSig = useMemo(() => techPopover ? `${techPopover.name}:${techPopover.lat.toFixed(5)},${techPopover.lng.toFixed(5)}:${techPopover.stateLabel}:${techPopover.updatedAgo}:${techPopover.subtitle ?? ""}` : "", [techPopover]);
 
   // Init the map once.
   useEffect(() => {
@@ -131,21 +158,107 @@ export default function GoogleMapView({ jobs, techs, route, selectedJobId, onSel
     // eslint-disable-next-line react-hooks/exhaustive-deps -- jobsSig captures job content
   }, [jobsSig, cluster, loaded]);
 
-  // Technician markers.
+  // Technician markers — color carries the tracking state; live sits on top.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     techMarkersRef.current.forEach(m => m.setMap(null));
     if (!showTechs) { techMarkersRef.current = []; return; }
-    techMarkersRef.current = techs.filter(t => t.current).map(t => new google.maps.Marker({
-      position: { lat: t.current!.lat, lng: t.current!.lng }, map,
-      icon: techPin(TECH_STATUS_CONFIG[t.status].color, t.initials),
-      title: `${t.name} · ${TECH_STATUS_CONFIG[t.status].label}`,
-      zIndex: 500,
-    }));
+    techMarkersRef.current = techs.filter(t => t.current).map(t => {
+      const state = t.trackState ?? "off";
+      const meta = TRACK_STATE_META[state];
+      const selected = selectedTechName === t.name;
+      const m = new google.maps.Marker({
+        position: { lat: t.current!.lat, lng: t.current!.lng }, map,
+        icon: techPin(meta.color, t.initials, selected),
+        title: `${t.name} · ${meta.label}`,
+        zIndex: selected ? 700 : state === "live" ? 600 : 500,
+      });
+      m.addListener("click", () => onSelectTechRef.current?.(t.name));
+      return m;
+    });
     return () => { techMarkersRef.current.forEach(m => m.setMap(null)); };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- techsSig captures tech content
   }, [techsSig, showTechs, loaded]);
+
+  // Subtle live halo — a soft, slow green ring under each LIVE tech so it reads as
+  // actively updating. Gentle (one ring, low opacity), not the loud sonar wave.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    techHalosRef.current.forEach(o => o.setMap(null));
+    techHalosRef.current = [];
+    if (!showTechs) return;
+    class Halo extends google.maps.OverlayView {
+      div?: HTMLDivElement;
+      constructor(private lat: number, private lng: number) { super(); }
+      onAdd() { const d = document.createElement("div"); d.className = "map-live-halo"; this.div = d; this.getPanes()?.overlayLayer.appendChild(d); }
+      draw() { const p = this.getProjection()?.fromLatLngToDivPixel(new google.maps.LatLng(this.lat, this.lng)); if (p && this.div) { this.div.style.left = `${p.x}px`; this.div.style.top = `${p.y}px`; } }
+      onRemove() { this.div?.remove(); this.div = undefined; }
+    }
+    techHalosRef.current = techs.filter(t => t.trackState === "live" && t.current).map(t => {
+      const o = new Halo(t.current!.lat, t.current!.lng); o.setMap(map); return o;
+    });
+    return () => { techHalosRef.current.forEach(o => o.setMap(null)); techHalosRef.current = []; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- haloSig captures live positions
+  }, [haloSig, showTechs, loaded]);
+
+  // Selected-tech status card — a compact popover anchored above the marker.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    techPopoverRef.current?.setMap(null); techPopoverRef.current = null;
+    if (!techPopover) return;
+    const pop = techPopover;  // declared post-guard so the closures below see non-null
+    class Popover extends google.maps.OverlayView {
+      div?: HTMLDivElement;
+      onAdd() {
+        const d = document.createElement("div");
+        d.className = "map-tech-popover";
+        d.innerHTML = `<div class="mtp-row"><span class="mtp-name"></span><span class="mtp-pill"><span class="mtp-dot"></span><span class="mtp-state"></span></span></div><div class="mtp-updated"></div>${pop.subtitle ? `<div class="mtp-sub"></div>` : ""}<span class="mtp-tip"></span>`;
+        d.querySelector(".mtp-name")!.textContent = pop.name;
+        d.querySelector(".mtp-state")!.textContent = pop.stateLabel;
+        const pill = d.querySelector(".mtp-pill") as HTMLElement;
+        pill.style.color = pop.stateColor;
+        pill.style.background = `color-mix(in srgb, ${pop.stateColor} 14%, transparent)`;
+        (d.querySelector(".mtp-dot") as HTMLElement).style.background = pop.stateColor;
+        d.querySelector(".mtp-updated")!.textContent = `Updated ${pop.updatedAgo}`;
+        if (pop.subtitle) d.querySelector(".mtp-sub")!.textContent = pop.subtitle;
+        this.div = d;
+        this.getPanes()?.floatPane.appendChild(d);
+      }
+      draw() { const p = this.getProjection()?.fromLatLngToDivPixel(new google.maps.LatLng(pop.lat, pop.lng)); if (p && this.div) { this.div.style.left = `${p.x}px`; this.div.style.top = `${p.y}px`; } }
+      onRemove() { this.div?.remove(); this.div = undefined; }
+    }
+    const o = new Popover(); o.setMap(map); techPopoverRef.current = o;
+    return () => { o.setMap(null); techPopoverRef.current = null; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- popoverSig captures content
+  }, [popoverSig, loaded]);
+
+  // Live tech breadcrumb — a dashed grey trail of where they've been today.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    trailRef.current?.setMap(null);
+    trailRef.current = null;
+    const pts = trail;
+    if (pts.length < 2) return;
+    trailRef.current = new google.maps.Polyline({
+      path: pts.map(p => ({ lat: p.lat, lng: p.lng })),
+      map,
+      strokeOpacity: 0,
+      icons: [{ icon: { path: "M 0,-1 0,1", strokeOpacity: 0.7, strokeColor: "#6b7280", scale: 3 }, offset: "0", repeat: "12px" }],
+      zIndex: 400,
+    });
+    // History viewer: frame the whole route (live board leaves the viewport alone).
+    if (fitTrail) {
+      const b = new google.maps.LatLngBounds();
+      pts.forEach(p => b.extend(p));
+      map.fitBounds(b, 64);
+    }
+    return () => { trailRef.current?.setMap(null); trailRef.current = null; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- trailSig captures trail content
+  }, [trailSig, fitTrail, loaded]);
 
   // Route — real road geometry via Directions (traffic-aware) with a straight-
   // line fallback. The tech's location is the origin; their scheduled jobs are

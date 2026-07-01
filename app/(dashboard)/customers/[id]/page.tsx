@@ -1711,7 +1711,7 @@ function CustomerDetailContent({ params }: { params: Promise<{ id: string }> }) 
       {/* Tab content — keyed on refreshKey so tabs re-read after an edit.
           Card-grid tabs (Contacts, Properties, Equipment) comment per-row inside
           the tab; table/dense tabs get a section-level anchor here. */}
-      <div key={refreshKey} className="flex-1 overflow-y-auto p-6" style={{ backgroundColor: "var(--bg-page)" }}>
+      <div key={refreshKey} className="flex-1 overflow-y-auto p-6" style={{ backgroundColor: "var(--bg-page)", scrollbarGutter: "stable" }}>
         {(() => {
           const section = (s: string, node: React.ReactNode) => (
             <Commentable anchor={{ recordType: "customer", recordId: id, recordLabel: customer.name, section: s }}>{node}</Commentable>

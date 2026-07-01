@@ -11,8 +11,10 @@ import { todayYMD } from "@/lib/utils/schedule";
 const TECH_ROLES = new Set(["field_technician", "installer"]);
 const ACTING_KEY = "routiqa-mobile-acting-user"; // lets us pin a tech for the demo
 
-// The signed-in field user. Until real auth lands we pick the technician with the
-// most assigned work (so the demo is never empty), overridable via localStorage.
+// The signed-in user. Until a real login page lands, default to the org owner /
+// admin (Ryo Martin) so it matches the desktop's current user — overridable via
+// setActingTech for the demo. Falls back to the busiest technician only if no
+// owner exists (so the demo is never empty).
 export function getCurrentTech(): AppUser {
   const staffed = getStaffedUsers();
   if (typeof window !== "undefined") {
@@ -20,6 +22,8 @@ export function getCurrentTech(): AppUser {
     const found = pinned && staffed.find(u => u.id === pinned);
     if (found) return found;
   }
+  const owner = staffed.find(u => u.isOrgOwner);
+  if (owner) return owner;
   const jobs = getAllJobs();
   const techs = staffed.filter(u => u.assignments.some(a => TECH_ROLES.has(a.role)));
   const pool = techs.length ? techs : staffed;
@@ -116,6 +120,7 @@ export const STATUS_META: Record<JobStatus, { label: string; color: string }> = 
   in_progress:         { label: "In progress",    color: "#f59e0b" },
   waiting_on_parts:    { label: "On hold · parts", color: "#a855f7" },
   waiting_on_customer: { label: "Needs follow-up", color: "#a855f7" },
+  waiting_on_approval: { label: "Needs approval",  color: "#a855f7" },
   completed:           { label: "Completed",      color: "#16a34a" },
   invoiced:            { label: "Invoiced",       color: "#16a34a" },
   closed:              { label: "Closed",         color: "#6b7280" },

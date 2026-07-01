@@ -140,7 +140,7 @@ export default function WorkOrdersPage() {
             const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
 
             return (
-              <Link key={wo.id} href={`/jobs/${wo.jobId}`}
+              <Link key={wo.id} href={`/work-orders/${wo.id}`}
                 className="grid px-4 py-3 items-center hover:bg-[var(--bg-surface-2)] transition-colors"
                 style={{ gridTemplateColumns: "2.5fr 2fr 1.5fr 1fr", borderBottom: i < displayed.length - 1 ? "1px solid var(--border-subtle)" : "none", textDecoration: "none" }}>
 
@@ -192,7 +192,7 @@ export default function WorkOrdersPage() {
         {/* Footer */}
         <div className="px-4 py-3 text-xs"
           style={{ borderTop: "1px solid var(--border-subtle)", color: "var(--text-muted)", backgroundColor: "var(--bg-surface-2)" }}>
-          Showing {displayed.length} of {contextFiltered.length} work orders · Click a row to open the job
+          Showing {displayed.length} of {contextFiltered.length} work orders · Click a row to open the work order
         </div>
       </div>
       </>

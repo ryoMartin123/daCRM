@@ -80,6 +80,32 @@ export function saveLayout(layout: LayoutItem[]): void {
   try { localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(layout)); } catch { /* ignore */ }
 }
 
+// ── Per-scope layouts ─────────────────────────────────────
+// Each scope (org / a company / a location) can keep its own dashboard layout,
+// so switching scope swaps the dashboard. Stored as a map keyed by scope.
+const SCOPED_KEY = "crm-dashboard-scoped-layouts-v1";
+
+export function scopeKeyOf(companyId?: string, locationId?: string): string {
+  if (locationId) return `location:${locationId}`;
+  if (companyId) return `company:${companyId}`;
+  return "org";
+}
+
+function readScoped(): Record<string, LayoutItem[]> {
+  if (typeof window === "undefined") return {};
+  try { return JSON.parse(localStorage.getItem(SCOPED_KEY) || "{}"); } catch { return {}; }
+}
+export function loadScopedLayout(scopeKey: string): LayoutItem[] | null {
+  const items = readScoped()[scopeKey];
+  return Array.isArray(items) && items.length ? items : null;
+}
+export function saveLayoutForScope(scopeKey: string, layout: LayoutItem[]): void {
+  if (typeof window === "undefined") return;
+  const map = readScoped();
+  map[scopeKey] = layout;
+  try { localStorage.setItem(SCOPED_KEY, JSON.stringify(map)); } catch { /* ignore */ }
+}
+
 // Returns the next free y position (below all currently visible items).
 export function nextFreeY(layout: LayoutItem[]): number {
   const visible = layout.filter(i => i.visible);

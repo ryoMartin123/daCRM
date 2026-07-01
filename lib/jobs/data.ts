@@ -25,7 +25,7 @@ export function registerAgreementJobDeletedHandler(fn: JobDeletedHandler): void 
 }
 
 // ─── Types ────────────────────────────────────────────────
-export type JobStatus      = "new" | "scheduled" | "en_route" | "in_progress" | "waiting_on_parts" | "waiting_on_customer" | "completed" | "invoiced" | "closed" | "canceled" | "no_show";
+export type JobStatus      = "new" | "scheduled" | "en_route" | "in_progress" | "waiting_on_parts" | "waiting_on_customer" | "waiting_on_approval" | "completed" | "invoiced" | "closed" | "canceled" | "no_show";
 export type JobType        = "agreement_visit" | "maintenance" | "repair" | "installation" | "inspection" | "emergency" | "estimate" | "warranty" | "replacement" | "other";
 export type JobPriority    = "low" | "normal" | "high" | "urgent";
 export type WorkOrderStatus = "pending" | "in_progress" | "completed";
@@ -142,6 +142,7 @@ export const JOB_STATUS_CONFIG: Record<JobStatus, { label: string; bg: string; c
   in_progress:          { label: "In Progress",          bg: "#dbeafe",         color: "#1e40af" },
   waiting_on_parts:     { label: "Waiting on Parts",     bg: "#fef3c7",         color: "#92400e" },
   waiting_on_customer:  { label: "Waiting on Customer",  bg: "#fef3c7",         color: "#92400e" },
+  waiting_on_approval:  { label: "Waiting on Approval",  bg: "#fef3c7",         color: "#92400e" },
   completed:            { label: "Completed",            bg: "#d1fae5",         color: "#065f46" },
   invoiced:             { label: "Invoiced",             bg: "#ecfdf5",         color: "#059669" },
   closed:               { label: "Closed",               bg: "var(--bg-input)", color: "var(--text-muted)" },

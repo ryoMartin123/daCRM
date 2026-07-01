@@ -31,3 +31,6 @@ Thumbs.db
 
 # local npm cache
 .npm-cache/
+
+# Local tooling (cloudflared tunnel binary + logs)
+.tools/

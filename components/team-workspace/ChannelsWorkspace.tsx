@@ -91,9 +91,9 @@ export default function ChannelsWorkspace() {
   return (
     <div className="h-full flex min-h-0">
       {/* Left — channel list */}
-      <aside className="w-72 shrink-0 flex flex-col" style={{ borderRight: "1px solid var(--border)", backgroundColor: "var(--bg-surface)" }}>
+      <aside className="w-72 shrink-0 flex flex-col" style={{ borderRight: "1px solid var(--border)", backgroundColor: "var(--bg-page)" }}>
         <div className="p-2.5 shrink-0 flex items-center gap-1.5" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-          <div className="relative flex-1 min-w-0 order-2">
+          <div className="relative flex-1 min-w-0">
             <div className="flex items-center gap-2 rounded-lg px-2.5 py-1.5" style={{ backgroundColor: "var(--bg-input)" }}>
               <Hash className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted)" }} />
               <input value={search} onFocusCapture={() => setSearchOpen(true)} onChange={e => { setSearch(e.target.value); setSearchOpen(true); }} placeholder="Search channels, people, messages…" className="bg-transparent text-sm outline-none w-full min-w-0" style={{ color: "var(--text-primary)" }} />
@@ -144,13 +144,13 @@ export default function ChannelsWorkspace() {
               </>
             )}
           </div>
-          {/* Single actions menu — create + filters live together (left of search) */}
-          <div className="relative shrink-0 order-1">
+          {/* Single actions menu — create + filters live together (right of search) */}
+          <div className="relative shrink-0">
             <button onClick={() => setMenuOpen(o => !o)} title="Channel actions"
               className="w-8 h-8 rounded-lg flex items-center justify-center text-white"
               style={{ backgroundColor: ACCENT }}>
               <Plus className="w-4 h-4" />
-              {activeFilters > 0 && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full" style={{ backgroundColor: "#f59e0b", border: "1.5px solid var(--bg-surface)" }} />}
+              {activeFilters > 0 && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full" style={{ backgroundColor: "#f59e0b", border: "1.5px solid var(--bg-page)" }} />}
             </button>
             {menuOpen && (
               <>
@@ -195,7 +195,7 @@ export default function ChannelsWorkspace() {
           so it eases open/closed instead of snapping. */}
       {selected && (
         <div className={cn("shrink-0 h-full overflow-hidden transition-[width] duration-300 ease-in-out", detailsOpen ? "w-80" : "w-0")} aria-hidden={!detailsOpen}>
-          <ChannelDetails channel={selected} refresh={refresh} onEdit={() => setEditOpen(true)} onCollapse={() => setDetailsOpen(false)} tick={tick} />
+          <ChannelDetails channel={selected} refresh={refresh} onEdit={() => setEditOpen(true)} tick={tick} />
         </div>
       )}
 
@@ -612,7 +612,7 @@ function Composer({ channel, refresh, taRef, replyingTo, onClearReply }: {
   }
 
   return (
-    <div className="shrink-0 px-4 py-3" style={{ borderTop: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-surface)" }}>
+    <div className="shrink-0 px-4 py-3" style={{ borderTop: "1px solid var(--border-subtle)", backgroundColor: "transparent" }}>
       {/* Quoted reply preview (WhatsApp-style) */}
       {replyingTo && (
         <div className="mb-1.5">
@@ -870,42 +870,49 @@ function personInitials(name: string): string {
 }
 
 // ─── Right details panel ──────────────────────────────────
-function ChannelDetails({ channel, refresh, onEdit, onCollapse, tick }: { channel: Channel; refresh: () => void; onEdit: () => void; onCollapse: () => void; tick: number }) {
+function ChannelDetails({ channel, refresh, onEdit, tick }: { channel: Channel; refresh: () => void; onEdit: () => void; tick: number }) {
   const recent = useMemo(() => getChannelPosts(channel.id).slice(0, 4), [channel.id, tick]);
   const LINKED_APPS = ["CRM", "HR", "Inventory", "Documents"];
   return (
-    <aside className="w-80 h-full shrink-0 overflow-y-auto thin-scroll-y p-4 space-y-4" style={{ borderLeft: "1px solid var(--border)", backgroundColor: "var(--bg-surface)" }}>
-      <div className="flex items-center gap-2.5">
-        <span className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 text-sm font-bold text-white" style={{ backgroundColor: channel.accent }}>{channelInitials(channel.name)}</span>
-        <div className="min-w-0 flex-1">
+    <aside className="w-80 max-w-full h-full shrink-0 overflow-y-auto overflow-x-hidden thin-scroll-y p-4 space-y-3" style={{ borderLeft: "1px solid var(--border)", backgroundColor: "var(--bg-page)" }}>
+      {/* Header */}
+      <TWCard>
+        <div className="min-w-0">
           <p className="text-sm font-semibold truncate" style={{ color: "var(--text-primary)" }}>{channel.name}</p>
           <p className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{CHANNEL_TYPE_LABELS[channel.type]}</p>
         </div>
-        <button onClick={onCollapse} title="Hide details" className="w-7 h-7 rounded-md flex items-center justify-center shrink-0 transition-colors hover:bg-[var(--bg-surface-2)]" style={{ color: "var(--text-muted)" }}>
-          <X className="w-4 h-4" />
-        </button>
-      </div>
+      </TWCard>
 
-      <DetailRow label="Description" value={channel.description} />
-      <div className="grid grid-cols-2 gap-3">
-        <DetailRow label="Type" value={CHANNEL_TYPE_LABELS[channel.type]} />
-        <DetailRow label="Visibility" value={VISIBILITY_LABELS[channel.visibility]} icon={channel.visibility === "private" ? Lock : undefined} />
-        <DetailRow label="Status" value={channel.status === "archived" ? "Archived" : "Active"} />
-      </div>
-      {channel.context && <DetailRow label="Linked company / location" value={channel.context} />}
-      {channel.managers.length > 0 && <DetailRow label="Managers / owners" value={channel.managers.join(", ")} />}
+      {/* About */}
+      <TWCard>
+        <div className="space-y-3">
+          <DetailRow label="Description" value={channel.description} />
+          <div className="grid grid-cols-2 gap-3">
+            <DetailRow label="Type" value={CHANNEL_TYPE_LABELS[channel.type]} />
+            <DetailRow label="Visibility" value={VISIBILITY_LABELS[channel.visibility]} icon={channel.visibility === "private" ? Lock : undefined} />
+            <DetailRow label="Status" value={channel.status === "archived" ? "Archived" : "Active"} />
+          </div>
+          {channel.context && <DetailRow label="Linked company / location" value={channel.context} />}
+          {channel.managers.length > 0 && <DetailRow label="Managers / owners" value={channel.managers.join(", ")} />}
+        </div>
+      </TWCard>
 
-      <MembersSection channel={channel} refresh={refresh} tick={tick} />
+      {/* Members */}
+      <TWCard>
+        <MembersSection channel={channel} refresh={refresh} tick={tick} />
+      </TWCard>
 
-      <div>
+      {/* Linked apps */}
+      <TWCard>
         <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: "var(--text-muted)" }}>Linked apps</p>
         <div className="flex flex-wrap gap-1.5">
           {LINKED_APPS.map(a => <span key={a} className="text-[11px] px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--bg-surface-2)", color: "var(--text-secondary)" }}>{a}</span>)}
         </div>
         <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>Record linking arrives in a later phase.</p>
-      </div>
+      </TWCard>
 
-      <div>
+      {/* Recent activity */}
+      <TWCard>
         <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: "var(--text-muted)" }}>Recent activity</p>
         {recent.length === 0 ? <p className="text-xs" style={{ color: "var(--text-muted)" }}>No recent posts.</p> : (
           <ul className="space-y-1.5">
@@ -917,14 +924,17 @@ function ChannelDetails({ channel, refresh, onEdit, onCollapse, tick }: { channe
             ))}
           </ul>
         )}
-      </div>
+      </TWCard>
 
-      <div className="pt-1 space-y-1.5" style={{ borderTop: "1px solid var(--border-subtle)" }}>
-        <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5 mt-2" style={{ color: "var(--text-muted)" }}>Quick actions</p>
-        <QuickAction icon={Pencil} label="Edit channel" onClick={onEdit} />
-        <QuickAction icon={Pin} label={channel.pinned ? "Unpin channel" : "Pin channel"} onClick={() => { togglePinChannel(channel.id); refresh(); }} />
-        {channel.status !== "archived" && <QuickAction icon={Archive} label="Archive channel" onClick={() => { if (confirm(`Archive ${channel.name}?`)) { archiveChannel(channel.id); refresh(); } }} />}
-      </div>
+      {/* Quick actions */}
+      <TWCard>
+        <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: "var(--text-muted)" }}>Quick actions</p>
+        <div className="space-y-1">
+          <QuickAction icon={Pencil} label="Edit channel" onClick={onEdit} />
+          <QuickAction icon={Pin} label={channel.pinned ? "Unpin channel" : "Pin channel"} onClick={() => { togglePinChannel(channel.id); refresh(); }} />
+          {channel.status !== "archived" && <QuickAction icon={Archive} label="Archive channel" onClick={() => { if (confirm(`Archive ${channel.name}?`)) { archiveChannel(channel.id); refresh(); } }} />}
+        </div>
+      </TWCard>
     </aside>
   );
 }
@@ -1046,6 +1056,10 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
       {children}
     </div>
   );
+}
+// Container block used by the channel details panel (matches the CRM inbox context cards).
+function TWCard({ children }: { children: React.ReactNode }) {
+  return <div className="rounded-xl p-4" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)" }}>{children}</div>;
 }
 function DetailRow({ label, value, icon: Icon }: { label: string; value: string; icon?: typeof Lock }) {
   return (

@@ -130,7 +130,7 @@ export default function ItemsPage() {
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
                   style={{ backgroundColor: active ? "var(--accent-soft-bg)" : "transparent", color: active ? "var(--accent-text)" : "var(--text-muted)", border: `1px solid ${active ? "var(--accent-soft-border)" : "transparent"}` }}>
                   <t.icon className="w-3.5 h-3.5" /> {t.label}
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: active ? "var(--accent-soft-2-bg)" : "var(--bg-input)", color: active ? "var(--accent-text)" : "var(--text-muted)" }}>{counts[t.key]}</span>
+                  <span className="text-xs tabular-nums" style={{ color: active ? "var(--accent-text)" : "var(--text-muted)", opacity: 0.7 }}>{counts[t.key]}</span>
                 </button>
               );
             })}

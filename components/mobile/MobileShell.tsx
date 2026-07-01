@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import BottomNav from "./BottomNav";
 import MobileCommandBar from "./MobileCommandBar";
+import LocationReporter from "./LocationReporter";
 import { getMobileExperience, type MobileExperience } from "@/lib/mobile/data";
 import { getAllJobs } from "@/lib/jobs/data";
 import { upsertCustomerStubsFromJobs } from "@/lib/customers/data";
@@ -44,15 +45,18 @@ export default function MobileShell({ children }: { children: React.ReactNode })
 
   // Keyed by pathname so each route change replays the fade-rise transition.
   const page = <div key={pathname} className="mobile-page-in">{children}</div>;
+  // Reports GPS to the dispatch board while the tech is clocked in (renders nothing).
+  const reporter = <LocationReporter />;
 
   // Focused screen — render children only; the page provides its own bottom action.
   if (isFocused(pathname)) {
-    return <div className="min-h-[100dvh]" style={{ backgroundColor: "var(--bg-page)" }}>{page}</div>;
+    return <div className="min-h-[100dvh]" style={{ backgroundColor: "var(--bg-page)" }}>{reporter}{page}</div>;
   }
 
   if (exp === "full") {
     return (
       <div className="min-h-[100dvh] flex flex-col" style={{ backgroundColor: "var(--bg-page)" }}>
+        {reporter}
         <main className="flex-1" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 88px)" }}>{page}</main>
         <MobileCommandBar />
       </div>
@@ -62,6 +66,7 @@ export default function MobileShell({ children }: { children: React.ReactNode })
   // Technician field experience — floating bottom nav.
   return (
     <div className="min-h-[100dvh] flex flex-col" style={{ backgroundColor: "var(--bg-page)" }}>
+      {reporter}
       <main className="flex-1" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 92px)" }}>{page}</main>
       <BottomNav />
     </div>

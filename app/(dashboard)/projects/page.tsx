@@ -793,7 +793,7 @@ function ProjectsOverview({ projects, stages }: {
 
 function OvPanel({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("rounded-xl p-4 flex flex-col", className)} style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-card)" }}>
+    <div className={cn("rounded-xl p-4 flex flex-col", className)} style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "var(--shadow-card)" }}>
       <p className="text-xs font-semibold uppercase tracking-widest mb-3 shrink-0" style={{ color: "var(--text-muted)" }}>{title}</p>
       <div className="flex-1 min-h-0 flex flex-col justify-start">{children}</div>
     </div>

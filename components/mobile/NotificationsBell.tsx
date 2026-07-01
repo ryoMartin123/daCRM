@@ -21,7 +21,7 @@ const PANEL: React.CSSProperties = {
   backdropFilter: "blur(36px) saturate(180%)",
   WebkitBackdropFilter: "blur(36px) saturate(180%)",
   border: "1px solid rgba(255,255,255,0.12)",
-  borderRadius: "26px",
+  borderRadius: "18px",
   boxShadow: "0 28px 70px -14px rgba(0,0,0,0.6), 0 8px 24px -8px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.18)",
 };
 

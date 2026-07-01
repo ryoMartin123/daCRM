@@ -46,6 +46,7 @@ function tabsFor(today: string): { key: string; label: string; fn: (j: Job) => b
     { key: "unscheduled", label: "Unscheduled", fn: isUnscheduled },
     { key: "scheduled",   label: "Scheduled",   fn: (j) => j.status === "scheduled" && j.scheduledDate !== today },
     { key: "in_progress", label: "In Progress", fn: (j) => j.status === "in_progress" || j.status === "en_route" },
+    { key: "on_hold",     label: "On Hold",     fn: (j) => j.status === "waiting_on_parts" || j.status === "waiting_on_customer" || j.status === "waiting_on_approval" },
     { key: "completed",   label: "Completed",   fn: (j) => j.status === "completed" },
     { key: "canceled",    label: "Canceled",    fn: (j) => j.status === "canceled" },
     { key: "projects",    label: "Projects",    fn: () => false }, // special view

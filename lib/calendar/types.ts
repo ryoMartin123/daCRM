@@ -81,7 +81,12 @@ export interface CalendarItem {
   jobId?: string;
   workOrderId?: string;
   workOrderTitle?: string;
+  visitType?: import("@/lib/appointments/data").VisitType;  // field-event purpose (Appointment = Visit)
   techIds?: string[];        // crew (primary first)
+  // Multi-visit linkage: when a job has more than one appointment, each card is
+  // "visit visitIndex of visitCount" — so the board can show they're the same job.
+  visitIndex?: number;
+  visitCount?: number;
 
   // Display
   status?: string;

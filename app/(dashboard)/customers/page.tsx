@@ -296,7 +296,11 @@ export default function CustomersPage() {
                 className="grid px-4 py-3 transition-colors hover:bg-[var(--bg-surface-2)] items-center"
                 style={{
                   gridTemplateColumns: "2fr 1fr 1fr 2.5fr 1fr 1fr",
-                  borderBottom: i < displayed.length - 1 ? "1px solid var(--border-subtle)" : "none",
+                  // Keep the border at 1px always (transparent on the last row) so
+                  // `transition-colors` fades border-color from an explicit transparent
+                  // — not the light default `currentColor` — when a row stops being last
+                  // (which flashed a white line below it on tab switches).
+                  borderBottom: `1px solid ${i < displayed.length - 1 ? "var(--border-subtle)" : "transparent"}`,
                   textDecoration: "none",
                 }}
               >

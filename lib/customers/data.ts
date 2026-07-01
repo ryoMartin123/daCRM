@@ -380,7 +380,7 @@ export function getEquipment(customerId: string): Equipment[] {
 // summary statuses the profile renders.
 const JOB_STATUS_MAP: Record<RealJobStatus, JobStatus> = {
   new: "Scheduled", scheduled: "Scheduled", en_route: "Scheduled",
-  in_progress: "In Progress", waiting_on_parts: "In Progress", waiting_on_customer: "In Progress",
+  in_progress: "In Progress", waiting_on_parts: "In Progress", waiting_on_customer: "In Progress", waiting_on_approval: "In Progress",
   completed: "Completed", invoiced: "Completed", closed: "Completed",
   canceled: "Canceled", no_show: "Canceled",
 };

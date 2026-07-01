@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   Inbox, Search, SlidersHorizontal, Eye, EyeOff,
   ChevronLeft, ChevronRight, ChevronUp, ChevronDown, LayoutGrid, LayoutList, CalendarDays, CalendarRange, CalendarClock,
-  Plus, Briefcase, X, Users, MapPin, Building2, Check, Globe, Map as MapIcon,
+  Plus, Briefcase, X, Users, MapPin, Building2, Check, Globe, Map as MapIcon, RotateCcw, Link2,
 } from "lucide-react";
 import DispatchMap from "@/components/dispatch-map/DispatchMap";
 import DatePicker from "@/components/ui/DatePicker";
@@ -28,12 +28,14 @@ import { syncAgreementVisitFromJob, materializeVisitJob } from "@/lib/agreements
 import JobStageControl from "@/components/jobs/JobStageControl";
 import { getCustomer } from "@/lib/customers/data";
 import { getUsersByRoles, getBoardCandidates } from "@/lib/users/data";
+import { MoreActionsGlyph } from "@/components/shared/ActionsMenu";
 import {
   getAvailabilityForDay, createAvailability, removeAvailability, techStatusForKind, AVAILABILITY_CONFIG,
   type AvailabilityEvent, type NewAvailabilityInput,
 } from "@/lib/calendar/availability";
 import TimeOffModal from "@/components/calendar/TimeOffModal";
 import JobWizard from "@/components/jobs/JobWizard";
+import ReturnVisitModal from "@/components/jobs/ReturnVisitModal";
 import {
   LAYER_CONFIG, CALENDAR_LAYERS, PRIORITY_CONFIG, TECH_STATUS_CONFIG, HOUR_PX,
   type CalendarItem, type CalendarItemType, type UnscheduledItem, type DispatchMode,
@@ -176,6 +178,7 @@ export default function CalendarPage() {
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [boardMenuOpen, setBoardMenuOpen]   = useState(false);
   const [showJobWizard, setShowJobWizard]   = useState(false);
+  const [showReturnVisit, setShowReturnVisit] = useState(false);
   const [showVisitScheduler, setShowVisitScheduler] = useState(false);
   const [visitSchedErr, setVisitSchedErr] = useState<string | null>(null);
 
@@ -581,7 +584,7 @@ export default function CalendarPage() {
           {boardScopeNotice && (
             <button onClick={() => selectBoard("all")}
               title="Viewing a scoped board — click to return to all boards"
-              className="group inline-flex items-center gap-1.5 mt-1.5 pl-2 pr-1.5 py-0.5 rounded-full text-[11px] font-medium transition-colors"
+              className="group inline-flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-lg text-[11px] font-medium transition-colors"
               style={{ backgroundColor: "var(--accent-soft-bg)", color: "var(--accent-text)", border: "1px solid var(--accent-soft-border)" }}>
               {boardScopeNotice.level === "location" ? <MapPin className="w-3 h-3 shrink-0" /> : <Building2 className="w-3 h-3 shrink-0" />}
               <span>Viewing {boardScopeNotice.level} board · {boardScopeNotice.name}</span>
@@ -613,15 +616,15 @@ export default function CalendarPage() {
               className="group flex items-center gap-2.5 pl-1.5 pr-2.5 py-1 rounded-lg transition-colors hover:bg-[var(--bg-surface-2)]"
               style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-surface)" }}
               aria-haspopup="menu" aria-expanded={boardMenuOpen}>
-              <div className="w-8 h-8 rounded-md flex items-center justify-center shrink-0 transition-transform duration-150 ease-out group-hover:scale-110 group-active:scale-95"
-                style={{ backgroundColor: "var(--accent-soft-bg)" }}>
-                <LayoutGrid className="w-4 h-4 transition-transform duration-150 group-active:rotate-[8deg]" style={{ color: "var(--accent-text)" }} />
+              <div className="w-8 h-8 rounded-md flex items-center justify-center shrink-0 transition-colors"
+                style={{ backgroundColor: boardMenuOpen ? "var(--accent-soft-2-bg)" : "var(--accent-soft-bg)", color: boardMenuOpen ? "var(--accent-text-strong)" : "var(--accent-text)" }}>
+                <MoreActionsGlyph open={boardMenuOpen} />
               </div>
               <div className="min-w-0 text-left max-w-[180px]">
                 <p className="text-sm font-semibold leading-tight truncate" style={{ color: "var(--text-primary)" }}>{boardMenuLabel}</p>
                 <p className="text-[10px] leading-tight truncate" style={{ color: "var(--text-muted)" }}>{boardMenuSub}</p>
               </div>
-              <ChevronDown className="w-4 h-4 shrink-0 transition-transform" style={{ color: "var(--text-muted)", transform: boardMenuOpen ? "rotate(180deg)" : "none" }} />
+              <ChevronDown className="w-4 h-4 shrink-0" style={{ color: boardMenuOpen ? "var(--accent-text)" : "var(--text-muted)", transition: "color 0.18s ease" }} />
             </button>
             {boardMenuOpen && (
               <>
@@ -735,6 +738,13 @@ export default function CalendarPage() {
                       <Briefcase className="w-4 h-4" style={{ color: "var(--accent-text)" }} />
                     </div>
                     <div className="min-w-0"><p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>New Job</p><p className="text-[11px]" style={{ color: "var(--text-muted)" }}>Schedulable work</p></div>
+                  </button>
+                  <button onClick={() => { setCreateMenuOpen(false); setShowReturnVisit(true); }}
+                    className="w-full flex items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-[var(--bg-surface-2)]">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "var(--accent-soft-bg)" }}>
+                      <RotateCcw className="w-4 h-4" style={{ color: "var(--accent-text)" }} />
+                    </div>
+                    <div className="min-w-0"><p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Return Visit</p><p className="text-[11px]" style={{ color: "var(--text-muted)" }}>2nd visit on an existing job</p></div>
                   </button>
                   <button onClick={() => { setCreateMenuOpen(false); setVisitSchedErr(null); setShowVisitScheduler(true); }}
                     className="w-full flex items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-[var(--bg-surface-2)]">
@@ -860,6 +870,7 @@ export default function CalendarPage() {
 
       {/* Create a job straight from the board — refreshes so it lands on the grid / queue */}
       {showJobWizard && <JobWizard onClose={() => setShowJobWizard(false)} onCreated={() => { setShowJobWizard(false); setRefreshKey(k => k + 1); }} />}
+      {showReturnVisit && <ReturnVisitModal onClose={() => setShowReturnVisit(false)} onScheduled={() => setRefreshKey(k => k + 1)} />}
 
       {/* Book a planned agreement visit → materializes into a Job on the board */}
       {showVisitScheduler && (
@@ -1105,7 +1116,8 @@ function DispatchBoard({ focus, mode, items, roster, availability, dayStart, day
           <div key={tech.name || "__unassigned"} className="flex" style={{ borderBottom: ri < rows.length - 1 ? "1px solid var(--border-subtle)" : "none", backgroundColor: isUnassigned ? "var(--warning-soft-bg)" : undefined }}>
             {/* Tech cell */}
             <div className="w-[180px] shrink-0 px-3 py-2.5 flex items-start gap-2" style={{ borderRight: "1px solid var(--border-subtle)" }}>
-              <div className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0"
+              {/* Rounded-square tech tile — matches the technician markers on the map. */}
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[9px] font-bold shrink-0"
                 style={{ backgroundColor: isUnassigned ? "var(--warning-soft-border)" : "#4f46e5", color: isUnassigned ? "var(--warning-text)" : "#fff" }}>{tech.initials}</div>
               <div className="min-w-0">
                 <p className="text-xs font-semibold truncate" style={{ color: isUnassigned ? "var(--warning-text)" : "var(--text-primary)" }}>{isUnassigned ? "Unassigned" : tech.name}</p>
@@ -1253,7 +1265,12 @@ function DispatchBoard({ focus, mode, items, roster, availability, dayStart, day
                     {/* Appointment cards carry the job id separately (sourceId is the
                         appointment); legacy job cards fall back to sourceId. */}
                     <JobStageControl variant="bar" jobId={i.jobId ?? i.sourceId} statusKey={i.status} onChanged={onItemChanged} size={16} />
-                    <div className="flex-1 min-w-0 px-1.5 py-1 flex flex-col justify-center">
+                    <div className="flex-1 min-w-0 px-1.5 py-0.5 flex flex-col justify-center gap-0.5">
+                      {i.visitCount && i.visitCount > 1 && (
+                        <span className="inline-flex items-center gap-0.5 text-[8px] font-semibold leading-none" title={`Visit ${i.visitIndex} of ${i.visitCount} — same job, separate visit`} style={{ color: "var(--accent-text)" }}>
+                          <Link2 className="w-2 h-2" />{i.visitIndex}/{i.visitCount}
+                        </span>
+                      )}
                       <div className="flex items-center gap-1">
                         <p className="text-[10px] font-semibold truncate leading-tight" style={{ color: "var(--text-primary)" }}>{i.customerName ?? i.title}</p>
                         {i.techIds && i.techIds.length > 1 && <span className="text-[8px] font-bold px-1 rounded shrink-0" style={{ backgroundColor: "var(--bg-surface-2)", color: "var(--text-secondary)" }}>+{i.techIds.length - 1}</span>}

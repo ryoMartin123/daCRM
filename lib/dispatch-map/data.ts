@@ -179,6 +179,10 @@ export interface MapTech {
   base: LatLng;
   current: LatLng | null;   // null = no live location yet
   lastCheckIn: string;
+  live?: boolean;           // true when a recent on-duty GPS fix is driving `current`
+  heading?: number;         // degrees clockwise from north, when the device reports it
+  trackState?: import("@/lib/tech-tracking/data").TrackState; // off | clocked_in | live | stale | lost
+  gpsError?: string;        // "permission" | "unavailable" when the device denied/failed GPS
 }
 
 // Only people on the dispatch board(s) for the active scope are dispatchable on

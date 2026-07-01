@@ -2,6 +2,15 @@
 
 @theme {
   --font-family-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  /* Container corner radii — dialed down a notch from Tailwind's defaults for a
+     tighter, more professional B2B feel. Cascades to every rounded-lg/xl/2xl/3xl
+     utility app-wide (cards, panels, modals, inputs, buttons). Pills keep
+     rounded-full; tiny chips keep the default sm/md. */
+  --radius-lg: 0.375rem;    /* was 0.5rem  (8px → 6px)   */
+  --radius-xl: 0.5rem;      /* was 0.75rem (12px → 8px)  */
+  --radius-2xl: 0.625rem;   /* was 1rem    (16px → 10px) — mobile cards lean on this */
+  --radius-3xl: 0.875rem;   /* was 1.5rem  (24px → 14px) — mobile bottom sheets      */
 }
 
 /* Tailwind v4's Preflight resets <button> to cursor:default. Restore the
@@ -827,6 +836,52 @@ body[data-comment-mode="1"] [data-comment-ui] {
 }
 @media (prefers-reduced-motion: reduce) {
   .map-pulse, .map-pulse::after { animation: none; opacity: 0.5; }
+}
+
+/* Subtle live-tech halo — ONE soft green ring, slow + low opacity (not the loud
+   selected-job sonar). Marks a clocked-in technician whose GPS is actively live. */
+@keyframes mapLiveHalo {
+  0%   { transform: scale(0.65); opacity: 0.5; }
+  70%  { opacity: 0; }
+  100% { transform: scale(1.5);  opacity: 0; }
+}
+.map-live-halo {
+  position: absolute;
+  width: 40px; height: 40px;
+  margin-left: -20px; margin-top: -20px;
+  border-radius: 9999px;
+  background: radial-gradient(circle, color-mix(in srgb, #16a34a 42%, transparent) 0%, transparent 66%);
+  pointer-events: none;
+  animation: mapLiveHalo 2.4s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) { .map-live-halo { animation: none; opacity: 0.28; } }
+
+/* Selected-technician status card — compact popover anchored above the marker. */
+.map-tech-popover {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 24px));
+  min-width: 170px; max-width: 236px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 30px -8px rgba(0,0,0,0.30), 0 2px 6px rgba(0,0,0,0.12);
+  pointer-events: none;
+  z-index: 5;
+}
+.map-tech-popover .mtp-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.map-tech-popover .mtp-name { font-size: 13px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.map-tech-popover .mtp-pill { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 9999px; white-space: nowrap; flex-shrink: 0; }
+.map-tech-popover .mtp-dot { width: 6px; height: 6px; border-radius: 9999px; display: inline-block; }
+.map-tech-popover .mtp-updated { margin-top: 3px; font-size: 11px; color: var(--text-muted); }
+.map-tech-popover .mtp-sub { margin-top: 4px; font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.map-tech-popover .mtp-tip {
+  position: absolute; left: 50%; bottom: -6px;
+  width: 12px; height: 12px;
+  transform: translateX(-50%) rotate(45deg);
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
 
 /* ── Create / "+" button micro-interaction ──────────────────
